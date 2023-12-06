@@ -110,7 +110,7 @@ contract ERC4626StreamHub is Multicall {
         address _receiver
     ) public returns (uint256 shares) {
         uint256 principal;
-        (shares, principal) = previewCloseYieldStream(_receiver, msg.sender);
+        (shares, principal) = _previewCloseYieldStream(_receiver, msg.sender);
 
         if (principal == 0) revert StreamDoesNotExist();
 
@@ -125,6 +125,13 @@ contract ERC4626StreamHub is Multicall {
     }
 
     function previewCloseYieldStream(
+        address _receiver,
+        address _streamer
+    ) public view returns (uint256 shares) {
+        (shares, ) = _previewCloseYieldStream(_receiver, _streamer);
+    }
+
+    function _previewCloseYieldStream(
         address _receiver,
         address _streamer
     ) public view returns (uint256 shares, uint256 principal) {
