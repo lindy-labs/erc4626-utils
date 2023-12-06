@@ -779,6 +779,50 @@ contract ERC4626StreamHubTests is Test {
         );
     }
 
+    function test_closeYieldStream_newStreamerSharesLossesOfOldStreamersForSameReceiver()
+        public
+    {
+        uint256 alicesDeposit = 1e18;
+        uint256 alicesShares = _depositToVault(alice, alicesDeposit);
+        _approveStreamHub(alice, alicesShares);
+
+        uint256 bobsDeposit = 2e18;
+        uint256 bobsShares = _depositToVault(bob, bobsDeposit);
+        _approveStreamHub(bob, bobsShares);
+
+        // alice opens a stream to carol
+        vm.prank(alice);
+        streamHub.openYieldStream(carol, alicesShares);
+
+        // create a 20% loss
+        _createProfitForVault(-0.2e18);
+
+        uint256 remainingSharesBefore = streamHub.previewCloseYieldStream(
+            carol,
+            alice
+        );
+
+        // bob opens a stream to carol
+        vm.prank(bob);
+        streamHub.openYieldStream(carol, bobsShares);
+
+        uint256 remainingSharesAfter = streamHub.previewCloseYieldStream(
+            carol,
+            alice
+        );
+
+        assertEq(
+            remainingSharesBefore,
+            remainingSharesAfter,
+            "old streamer shares"
+        );
+        assertEq(
+            streamHub.previewCloseYieldStream(carol, bob),
+            bobsShares,
+            "new streamer shares"
+        );
+    }
+
     function test_closeYieldStreamBatch_closesAllStreams() public {
         uint256 amount = 3e18;
         uint256 shares = _depositToVault(alice, amount);
