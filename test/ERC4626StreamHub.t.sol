@@ -18,8 +18,6 @@ import {ERC4626StreamHub} from "../src/ERC4626StreamHub.sol";
 contract ERC4626StreamHubTests is Test {
     using FixedPointMathLib for uint256;
 
-    event Deposit(address indexed depositor, uint256 shares);
-    event Withdraw(address indexed depositor, uint256 shares);
     event OpenYieldStream(
         address indexed streamer,
         address indexed receiver,
@@ -601,8 +599,6 @@ contract ERC4626StreamHubTests is Test {
         uint256 yield = streamHub.yieldFor(bob);
         uint256 unlockedShares = shares - vault.convertToShares(yield);
 
-        console2.log("unlocked shares", unlockedShares);
-
         vm.expectEmit(true, true, true, true);
         emit CloseYieldStream(alice, bob, unlockedShares);
 
@@ -686,7 +682,7 @@ contract ERC4626StreamHubTests is Test {
         streamHub.closeYieldStream(bob);
     }
 
-    function test_closeYieldStream_doesntAffectOtherStreamsFromTheSameDepositor()
+    function test_closeYieldStream_doesntAffectOtherStreamsFromTheSameStreamer()
         public
     {
         uint256 amount = 1e18;
@@ -707,16 +703,10 @@ contract ERC4626StreamHubTests is Test {
         assertTrue(carolsYield > 0, "carol's yield = 0");
         assertEq(vault.balanceOf(alice), 0, "alice's shares != 0");
 
-        console2.log("bobs assets", asset.balanceOf(bob));
-
         streamHub.closeYieldStream(bob);
 
-        console2.log("bobs assets", asset.balanceOf(bob));
-
-        uint256 alicesShares = vault.balanceOf(alice);
-
         assertApproxEqAbs(
-            vault.convertToAssets(alicesShares),
+            vault.convertToAssets(vault.balanceOf(alice)),
             amount / 2,
             1,
             "alice's principal"
@@ -725,6 +715,68 @@ contract ERC4626StreamHubTests is Test {
         assertEq(streamHub.yieldFor(bob), bobsYield, "bob's yield");
         assertEq(asset.balanceOf(carol), 0, "carol's assets");
         assertEq(streamHub.yieldFor(carol), carolsYield, "carol's yield");
+    }
+
+    function test_closeYieldStream_doesntAffectOtherStreamFromTheAnotherStreamer()
+        public
+    {
+        uint256 alicesDeposit = 1e18;
+        uint256 alicesShares = _depositToVault(alice, alicesDeposit);
+        _approveStreamHub(alice, alicesShares);
+
+        uint256 bobsDeposit = 2e18;
+        uint256 bobsShares = _depositToVault(bob, bobsDeposit);
+        _approveStreamHub(bob, bobsShares);
+
+        // alice opens a stream to carol
+        vm.prank(alice);
+        streamHub.openYieldStream(carol, alicesShares);
+
+        // bob opens a stream to carol
+        vm.prank(bob);
+        streamHub.openYieldStream(carol, bobsShares);
+
+        // create a 20% profit
+        _createProfitForVault(0.2e18);
+
+        assertEq(
+            streamHub.receiverTotalPrincipal(carol),
+            alicesDeposit + bobsDeposit,
+            "carol's total principal"
+        );
+
+        uint256 carolsYield = streamHub.yieldFor(carol);
+
+        vm.prank(alice);
+        streamHub.closeYieldStream(carol);
+
+        assertApproxEqAbs(
+            streamHub.yieldFor(carol),
+            carolsYield,
+            1,
+            "carol's yield"
+        );
+        assertApproxEqAbs(
+            vault.convertToAssets(vault.balanceOf(alice)),
+            alicesDeposit,
+            2,
+            "alice's shares value"
+        );
+        assertEq(
+            streamHub.receiverPrincipal(carol, alice),
+            0,
+            "alice's principal"
+        );
+        assertEq(
+            streamHub.receiverPrincipal(carol, bob),
+            bobsDeposit,
+            "bob's principal"
+        );
+        assertEq(
+            streamHub.receiverTotalPrincipal(carol),
+            bobsDeposit,
+            "carol's total principal"
+        );
     }
 
     function test_closeYieldStreamBatch_closesAllStreams() public {

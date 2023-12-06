@@ -20,7 +20,6 @@ contract ERC4626StreamHub is Multicall {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC4626;
 
-    error NotEnoughShares();
     error ZeroShares();
     error AddressZero();
     error CannotOpenStreamToSelf();
@@ -28,8 +27,6 @@ contract ERC4626StreamHub is Multicall {
     error NoYieldToClaim();
     error InputParamsLengthMismatch();
 
-    event Deposit(address indexed depositor, uint256 shares);
-    event Withdraw(address indexed depositor, uint256 shares);
     event OpenYieldStream(
         address indexed streamer,
         address indexed receiver,
@@ -107,11 +104,33 @@ contract ERC4626StreamHub is Multicall {
      * @dev Closes a yield stream for a specific receiver.
      * If there is any yield to claim for the stream, it will remain unclaimed until the receiver calls `claimYield` function.
      * @param _receiver The address of the receiver.
+     * @return shares The amount of shares that were recovered by closing the stream.
      */
-    function closeYieldStream(address _receiver) public {
-        uint256 principal = receiverPrincipal[_receiver][msg.sender];
+    function closeYieldStream(
+        address _receiver
+    ) public returns (uint256 shares) {
+        uint256 principal;
+        (shares, principal) = previewCloseYieldStream(_receiver, msg.sender);
 
         if (principal == 0) revert StreamDoesNotExist();
+
+        // update state and transfer
+        receiverPrincipal[_receiver][msg.sender] = 0;
+        receiverTotalPrincipal[_receiver] -= principal;
+        receiverShares[_receiver] -= shares;
+
+        vault.safeTransfer(msg.sender, shares);
+
+        emit CloseYieldStream(msg.sender, _receiver, shares);
+    }
+
+    function previewCloseYieldStream(
+        address _receiver,
+        address _streamer
+    ) public view returns (uint256 shares, uint256 principal) {
+        principal = receiverPrincipal[_receiver][_streamer];
+
+        if (principal == 0) return (0, 0);
 
         // asset amount of equivalent shares
         uint256 ask = _convertToShares(principal);
@@ -122,18 +141,9 @@ contract ERC4626StreamHub is Multicall {
             totalPrincipal
         );
 
-        // if there was a loss, withdraw the percentage of the shares
+        // if there was a loss, return amount of shares as the percentage of the
         // equivalent to the sender share of the total principal
-        uint256 shares = ask > have ? have : ask;
-
-        // update state and transfer
-        receiverPrincipal[_receiver][msg.sender] = 0;
-        receiverTotalPrincipal[_receiver] -= totalPrincipal;
-        receiverShares[_receiver] -= shares;
-
-        vault.safeTransfer(msg.sender, shares);
-
-        emit CloseYieldStream(msg.sender, _receiver, shares);
+        shares = ask > have ? have : ask;
     }
 
     /**

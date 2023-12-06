@@ -10,18 +10,16 @@ contract DeployScript is CREATE3Script {
     // constructor() CREATE3Script(vm.envString("VERSION")) {}
     constructor() CREATE3Script("1.0.0") {}
 
-    function run()
-        external
-        returns (ERC4626StreamHub streamHub, ERC4626Mock vault, ERC20Mock asset)
-    {
+    address constant erc20Mock = 0xB96CcC02290102424A10795bea3Ba0dF99374CD7;
+    address constant erc4626Mock = 0x415849Ed40dFd67c9422686F9E2FfF9E3d7e04D1;
+
+    function run() external returns (ERC4626StreamHub streamHub) {
         uint256 deployerPrivateKey = uint256(vm.envBytes32("PRIVATE_KEY"));
         vm.startBroadcast(vm.addr(deployerPrivateKey));
 
         // vm.startBroadcast(address(this));
 
-        asset = new ERC20Mock("ERC20Mock", "ERC20Mock", address(this), 0);
-        vault = new ERC4626Mock(asset, "ERC4626Mock", "ERC4626Mock");
-        streamHub = new ERC4626StreamHub(vault);
+        streamHub = new ERC4626StreamHub(ERC4626Mock(erc4626Mock));
 
         // c = Contract(
         //     create3.deploy(
