@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.10;
 
-import "forge-std/console2.sol";
-
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
@@ -26,6 +24,7 @@ contract ERC4626StreamHub is Multicall {
     error StreamDoesNotExist();
     error NoYieldToClaim();
     error InputParamsLengthMismatch();
+    error LossToleranceExceeded();
 
     event OpenYieldStream(
         address indexed streamer,
@@ -46,6 +45,11 @@ contract ERC4626StreamHub is Multicall {
 
     IERC4626 public immutable vault;
 
+    // the maximum loss tolerance percentage when opening a stream to a receiver which is in debt
+    // a receiver is in debt if his existing streams have negative yield
+    // TODO: should this be configurable?
+    uint256 public immutable lossTolerancePercent = 0.01e18; // 1%
+
     // receiver to number of shares it is entitled to as the yield beneficiary
     mapping(address => uint256) public receiverShares;
 
@@ -62,19 +66,21 @@ contract ERC4626StreamHub is Multicall {
 
     /**
      * @dev Opens a yield stream for a specific receiver with a given number of shares.
+     * When opening a new stream, the sender is taking an immediate loss if the receiver is in debt. Acceptable loss is defined by the loss tolerance percentage configured for the contract.
      * @param _receiver The address of the receiver.
      * @param _shares The number of shares to allocate for the yield stream.
      */
     function openYieldStream(address _receiver, uint256 _shares) public {
         _checkZeroAddress(_receiver);
-        _checkReceiver(_receiver);
+        _checkOpenStreamToSelf(_receiver);
         _checkZeroShares(_shares);
-
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
 
         uint256 principal = _convertToAssets(_shares);
 
-        // balanceOf[msg.sender] -= _shares;
+        _checkImmediateLoss(_receiver, msg.sender, principal);
+
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
+
         receiverShares[_receiver] += _shares;
         receiverTotalPrincipal[_receiver] += principal;
         receiverPrincipal[_receiver][msg.sender] += principal;
@@ -124,6 +130,11 @@ contract ERC4626StreamHub is Multicall {
         emit CloseYieldStream(msg.sender, _receiver, shares);
     }
 
+    /**
+     * @dev Calculates the amount of shares that would be recovered by closing a yield stream for a specific receiver.
+     * @param _receiver The address of the receiver.
+     * @return shares The amount of shares that would be recovered by closing the stream.
+     */
     function previewCloseYieldStream(
         address _receiver,
         address _streamer
@@ -165,7 +176,7 @@ contract ERC4626StreamHub is Multicall {
     }
 
     /**
-     * @dev Claims the yield for the sender and transfers it to the specified receiver address.
+     * @dev Claims the yield from all streams for the sender and transfers it to the specified receiver address.
      * @param _to The address to receive the claimed yield.
      * @return assets The amount of assets (tokens) claimed as yield.
      */
@@ -192,13 +203,25 @@ contract ERC4626StreamHub is Multicall {
     /**
      * @dev Calculates the yield for a given receiver.
      * @param _receiver The address of the receiver.
-     * @return The calculated yield.
+     * @return The calculated yield, 0 if there is no yield or yield is negative.
      */
     function yieldFor(address _receiver) public view returns (uint256) {
         uint256 principal = receiverTotalPrincipal[_receiver];
         uint256 currentValue = _convertToAssets(receiverShares[_receiver]);
 
         return currentValue > principal ? currentValue - principal : 0;
+    }
+
+    /**
+     * @dev Calculates the debt for a given receiver. The receiver is in debt if the yield is on all his streams is negative.
+     * @param _receiver The address of the receiver.
+     * @return The calculated debt, 0 if there is no debt or yield is not negative.
+     */
+    function debtFor(address _receiver) public view returns (uint256) {
+        uint256 principal = receiverTotalPrincipal[_receiver];
+        uint256 currentValue = _convertToAssets(receiverShares[_receiver]);
+
+        return currentValue < principal ? principal - currentValue : 0;
     }
 
     function _checkZeroAddress(address _receiver) internal pure {
@@ -209,8 +232,33 @@ contract ERC4626StreamHub is Multicall {
         if (_shares == 0) revert ZeroShares();
     }
 
-    function _checkReceiver(address _receiver) internal view {
+    function _checkOpenStreamToSelf(address _receiver) internal view {
         if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
+    }
+
+    function _checkImmediateLoss(
+        address _receiver,
+        address _streamer,
+        uint256 _principal
+    ) internal view {
+        // check wheather the streamer already has an existing stream/s open for receiver
+        if (receiverPrincipal[_receiver][_streamer] != 0) return;
+
+        // when opening a new stream from sender, check if the receiver is in debt
+        uint256 debt = debtFor(_receiver);
+
+        if (debt == 0) return;
+
+        // if the receiver is in debt, check if the sender is willing to take the immediate loss when opening a new stream
+        // the immediate loss is calculated as the percentage of the debt that the sender is taking as his share of the total principal allocated to the receiver
+        // acceptable loss is defined by the loss tolerance percentage configured for the contract
+        uint256 lossOnOpen = debt.mulDivUp(
+            _principal,
+            receiverTotalPrincipal[_receiver] + _principal
+        );
+
+        if (lossOnOpen > _principal.mulWadUp(lossTolerancePercent))
+            revert LossToleranceExceeded();
     }
 
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {

@@ -252,6 +252,89 @@ contract ERC4626StreamHubTests is Test {
         );
     }
 
+    function test_openYieldStream_topUpWorksWhenClaimerIsInDebtAndLossIsAboveLossTolerancePercent()
+        public
+    {
+        uint256 amount = 1e18;
+        uint256 shares = _depositToVault(alice, amount);
+        _approveStreamHub(alice, shares);
+
+        vm.startPrank(alice);
+        streamHub.openYieldStream(bob, shares / 2);
+
+        _createProfitForVault(-0.5e18);
+
+        uint256 claimerDebt = streamHub.debtFor(bob);
+
+        // top up stream with the remaining shares
+        streamHub.openYieldStream(bob, shares / 2);
+
+        assertEq(streamHub.debtFor(bob), claimerDebt, "claimer debt");
+        assertEq(streamHub.receiverShares(bob), shares, "receiver shares");
+    }
+
+    function test_openYieldStream_failsIfClaimerIsInDebtAndLossIsAboveLossTolerancePercent()
+        public
+    {
+        uint256 alicesDeposit = 1e18;
+        uint256 alicesShares = _depositToVault(alice, alicesDeposit);
+        _approveStreamHub(alice, alicesShares);
+
+        // alice opens a stream to carol
+        vm.prank(alice);
+        streamHub.openYieldStream(carol, alicesShares);
+
+        // create 10% loss
+        _createProfitForVault(-0.1e18);
+
+        uint256 bobsDeposit = 2e18;
+        uint256 bobsShares = _depositToVault(bob, bobsDeposit);
+        _approveStreamHub(bob, bobsShares);
+
+        // bob opens a stream to carol
+        vm.prank(bob);
+        vm.expectRevert(ERC4626StreamHub.LossToleranceExceeded.selector);
+        streamHub.openYieldStream(carol, bobsShares);
+    }
+
+    function test_openYieldStream_worksIfClaimerIsInDebtAndLossIsBelowLossTolerancePercent()
+        public
+    {
+        uint256 alicesDeposit = 1e18;
+        uint256 alicesShares = _depositToVault(alice, alicesDeposit);
+        _approveStreamHub(alice, alicesShares);
+
+        // alice opens a stream to carol
+        vm.prank(alice);
+        streamHub.openYieldStream(carol, alicesShares);
+
+        // create 2% loss
+        _createProfitForVault(-0.02e18);
+
+        uint256 bobsDeposit = 2e18;
+        uint256 bobsShares = _depositToVault(bob, bobsDeposit);
+        _approveStreamHub(bob, bobsShares);
+
+        // bob opens a stream to carol
+        vm.prank(bob);
+        streamHub.openYieldStream(carol, bobsShares);
+
+        uint256 principalWithLoss = vault.convertToAssets(
+            streamHub.previewCloseYieldStream(carol, bob)
+        );
+
+        assertTrue(
+            principalWithLoss < bobsDeposit,
+            "principal with loss > bobs deposit"
+        );
+        assertApproxEqRel(
+            bobsDeposit,
+            principalWithLoss,
+            streamHub.lossTolerancePercent(),
+            "principal with loss"
+        );
+    }
+
     // *** #openYieldStreamBatch ***
 
     function test_openYieldStreamBatch_createsStreamsForAllReceivers() public {
@@ -776,50 +859,6 @@ contract ERC4626StreamHubTests is Test {
             streamHub.receiverTotalPrincipal(carol),
             bobsDeposit,
             "carol's total principal"
-        );
-    }
-
-    function test_closeYieldStream_newStreamerSharesLossesOfOldStreamersForSameReceiver()
-        public
-    {
-        uint256 alicesDeposit = 1e18;
-        uint256 alicesShares = _depositToVault(alice, alicesDeposit);
-        _approveStreamHub(alice, alicesShares);
-
-        uint256 bobsDeposit = 2e18;
-        uint256 bobsShares = _depositToVault(bob, bobsDeposit);
-        _approveStreamHub(bob, bobsShares);
-
-        // alice opens a stream to carol
-        vm.prank(alice);
-        streamHub.openYieldStream(carol, alicesShares);
-
-        // create a 20% loss
-        _createProfitForVault(-0.2e18);
-
-        uint256 remainingSharesBefore = streamHub.previewCloseYieldStream(
-            carol,
-            alice
-        );
-
-        // bob opens a stream to carol
-        vm.prank(bob);
-        streamHub.openYieldStream(carol, bobsShares);
-
-        uint256 remainingSharesAfter = streamHub.previewCloseYieldStream(
-            carol,
-            alice
-        );
-
-        assertEq(
-            remainingSharesBefore,
-            remainingSharesAfter,
-            "old streamer shares"
-        );
-        assertEq(
-            streamHub.previewCloseYieldStream(carol, bob),
-            bobsShares,
-            "new streamer shares"
         );
     }
 
