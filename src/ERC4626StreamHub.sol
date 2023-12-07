@@ -27,8 +27,8 @@ contract ERC4626StreamHub is Multicall {
     error LossToleranceExceeded();
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
-    event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 yield);
-    event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares);
+    event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
+    event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
 
     IERC4626 public immutable vault;
 
@@ -96,7 +96,7 @@ contract ERC4626StreamHub is Multicall {
 
         vault.safeTransfer(msg.sender, shares);
 
-        emit CloseYieldStream(msg.sender, _receiver, shares);
+        emit CloseYieldStream(msg.sender, _receiver, shares, principal);
     }
 
     /**
@@ -144,7 +144,7 @@ contract ERC4626StreamHub is Multicall {
 
         assets = vault.redeem(yieldInSHares, _to, address(this));
 
-        emit ClaimYield(msg.sender, _to, assets);
+        emit ClaimYield(msg.sender, _to, yieldInSHares, assets);
     }
 
     /**
@@ -212,9 +212,7 @@ contract ERC4626StreamHub is Multicall {
         // acceptable loss is defined by the loss tolerance percentage configured for the contract
         uint256 lossOnOpen = debt.mulDivUp(_principal, receiverTotalPrincipal[_receiver] + _principal);
 
-        if (lossOnOpen > _principal.mulWadUp(lossTolerancePercent)) {
-            revert LossToleranceExceeded();
-        }
+        if (lossOnOpen > _principal.mulWadUp(lossTolerancePercent)) revert LossToleranceExceeded();
     }
 
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {

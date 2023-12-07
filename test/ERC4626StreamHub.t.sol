@@ -19,8 +19,8 @@ contract ERC4626StreamHubTests is Test {
     using FixedPointMathLib for uint256;
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
-    event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 yield);
-    event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares);
+    event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
+    event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
 
     ERC4626StreamHub public streamHub;
     IERC4626 public vault;
@@ -390,9 +390,10 @@ contract ERC4626StreamHubTests is Test {
         _createProfitForVault(0.5e18);
 
         uint256 yield = streamHub.yieldFor(bob);
+        uint256 sharesRedeemed = vault.convertToShares(yield);
 
         vm.expectEmit(true, true, true, true);
-        emit ClaimYield(bob, bob, yield);
+        emit ClaimYield(bob, bob, sharesRedeemed, yield);
 
         vm.prank(bob);
         streamHub.claimYield(bob);
@@ -496,7 +497,8 @@ contract ERC4626StreamHubTests is Test {
     }
 
     function test_closeYieldStream_emitsEvent() public {
-        uint256 shares = _depositToVault(alice, 2e18);
+        uint256 principal = 2e18;
+        uint256 shares = _depositToVault(alice, principal);
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
@@ -509,7 +511,7 @@ contract ERC4626StreamHubTests is Test {
         uint256 unlockedShares = shares - vault.convertToShares(yield);
 
         vm.expectEmit(true, true, true, true);
-        emit CloseYieldStream(alice, bob, unlockedShares);
+        emit CloseYieldStream(alice, bob, unlockedShares, principal);
 
         streamHub.closeYieldStream(bob);
     }
