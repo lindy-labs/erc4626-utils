@@ -26,22 +26,9 @@ contract ERC4626StreamHub is Multicall {
     error InputParamsLengthMismatch();
     error LossToleranceExceeded();
 
-    event OpenYieldStream(
-        address indexed streamer,
-        address indexed receiver,
-        uint256 shares,
-        uint256 principal
-    );
-    event ClaimYield(
-        address indexed receiver,
-        address indexed claimedTo,
-        uint256 yield
-    );
-    event CloseYieldStream(
-        address indexed streamer,
-        address indexed receiver,
-        uint256 shares
-    );
+    event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
+    event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 yield);
+    event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares);
 
     IERC4626 public immutable vault;
 
@@ -72,10 +59,7 @@ contract ERC4626StreamHub is Multicall {
      * @return principal The amount of assets (tokens) allocated to the stream.
      */
     // TODO: should there also be a function that takes in assets instead of shares?
-    function openYieldStream(
-        address _receiver,
-        uint256 _shares
-    ) public returns (uint256 principal) {
+    function openYieldStream(address _receiver, uint256 _shares) public returns (uint256 principal) {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
         _checkZeroShares(_shares);
@@ -99,9 +83,7 @@ contract ERC4626StreamHub is Multicall {
      * @param _receiver The address of the receiver.
      * @return shares The amount of shares that were recovered by closing the stream.
      */
-    function closeYieldStream(
-        address _receiver
-    ) public returns (uint256 shares) {
+    function closeYieldStream(address _receiver) public returns (uint256 shares) {
         uint256 principal;
         (shares, principal) = _previewCloseYieldStream(_receiver, msg.sender);
 
@@ -122,17 +104,15 @@ contract ERC4626StreamHub is Multicall {
      * @param _receiver The address of the receiver.
      * @return shares The amount of shares that would be recovered by closing the stream.
      */
-    function previewCloseYieldStream(
-        address _receiver,
-        address _streamer
-    ) public view returns (uint256 shares) {
-        (shares, ) = _previewCloseYieldStream(_receiver, _streamer);
+    function previewCloseYieldStream(address _receiver, address _streamer) public view returns (uint256 shares) {
+        (shares,) = _previewCloseYieldStream(_receiver, _streamer);
     }
 
-    function _previewCloseYieldStream(
-        address _receiver,
-        address _streamer
-    ) public view returns (uint256 shares, uint256 principal) {
+    function _previewCloseYieldStream(address _receiver, address _streamer)
+        public
+        view
+        returns (uint256 shares, uint256 principal)
+    {
         principal = receiverPrincipal[_receiver][_streamer];
 
         if (principal == 0) return (0, 0);
@@ -141,10 +121,7 @@ contract ERC4626StreamHub is Multicall {
         uint256 ask = _convertToShares(principal);
         uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
         // the maximum amount of shares that can be attributed to the sender
-        uint256 have = receiverShares[_receiver].mulDivDown(
-            principal,
-            totalPrincipal
-        );
+        uint256 have = receiverShares[_receiver].mulDivDown(principal, totalPrincipal);
 
         // if there was a loss, return amount of shares as the percentage of the
         // equivalent to the sender share of the total principal
@@ -188,18 +165,12 @@ contract ERC4626StreamHub is Multicall {
      * @param _receiver The address of the receiver.
      * @return yieldInShares The calculated yield in shares, 0 if there is no yield or yield is negative.
      */
-    function yieldForInShares(
-        address _receiver
-    ) public view returns (uint256 yieldInShares) {
-        uint256 principalInShares = _convertToShares(
-            receiverTotalPrincipal[_receiver]
-        );
+    function yieldForInShares(address _receiver) public view returns (uint256 yieldInShares) {
+        uint256 principalInShares = _convertToShares(receiverTotalPrincipal[_receiver]);
         uint256 shares = receiverShares[_receiver];
 
         // if vault made a loss, there is no yield
-        yieldInShares = shares > principalInShares
-            ? shares - principalInShares
-            : 0;
+        yieldInShares = shares > principalInShares ? shares - principalInShares : 0;
     }
 
     /**
@@ -226,11 +197,7 @@ contract ERC4626StreamHub is Multicall {
         if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
     }
 
-    function _checkImmediateLoss(
-        address _receiver,
-        address _streamer,
-        uint256 _principal
-    ) internal view {
+    function _checkImmediateLoss(address _receiver, address _streamer, uint256 _principal) internal view {
         // check wheather the streamer already has an existing stream/s open for receiver
         // if it does then we are considering this as a top up to an existing stream and ignore if there is a loss
         if (receiverPrincipal[_receiver][_streamer] != 0) return;
@@ -243,13 +210,11 @@ contract ERC4626StreamHub is Multicall {
         // if the receiver is in debt, check if the sender is willing to take the immediate loss when opening a new stream
         // the immediate loss is calculated as the percentage of the debt that the sender is taking as his share of the total principal allocated to the receiver
         // acceptable loss is defined by the loss tolerance percentage configured for the contract
-        uint256 lossOnOpen = debt.mulDivUp(
-            _principal,
-            receiverTotalPrincipal[_receiver] + _principal
-        );
+        uint256 lossOnOpen = debt.mulDivUp(_principal, receiverTotalPrincipal[_receiver] + _principal);
 
-        if (lossOnOpen > _principal.mulWadUp(lossTolerancePercent))
+        if (lossOnOpen > _principal.mulWadUp(lossTolerancePercent)) {
             revert LossToleranceExceeded();
+        }
     }
 
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {
