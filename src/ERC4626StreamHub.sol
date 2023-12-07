@@ -88,24 +88,6 @@ contract ERC4626StreamHub is Multicall {
         emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
     }
 
-    // TODO: do we need batch functions? same could be achieved using multicall
-    /**
-     * @dev Opens yield streams for multiple receivers with corresponding shares.
-     * @param _receivers An array of receiver addresses.
-     * @param _shares An array of share amounts corresponding to each receiver.
-     */
-    function openYieldStreamBatch(
-        address[] calldata _receivers,
-        uint256[] calldata _shares
-    ) external {
-        if (_receivers.length != _shares.length)
-            revert InputParamsLengthMismatch();
-
-        for (uint256 i = 0; i < _receivers.length; i++) {
-            openYieldStream(_receivers[i], _shares[i]);
-        }
-    }
-
     /**
      * @dev Closes a yield stream for a specific receiver.
      * If there is any yield to claim for the stream, it will remain unclaimed until the receiver calls `claimYield` function.
@@ -162,17 +144,6 @@ contract ERC4626StreamHub is Multicall {
         // if there was a loss, return amount of shares as the percentage of the
         // equivalent to the sender share of the total principal
         shares = ask > have ? have : ask;
-    }
-
-    /**
-     * @dev Closes multiple yield streams for multiple receivers from the same streamer.
-     * If there is any yield to claim for the stream, it will remain unclaimed until the receiver calls `claimYield` function.
-     * @param _tos The array of receiver addresses.
-     */
-    function closeYieldStreamBatch(address[] calldata _tos) external {
-        for (uint256 i = 0; i < _tos.length; i++) {
-            closeYieldStream(_tos[i]);
-        }
     }
 
     /**

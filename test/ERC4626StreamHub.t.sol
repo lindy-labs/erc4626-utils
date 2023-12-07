@@ -335,91 +335,6 @@ contract ERC4626StreamHubTests is Test {
         );
     }
 
-    // *** #openYieldStreamBatch ***
-
-    function test_openYieldStreamBatch_createsStreamsForAllReceivers() public {
-        uint256 amount = 1e18;
-        uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
-
-        address[] memory receivers = new address[](2);
-        receivers[0] = bob;
-        receivers[1] = carol;
-        uint256[] memory allocations = new uint256[](2);
-        allocations[0] = (shares * 3) / 4;
-        allocations[1] = shares / 4;
-
-        vm.startPrank(alice);
-        streamHub.openYieldStreamBatch(receivers, allocations);
-
-        assertEq(
-            streamHub.receiverShares(bob),
-            (shares * 3) / 4,
-            "receiver shares bob"
-        );
-        assertEq(
-            streamHub.receiverTotalPrincipal(bob),
-            (amount * 3) / 4,
-            "principal bob"
-        );
-        assertEq(
-            streamHub.receiverPrincipal(bob, alice),
-            (amount * 3) / 4,
-            "receiver principal  bob"
-        );
-
-        assertEq(
-            streamHub.receiverShares(carol),
-            shares / 4,
-            "receiver shares carol"
-        );
-        assertEq(
-            streamHub.receiverTotalPrincipal(carol),
-            amount / 4,
-            "principal carol"
-        );
-        assertEq(
-            streamHub.receiverPrincipal(carol, alice),
-            amount / 4,
-            "receiver principal  carol"
-        );
-    }
-
-    function test_openYieldStreamBatch_failsIfReceiversAndAllocationLengthsDontMatch()
-        public
-    {
-        uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
-
-        address[] memory receivers = new address[](2);
-        receivers[0] = bob;
-        receivers[1] = carol;
-        uint256[] memory allocations = new uint256[](1);
-        allocations[0] = shares;
-
-        vm.startPrank(alice);
-        vm.expectRevert(ERC4626StreamHub.InputParamsLengthMismatch.selector);
-        streamHub.openYieldStreamBatch(receivers, allocations);
-    }
-
-    function test_openYieldStreamBatch_failsIfAllocationIsGreaterThanSharesBalance()
-        public
-    {
-        uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
-
-        address[] memory receivers = new address[](2);
-        receivers[0] = bob;
-        receivers[1] = carol;
-        uint256[] memory allocations = new uint256[](2);
-        allocations[0] = shares;
-        allocations[1] = 1; // 1 more than available
-
-        vm.startPrank(alice);
-        vm.expectRevert("ERC20: insufficient allowance");
-        streamHub.openYieldStreamBatch(receivers, allocations);
-    }
-
     // *** #yieldFor ***
 
     function test_yieldFor_returns0IfNoYield() public {
@@ -860,33 +775,6 @@ contract ERC4626StreamHubTests is Test {
             bobsDeposit,
             "carol's total principal"
         );
-    }
-
-    function test_closeYieldStreamBatch_closesAllStreams() public {
-        uint256 amount = 3e18;
-        uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
-
-        vm.startPrank(alice);
-        streamHub.openYieldStream(bob, shares / 3);
-        streamHub.openYieldStream(carol, (shares * 2) / 3);
-
-        // add 100% profit to vault
-        _createProfitForVault(1e18);
-
-        address[] memory receivers = new address[](2);
-        receivers[0] = bob;
-        receivers[1] = carol;
-
-        streamHub.closeYieldStreamBatch(receivers);
-
-        assertEq(
-            vault.balanceOf(alice),
-            vault.convertToShares(amount),
-            "alice's principal"
-        );
-        assertEq(streamHub.yieldFor(bob), amount / 3, "bob's yield");
-        assertEq(streamHub.yieldFor(carol), (amount * 2) / 3, "carol's yield");
     }
 
     // *** #multicall ***
