@@ -56,7 +56,7 @@ contract ERC4626StreamHubTests is Test {
 
     // *** #openYieldStream ***
 
-    function test_openYieldStream_toSelf() public {
+    function test_openYieldStream_failsOpeningStreamToSelf() public {
         uint256 amount = 10e18;
         uint256 shares = _depositToVault(alice, amount);
         _approveStreamHub(alice, shares);
@@ -100,16 +100,25 @@ contract ERC4626StreamHubTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        streamHub.openYieldStream(bob, shares);
+        uint256 assets = streamHub.openYieldStream(bob, shares);
 
+        assertEq(assets, amount, "assets");
         assertEq(
             vault.balanceOf(address(streamHub)),
             streamHubShares + shares,
             "streamHub shares"
         );
-        assertEq(streamHub.receiverShares(bob), shares, "shares of");
-        assertEq(streamHub.receiverTotalPrincipal(bob), amount, "principal");
-        assertEq(streamHub.receiverPrincipal(bob, alice), amount, "deposited");
+        assertEq(streamHub.receiverShares(bob), shares, "receiver shares");
+        assertEq(
+            streamHub.receiverTotalPrincipal(bob),
+            amount,
+            "receiver total principal"
+        );
+        assertEq(
+            streamHub.receiverPrincipal(bob, alice),
+            amount,
+            "receiver principal"
+        );
     }
 
     function test_openYieldStream_emitsEvent() public {

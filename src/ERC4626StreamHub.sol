@@ -69,13 +69,18 @@ contract ERC4626StreamHub is Multicall {
      * When opening a new stream, the sender is taking an immediate loss if the receiver is in debt. Acceptable loss is defined by the loss tolerance percentage configured for the contract.
      * @param _receiver The address of the receiver.
      * @param _shares The number of shares to allocate for the yield stream.
+     * @return principal The amount of assets (tokens) allocated to the stream.
      */
-    function openYieldStream(address _receiver, uint256 _shares) public {
+    // TODO: should there also be a function that takes in assets instead of shares?
+    function openYieldStream(
+        address _receiver,
+        uint256 _shares
+    ) public returns (uint256 principal) {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
         _checkZeroShares(_shares);
 
-        uint256 principal = _convertToAssets(_shares);
+        principal = _convertToAssets(_shares);
 
         _checkImmediateLoss(_receiver, msg.sender, principal);
 
@@ -154,19 +159,13 @@ contract ERC4626StreamHub is Multicall {
     function claimYield(address _to) external returns (uint256 assets) {
         _checkZeroAddress(_to);
 
-        uint256 principalInShares = _convertToShares(
-            receiverTotalPrincipal[msg.sender]
-        );
-        uint256 shares = receiverShares[msg.sender];
+        uint256 yieldInSHares = yieldForInShares(msg.sender);
 
-        // if vault made a loss, there is no yield to claim
-        if (shares <= principalInShares) revert NoYieldToClaim();
+        if (yieldInSHares == 0) revert NoYieldToClaim();
 
-        uint256 yieldShares = shares - principalInShares;
+        receiverShares[msg.sender] -= yieldInSHares;
 
-        receiverShares[msg.sender] -= yieldShares;
-
-        assets = vault.redeem(yieldShares, _to, address(this));
+        assets = vault.redeem(yieldInSHares, _to, address(this));
 
         emit ClaimYield(msg.sender, _to, assets);
     }
@@ -174,13 +173,33 @@ contract ERC4626StreamHub is Multicall {
     /**
      * @dev Calculates the yield for a given receiver.
      * @param _receiver The address of the receiver.
-     * @return The calculated yield, 0 if there is no yield or yield is negative.
+     * @return yield The calculated yield, 0 if there is no yield or yield is negative.
      */
-    function yieldFor(address _receiver) public view returns (uint256) {
+    function yieldFor(address _receiver) public view returns (uint256 yield) {
         uint256 principal = receiverTotalPrincipal[_receiver];
         uint256 currentValue = _convertToAssets(receiverShares[_receiver]);
 
-        return currentValue > principal ? currentValue - principal : 0;
+        // if vault made a loss, there is no yield
+        yield = currentValue > principal ? currentValue - principal : 0;
+    }
+
+    /**
+     * @dev Calculates the yield for a given receiver as claimable shares.
+     * @param _receiver The address of the receiver.
+     * @return yieldInShares The calculated yield in shares, 0 if there is no yield or yield is negative.
+     */
+    function yieldForInShares(
+        address _receiver
+    ) public view returns (uint256 yieldInShares) {
+        uint256 principalInShares = _convertToShares(
+            receiverTotalPrincipal[_receiver]
+        );
+        uint256 shares = receiverShares[_receiver];
+
+        // if vault made a loss, there is no yield
+        yieldInShares = shares > principalInShares
+            ? shares - principalInShares
+            : 0;
     }
 
     /**
@@ -213,6 +232,7 @@ contract ERC4626StreamHub is Multicall {
         uint256 _principal
     ) internal view {
         // check wheather the streamer already has an existing stream/s open for receiver
+        // if it does then we are considering this as a top up to an existing stream and ignore if there is a loss
         if (receiverPrincipal[_receiver][_streamer] != 0) return;
 
         // when opening a new stream from sender, check if the receiver is in debt
