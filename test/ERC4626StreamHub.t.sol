@@ -6,12 +6,10 @@ import "forge-std/Test.sol";
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
-import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.sol";
-import {ERC4626Mock} from "openzeppelin-contracts/mocks/ERC4626Mock.sol";
-import {ERC20Mock} from "openzeppelin-contracts/mocks/ERC20Mock.sol";
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
-import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
+import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {ERC4626StreamHub} from "../src/ERC4626StreamHub.sol";
 
@@ -23,17 +21,17 @@ contract ERC4626StreamHubTests is Test {
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
 
     ERC4626StreamHub public streamHub;
-    IERC4626 public vault;
-    IERC20Metadata public asset;
+    MockERC4626 public vault;
+    MockERC20 public asset;
 
     address constant alice = address(0x06);
     address constant bob = address(0x07);
     address constant carol = address(0x08);
 
     function setUp() public {
-        asset = new ERC20Mock("ERC20Mock", "ERC20Mock", address(this), 0);
-        vault = new ERC4626Mock(asset, "ERC4626Mock", "ERC4626Mock");
-        streamHub = new ERC4626StreamHub(vault);
+        asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
+        vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
+        streamHub = new ERC4626StreamHub(IERC4626(address(vault)));
 
         // make initial deposit to vault
         _depositToVault(address(this), 1e18);
@@ -58,7 +56,7 @@ contract ERC4626StreamHubTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        vm.expectRevert("ERC20: insufficient allowance");
+        vm.expectRevert(ERC4626StreamHub.NotEnoughShares.selector);
         streamHub.openYieldStream(bob, shares + 1);
     }
 
@@ -253,6 +251,39 @@ contract ERC4626StreamHubTests is Test {
 
         assertTrue(principalWithLoss < bobsDeposit, "principal with loss > bobs deposit");
         assertApproxEqRel(bobsDeposit, principalWithLoss, streamHub.lossTolerancePercent(), "principal with loss");
+    }
+
+    function test_openYieldStreamUsingPermit() public {
+        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
+        address dave = vm.addr(davesPrivateKey);
+
+        uint256 amount = 1 ether;
+        uint256 shares = _depositToVault(dave, amount);
+        uint256 nonce = vault.nonces(dave);
+        uint256 deadline = block.timestamp + 1 days;
+
+        bytes32 PERMIT_TYPEHASH =
+            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
+        // Sign the permit message
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            davesPrivateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    MockERC4626(address(vault)).DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(streamHub), shares, nonce, deadline))
+                )
+            )
+        );
+
+        vm.prank(dave);
+        streamHub.openYieldStreamUsingPermit(bob, shares, deadline, v, r, s);
+
+        assertEq(vault.balanceOf(address(streamHub)), shares, "streamHub shares");
+        assertEq(streamHub.receiverShares(bob), shares, "receiver shares");
+        assertEq(streamHub.receiverTotalPrincipal(bob), amount, "receiver total principal");
+        assertEq(streamHub.receiverPrincipal(bob, dave), amount, "receiver principal");
     }
 
     // *** #yieldFor ***

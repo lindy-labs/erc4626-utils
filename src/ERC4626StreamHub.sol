@@ -3,6 +3,7 @@ pragma solidity ^0.8.10;
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
+import {IERC2612} from "openzeppelin-contracts/interfaces/draft-IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
@@ -18,6 +19,7 @@ contract ERC4626StreamHub is Multicall {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC4626;
 
+    error NotEnoughShares();
     error ZeroShares();
     error AddressZero();
     error CannotOpenStreamToSelf();
@@ -60,21 +62,52 @@ contract ERC4626StreamHub is Multicall {
      */
     // TODO: should there also be a function that takes in assets instead of shares?
     function openYieldStream(address _receiver, uint256 _shares) public returns (uint256 principal) {
+        principal = _openYieldStream(_receiver, msg.sender, _shares);
+    }
+
+    /**
+     * @dev Opens a yield stream for a specific receiver with a given number of shares using the ERC20 permit functionality to obtain the necessary allowance.
+     * When opening a new stream, the sender is taking an immediate loss if the receiver is in debt. Acceptable loss is defined by the loss tolerance percentage configured for the contract.
+     * @param _receiver The address of the receiver.
+     * @param _shares The number of shares to allocate for the yield stream.
+     * @param deadline The deadline timestamp for the permit signature.
+     * @param v The recovery byte of the permit signature.
+     * @param r The first 32 bytes of the permit signature.
+     * @param s The second 32 bytes of the permit signature.
+     * @return principal The amount of assets (tokens) allocated to the stream.
+     */
+    function openYieldStreamUsingPermit(
+        address _receiver,
+        uint256 _shares,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public returns (uint256 principal) {
+        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+
+        principal = _openYieldStream(_receiver, msg.sender, _shares);
+    }
+
+    function _openYieldStream(address _receiver, address _streamer, uint256 _shares)
+        internal
+        returns (uint256 principal)
+    {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
-        _checkZeroShares(_shares);
+        _checkShares(_streamer, _shares);
 
         principal = _convertToAssets(_shares);
 
-        _checkImmediateLoss(_receiver, msg.sender, principal);
+        _checkImmediateLoss(_receiver, _streamer, principal);
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
+        vault.safeTransferFrom(_streamer, address(this), _shares);
 
         receiverShares[_receiver] += _shares;
         receiverTotalPrincipal[_receiver] += principal;
-        receiverPrincipal[_receiver][msg.sender] += principal;
+        receiverPrincipal[_receiver][_streamer] += principal;
 
-        emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
+        emit OpenYieldStream(_streamer, _receiver, _shares, principal);
     }
 
     /**
@@ -189,8 +222,10 @@ contract ERC4626StreamHub is Multicall {
         if (_receiver == address(0)) revert AddressZero();
     }
 
-    function _checkZeroShares(uint256 _shares) internal pure {
+    function _checkShares(address _streamer, uint256 _shares) internal view {
         if (_shares == 0) revert ZeroShares();
+
+        if (vault.allowance(_streamer, address(this)) < _shares) revert NotEnoughShares();
     }
 
     function _checkOpenStreamToSelf(address _receiver) internal view {
