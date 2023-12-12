@@ -39,6 +39,13 @@ contract ERC4626StreamHubTests is Test {
         deal(address(asset), address(vault), 2e18);
     }
 
+    // *** constructor ***
+
+    function test_constructor_failsForAddress0() public {
+        vm.expectRevert(ERC4626StreamHub.AddressZero.selector);
+        new ERC4626StreamHub(IERC4626(address(0)));
+    }
+
     // *** #openYieldStream ***
 
     function test_openYieldStream_failsOpeningStreamToSelf() public {

@@ -49,8 +49,9 @@ contract ERC4626StreamHub is Multicall {
     mapping(address => mapping(address => uint256)) public receiverPrincipal;
 
     constructor(IERC4626 _vault) {
+        _checkZeroAddress(address(_vault));
+
         vault = _vault;
-        IERC20(vault.asset()).safeApprove(address(vault), type(uint256).max);
     }
 
     /**
