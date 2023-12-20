@@ -714,6 +714,48 @@ contract ERC4626StreamHubTests is Test {
         assertEq(streamHub.receiverShares(carol), shares / 4, "receiver shares carol");
     }
 
+    function testFuzz_open_claim_close_stream(uint256 amount) public {
+        amount = bound(amount, 10000, 1000 ether);
+        uint256 shares = _depositToVault(alice, amount);
+        _approveStreamHub(alice, shares);
+        vm.startPrank(alice);
+
+        // open 10 streams
+        uint256 sharesToOpen = shares / 10;
+        address[] memory receivers = new address[](10);
+        for (uint256 i = 0; i < 10; i++) {
+            // generate random receiver address
+            receivers[i] = address(uint160(uint256(keccak256(abi.encodePacked(block.timestamp + i, block.difficulty)))));
+            streamHub.openYieldStream(receivers[i], sharesToOpen);
+        }
+
+        vm.stopPrank();
+
+        _createProfitForVault(0.5e18);
+
+        uint256 expectedYield = amount.mulDivDown(0.5e18, 10e18);
+
+        // claim yield
+        for (uint256 i = 0; i < 10; i++) {
+            assertEq(streamHub.yieldFor(receivers[i]), expectedYield, "yield");
+
+            vm.prank(receivers[i]);
+            streamHub.claimYield(receivers[i]);
+
+            assertApproxEqAbs(asset.balanceOf(receivers[i]), expectedYield, 3, "assets");
+            assertEq(streamHub.yieldFor(receivers[i]), 0, "yield");
+        }
+
+        // close streams
+        vm.startPrank(alice);
+        for (uint256 i = 0; i < 10; i++) {
+            streamHub.closeYieldStream(receivers[i]);
+        }
+
+        assertApproxEqRel(vault.convertToAssets(vault.balanceOf(alice)), amount, 0.005e18, "alice's pricipal");
+        assertEq(vault.balanceOf(address(streamHub)), 0, "streamHub's shares");
+    }
+
     // *** helpers ***
 
     function _depositToVault(address _from, uint256 _amount) internal returns (uint256 shares) {
