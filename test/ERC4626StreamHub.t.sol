@@ -58,12 +58,12 @@ contract ERC4626StreamHubTests is Test {
         streamHub.openYieldStream(alice, shares);
     }
 
-    function test_openYieldStream_failsIfNotEnoughShares() public {
+    function test_openYieldStream_failsIfTransferExceedsAllowance() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        vm.expectRevert(ERC4626StreamHub.NotEnoughShares.selector);
+        vm.expectRevert(ERC4626StreamHub.TransferExceedsAllowance.selector);
         streamHub.openYieldStream(bob, shares + 1);
     }
 

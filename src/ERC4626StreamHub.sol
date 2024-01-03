@@ -19,13 +19,12 @@ contract ERC4626StreamHub is Multicall {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC4626;
 
-    error NotEnoughShares();
+    error TransferExceedsAllowance();
     error ZeroShares();
     error AddressZero();
     error CannotOpenStreamToSelf();
     error StreamDoesNotExist();
     error NoYieldToClaim();
-    error InputParamsLengthMismatch();
     error LossToleranceExceeded();
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
@@ -55,7 +54,7 @@ contract ERC4626StreamHub is Multicall {
     }
 
     /**
-     * @dev Opens a yield stream for a specific receiver with a given number of shares.
+     * @dev Opens a yield stream for a specific receiver with a given number of shares. If stream already exists, it will be topped up.
      * When opening a new stream, the sender is taking an immediate loss if the receiver is in debt. Acceptable loss is defined by the loss tolerance percentage configured for the contract.
      * @param _receiver The address of the receiver.
      * @param _shares The number of shares to allocate for the yield stream.
@@ -226,7 +225,7 @@ contract ERC4626StreamHub is Multicall {
     function _checkShares(address _streamer, uint256 _shares) internal view {
         if (_shares == 0) revert ZeroShares();
 
-        if (vault.allowance(_streamer, address(this)) < _shares) revert NotEnoughShares();
+        if (vault.allowance(_streamer, address(this)) < _shares) revert TransferExceedsAllowance();
     }
 
     function _checkOpenStreamToSelf(address _receiver) internal view {
