@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.19;
 
-import {ERC20Mock} from "openzeppelin-contracts/mocks/ERC20Mock.sol";
-import {ERC4626Mock} from "openzeppelin-contracts/mocks/ERC4626Mock.sol";
 import {CREATE3Script} from "./base/CREATE3Script.sol";
 import {ERC4626StreamHub} from "../src/ERC4626StreamHub.sol";
 import {RemovableAssetsERC4626Mock} from "../test/mock/RemovableAssetsERC4626Mock.sol";
