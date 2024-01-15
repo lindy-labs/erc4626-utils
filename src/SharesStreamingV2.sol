@@ -168,7 +168,6 @@ contract SharesStreamingV2 is Multicall {
 
         if (sharesToClaim == 0) revert NoSharesToClaim();
 
-        // Cap the claimable shares at the total allocated shares
         if (sharesToClaim == stream.shares) {
             // TODO: delete stream because it expired? reconsider this
             delete streamsById[streamId];
@@ -194,16 +193,14 @@ contract SharesStreamingV2 is Multicall {
         return _previewClaim(streamsById[getStreamId(_streamer, _receiver)]);
     }
 
-    function _previewClaim(Stream memory _stream) internal view returns (uint256) {
+    function _previewClaim(Stream memory _stream) internal view returns (uint256 claimableShares) {
         _checkExistingStream(_stream);
 
         uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
-        uint256 claimableShares = elapsedTime * _stream.ratePerSecond;
+        claimableShares = elapsedTime * _stream.ratePerSecond;
 
         // Cap the shares to claim to the total allocated shares
         if (claimableShares > _stream.shares) claimableShares = _stream.shares;
-
-        return claimableShares;
     }
 
     /// @notice Closes an existing share stream and distributes the shares accordingly

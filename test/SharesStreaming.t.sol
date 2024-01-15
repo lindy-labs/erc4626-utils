@@ -743,10 +743,13 @@ contract SharesStreamingTest is Test {
     // refactor - done
     // cleanup / renaming
     // upgrade open zeppelin
-    // add docs
+    // add docs - done
     // separate tests & contracts - done
     // top up using permit
     // prevent reentrancy?
+    // gas optimizations
+    // improve integer operations precision?
+    // fork/fuzz tests
 
     function _depositToVault(address _account, uint256 _amount) internal returns (uint256 shares) {
         vm.startPrank(_account);
