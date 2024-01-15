@@ -7,6 +7,3 @@
 [submodule "lib/create3-factory"]
 	path = lib/create3-factory
 	url = https://github.com/zeframlou/create3-factory
-[submodule "lib/openzeppelin-contracts"]
-	path = lib/openzeppelin-contracts
-	url = https://github.com/openzeppelin/openzeppelin-contracts
