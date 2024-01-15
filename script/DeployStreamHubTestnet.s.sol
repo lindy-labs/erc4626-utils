@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.19;
 
 import {CREATE3Script} from "./base/CREATE3Script.sol";
 import {ERC4626StreamHub} from "../src/ERC4626StreamHub.sol";
