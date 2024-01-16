@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-pragma solidity ^0.8.10;
+pragma solidity ^0.8.19;
 
 import {CREATE3} from "solmate/utils/CREATE3.sol";
 import {ERC4626StreamHub} from "./ERC4626StreamHub.sol";
