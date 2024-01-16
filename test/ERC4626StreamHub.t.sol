@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-pragma solidity ^0.8.10;
+pragma solidity ^0.8.19;
 
 import "forge-std/console2.sol";
 import "forge-std/Test.sol";
@@ -58,12 +58,12 @@ contract ERC4626StreamHubTests is Test {
         streamHub.openYieldStream(alice, shares);
     }
 
-    function test_openYieldStream_failsIfNotEnoughShares() public {
+    function test_openYieldStream_failsIfTransferExceedsAllowance() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        vm.expectRevert(ERC4626StreamHub.NotEnoughShares.selector);
+        vm.expectRevert(ERC4626StreamHub.TransferExceedsAllowance.selector);
         streamHub.openYieldStream(bob, shares + 1);
     }
 
@@ -409,12 +409,29 @@ contract ERC4626StreamHubTests is Test {
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
 
-        // claim yield
         vm.prank(bob);
         streamHub.claimYield(bob);
 
         assertEq(vault.balanceOf(alice), 0, "alice's shares");
         assertApproxEqAbs(asset.balanceOf(bob), amount / 2, 1, "bob's assets");
+    }
+
+    function test_claimYield_toAnotherAccount() public {
+        uint256 amount = 1e18;
+        uint256 shares = _depositToVault(alice, amount);
+        _approveStreamHub(alice, shares);
+
+        vm.prank(alice);
+        streamHub.openYieldStream(bob, shares);
+
+        // add 50% profit to vault
+        _createProfitForVault(0.5e18);
+
+        vm.prank(bob);
+        uint256 claimed = streamHub.claimYield(carol);
+
+        assertEq(vault.balanceOf(alice), 0, "alice's shares");
+        assertApproxEqAbs(asset.balanceOf(carol), claimed, 1, "carol's assets");
     }
 
     function test_claimYield_emitsEvent() public {
@@ -431,10 +448,10 @@ contract ERC4626StreamHubTests is Test {
         uint256 sharesRedeemed = vault.convertToShares(yield);
 
         vm.expectEmit(true, true, true, true);
-        emit ClaimYield(bob, bob, sharesRedeemed, yield);
+        emit ClaimYield(bob, carol, sharesRedeemed, yield);
 
         vm.prank(bob);
-        streamHub.claimYield(bob);
+        streamHub.claimYield(carol);
     }
 
     function test_claimYield_revertsToAddressIs0() public {
@@ -505,9 +522,10 @@ contract ERC4626StreamHubTests is Test {
         assertEq(streamHub.yieldFor(carol), amount * 3, "carol's yield");
 
         vm.prank(carol);
-        streamHub.claimYield(carol);
+        uint256 claimed = streamHub.claimYield(carol);
 
-        assertEq(asset.balanceOf(carol), amount * 3, "carol's assets");
+        assertEq(claimed, amount * 3, "claimed");
+        assertEq(asset.balanceOf(carol), claimed, "carol's assets");
         assertEq(streamHub.yieldFor(carol), 0, "carols's yield");
     }
 
@@ -526,10 +544,10 @@ contract ERC4626StreamHubTests is Test {
         uint256 yield = streamHub.yieldFor(bob);
         uint256 yieldValueInShares = vault.convertToShares(yield);
 
-        // claim yield
-        streamHub.closeYieldStream(bob);
+        uint256 sharesReturned = streamHub.closeYieldStream(bob);
 
-        assertApproxEqAbs(vault.balanceOf(alice), shares - yieldValueInShares, 1, "alice's shares");
+        assertApproxEqAbs(sharesReturned, shares - yieldValueInShares, 1, "shares returned");
+        assertEq(vault.balanceOf(alice), sharesReturned, "alice's shares");
         assertEq(asset.balanceOf(alice), 0, "alice's assets");
         assertEq(asset.balanceOf(bob), 0, "bob's assets");
     }
