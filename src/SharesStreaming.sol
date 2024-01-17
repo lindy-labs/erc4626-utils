@@ -74,7 +74,6 @@ contract SharesStreaming is Multicall {
     }
 
     /// @notice Opens a new share stream using EIP-2612 permit for allowance
-    /// @dev Emits an OpenSharesStream event
     /// @param _receiver The address of the receiver
     /// @param _shares The number of shares to stream
     /// @param _duration The duration of the stream in seconds
@@ -131,8 +130,7 @@ contract SharesStreaming is Multicall {
     /// @param _receiver The address of the receiver
     /// @param _additionalShares The additional number of shares to add to the stream
     /// @param _additionalDuration The additional duration to add to the stream in seconds
-
-    function topUpSharesStream(address _receiver, uint256 _additionalShares, uint256 _additionalDuration) external {
+    function topUpSharesStream(address _receiver, uint256 _additionalShares, uint256 _additionalDuration) public {
         _checkAddress(_receiver);
         _checkShares(msg.sender, _additionalShares);
 
@@ -155,6 +153,29 @@ contract SharesStreaming is Multicall {
         vault.safeTransferFrom(msg.sender, address(this), _additionalShares);
 
         emit TopUpSharesStream(msg.sender, _receiver, _additionalShares, _additionalDuration);
+    }
+
+    /// @notice Tops up an existing share stream using EIP-2612 permit for allowance
+    /// @dev Emits a TopUpSharesStream event
+    /// @param _receiver The address of the receiver
+    /// @param _additionalShares The additional number of shares to add to the stream
+    /// @param _additionalDuration The additional duration to add to the stream in seconds
+    /// @param _deadline Expiration time of the permit
+    /// @param _v The recovery byte of the signature
+    /// @param _r Half of the ECDSA signature pair
+    /// @param _s Half of the ECDSA signature pair
+    function topUpSharesStreamUsingPermit(
+        address _receiver,
+        uint256 _additionalShares,
+        uint256 _additionalDuration,
+        uint256 _deadline,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    ) external {
+        IERC2612(address(vault)).permit(msg.sender, address(this), _additionalShares, _deadline, _v, _r, _s);
+
+        topUpSharesStream(_receiver, _additionalShares, _additionalDuration);
     }
 
     /// @notice Claims shares from an open stream

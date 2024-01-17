@@ -571,6 +571,69 @@ contract SharesStreamingTest is Test {
         assertEq(stream.lastClaimTime, block.timestamp, "lastClaimTime");
     }
 
+    /// *** #topUpStreamUsingPermit *** ///
+
+    function test_topUpStreamUsingPermit() public {
+        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
+        address dave = vm.addr(davesPrivateKey);
+        uint256 shares = _depositToVault(dave, 1e18);
+        uint256 duration = 1 days;
+        _openStream(dave, bob, shares, duration);
+
+        vm.warp(block.timestamp + 12 hours);
+
+        // top up params
+        uint256 additionalShares = _depositToVault(dave, 1e18);
+        uint256 additionalDuration = 1 days;
+        uint256 nonce = vault.nonces(dave);
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 PERMIT_TYPEHASH =
+            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
+        // Sign the permit message
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            davesPrivateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    MockERC4626(address(vault)).DOMAIN_SEPARATOR(),
+                    keccak256(
+                        abi.encode(PERMIT_TYPEHASH, dave, address(sharesStreaming), additionalShares, nonce, deadline)
+                    )
+                )
+            )
+        );
+
+        vm.prank(dave);
+        sharesStreaming.topUpSharesStreamUsingPermit(bob, additionalShares, additionalDuration, deadline, v, r, s);
+
+        assertEq(vault.balanceOf(address(sharesStreaming)), shares + additionalShares, "sharesStreaming balance");
+        assertEq(vault.balanceOf(dave), 0, "dave's balance");
+        assertEq(vault.balanceOf(bob), 0, "receiver balance");
+
+        SharesStreaming.Stream memory updatedStream =
+            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(dave, bob));
+        assertEq(updatedStream.shares, shares + additionalShares, "totalShares");
+        assertEq(
+            updatedStream.ratePerSecond, (shares + additionalShares) / (duration + additionalDuration), "ratePerSecond"
+        );
+
+        // advance time to the half way point of the stream
+        vm.warp(block.timestamp + 12 hours);
+
+        vm.prank(bob);
+        sharesStreaming.claimShares(dave);
+
+        assertApproxEqRel(
+            vault.balanceOf(address(sharesStreaming)),
+            (shares + additionalShares) / 2,
+            0.0001e18,
+            "sharesStreaming balance"
+        );
+        assertEq(vault.balanceOf(dave), 0, "dave's balance");
+        assertApproxEqRel(vault.balanceOf(bob), (shares + additionalShares) / 2, 0.0001e18, "receiver balance");
+    }
+
     /// *** #multicall *** ///
 
     function test_multicall() public {
@@ -755,7 +818,7 @@ contract SharesStreamingTest is Test {
     // upgrade open zeppelin - done
     // add docs - done
     // separate tests & contracts - done
-    // top up using permit
+    // top up using permit - done
     // prevent reentrancy?
     // gas optimizations
     // improve integer operations precision?
