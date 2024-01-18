@@ -55,13 +55,13 @@ contract YieldStreaming is StreamingBase {
 
         _checkImmediateLossOnOpen(_receiver, msg.sender, principal);
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
-
         receiverShares[_receiver] += _shares;
         receiverTotalPrincipal[_receiver] += principal;
         receiverPrincipal[_receiver][msg.sender] += principal;
 
         emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
+
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     /**
@@ -105,9 +105,9 @@ contract YieldStreaming is StreamingBase {
         receiverTotalPrincipal[_receiver] -= principal;
         receiverShares[_receiver] -= shares;
 
-        vault.safeTransfer(msg.sender, shares);
-
         emit CloseYieldStream(msg.sender, _receiver, shares, principal);
+
+        vault.safeTransfer(msg.sender, shares);
     }
 
     /**
