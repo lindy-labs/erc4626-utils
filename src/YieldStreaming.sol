@@ -2,10 +2,8 @@
 pragma solidity ^0.8.19;
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
-import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
-import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import "./common/Errors.sol";
@@ -13,13 +11,12 @@ import {StreamingBase} from "./common/StreamingBase.sol";
 
 /**
  * @title YieldStreaming
- * @dev This contract manages yield streams between senders and receivers.
+ * @notice This contract facilitates the management of yield streams between senders and receivers for ERC4626 tokens.
  * It allows users to open yield streams, claim yield from streams, and close streams to withdraw remaining shares.
- * The contract uses the ERC4626 interface for interacting with the underlying ERC4626 vault.
+ * The contract assumes that ERC4626 tokens are appreciating assets, meaning that the value of a single share increases over time, ie generates yield.
  */
 contract YieldStreaming is StreamingBase {
     using FixedPointMathLib for uint256;
-    using SafeERC20 for IERC20;
     using SafeERC20 for IERC4626;
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
@@ -49,9 +46,22 @@ contract YieldStreaming is StreamingBase {
      * @param _shares The number of shares to allocate for the yield stream.
      * @return principal The amount of assets (tokens) allocated to the stream.
      */
-    // TODO: should there also be a function that takes in assets instead of shares?
     function openYieldStream(address _receiver, uint256 _shares) public returns (uint256 principal) {
-        principal = _openYieldStream(_receiver, msg.sender, _shares);
+        _checkZeroAddress(_receiver);
+        _checkOpenStreamToSelf(_receiver);
+        _checkShares(msg.sender, _shares);
+
+        principal = _convertToAssets(_shares);
+
+        _checkImmediateLossOnOpen(_receiver, msg.sender, principal);
+
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
+
+        receiverShares[_receiver] += _shares;
+        receiverTotalPrincipal[_receiver] += principal;
+        receiverPrincipal[_receiver][msg.sender] += principal;
+
+        emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
     }
 
     /**
@@ -75,28 +85,7 @@ contract YieldStreaming is StreamingBase {
     ) public returns (uint256 principal) {
         IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
-        principal = _openYieldStream(_receiver, msg.sender, _shares);
-    }
-
-    function _openYieldStream(address _receiver, address _streamer, uint256 _shares)
-        internal
-        returns (uint256 principal)
-    {
-        _checkZeroAddress(_receiver);
-        _checkOpenStreamToSelf(_receiver);
-        _checkShares(_streamer, _shares);
-
-        principal = _convertToAssets(_shares);
-
-        _checkImmediateLoss(_receiver, _streamer, principal);
-
-        vault.safeTransferFrom(_streamer, address(this), _shares);
-
-        receiverShares[_receiver] += _shares;
-        receiverTotalPrincipal[_receiver] += principal;
-        receiverPrincipal[_receiver][_streamer] += principal;
-
-        emit OpenYieldStream(_streamer, _receiver, _shares, principal);
+        principal = openYieldStream(_receiver, _shares);
     }
 
     /**
@@ -207,7 +196,7 @@ contract YieldStreaming is StreamingBase {
         return currentValue < principal ? principal - currentValue : 0;
     }
 
-    function _checkImmediateLoss(address _receiver, address _streamer, uint256 _principal) internal view {
+    function _checkImmediateLossOnOpen(address _receiver, address _streamer, uint256 _principal) internal view {
         // check wheather the streamer already has an existing stream/s open for receiver
         // if it does then we are considering this as a top up to an existing stream and ignore if there is a loss
         if (receiverPrincipal[_receiver][_streamer] != 0) return;
