@@ -6,5 +6,3 @@ error ZeroShares();
 error AddressZero();
 error CannotOpenStreamToSelf();
 error StreamDoesNotExist();
-error NoYieldToClaim();
-error LossToleranceExceeded();

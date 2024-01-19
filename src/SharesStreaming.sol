@@ -8,6 +8,8 @@ import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol"
 import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
+import "./common/Errors.sol";
+
 /// @title A contract for streaming shares with unique stream IDs per streamer-receiver pair
 /// @notice This contract allows users to open, top up, claim from, and close share streams. Receiver can only claim from one stream at a time or use multicall.
 /// @dev Inherits from Multicall and uses SafeERC20 for token interactions
@@ -15,31 +17,11 @@ contract SharesStreaming is Multicall {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
 
-    IERC4626 public immutable vault;
-
-    constructor(IERC4626 _vault) {
-        vault = _vault;
-    }
-
-    struct Stream {
-        uint256 shares;
-        uint256 ratePerSecond;
-        uint256 startTime;
-        uint256 lastClaimTime;
-    }
-
-    error AddressZero();
     error ZeroDuration();
-    error ZeroShares();
-    error NotEnoughShares();
     error StreamAlreadyExists();
-    error CannotOpenStreamToSelf();
-    error StreamDoesNotExist();
     error StreamExpired();
     error StreamRatePerSecondMustNotDecrease();
     error NoSharesToClaim();
-
-    mapping(uint256 => Stream) public streamsById;
 
     event OpenSharesStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 duration);
     event ClaimShares(address indexed streamer, address indexed receiver, uint256 claimedShares);
@@ -49,6 +31,21 @@ contract SharesStreaming is Multicall {
     event TopUpSharesStream(
         address indexed streamer, address indexed receiver, uint256 addedShares, uint256 addedDuration
     );
+
+    struct Stream {
+        uint256 shares;
+        uint256 ratePerSecond;
+        uint256 startTime;
+        uint256 lastClaimTime;
+    }
+
+    IERC4626 public immutable vault;
+
+    mapping(uint256 => Stream) public streamsById;
+
+    constructor(IERC4626 _vault) {
+        vault = _vault;
+    }
 
     /// @notice Calculates the stream ID for a given streamer and receiver
     /// @param _streamer The address of the streamer
@@ -283,7 +280,7 @@ contract SharesStreaming is Multicall {
     function _checkShares(address _streamer, uint256 _shares) internal view {
         if (_shares == 0) revert ZeroShares();
 
-        if (vault.allowance(_streamer, address(this)) < _shares) revert NotEnoughShares();
+        if (vault.allowance(_streamer, address(this)) < _shares) revert TransferExceedsAllowance();
     }
 
     function _checkDuration(uint256 _duration) internal pure {

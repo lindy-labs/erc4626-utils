@@ -7,6 +7,7 @@ import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
+import "../src/common/Errors.sol";
 import {SharesStreaming} from "../src/SharesStreaming.sol";
 
 contract SharesStreamingTest is Test {
@@ -115,7 +116,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(SharesStreaming.AddressZero.selector);
+        vm.expectRevert(AddressZero.selector);
         sharesStreaming.openSharesStream(address(0), shares, 1 days);
     }
 
@@ -125,7 +126,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(SharesStreaming.ZeroShares.selector);
+        vm.expectRevert(ZeroShares.selector);
         sharesStreaming.openSharesStream(bob, 0, 1 days);
     }
 
@@ -135,7 +136,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(SharesStreaming.NotEnoughShares.selector);
+        vm.expectRevert(TransferExceedsAllowance.selector);
         sharesStreaming.openSharesStream(bob, shares + 1, 1 days);
     }
 
@@ -165,14 +166,14 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(SharesStreaming.CannotOpenStreamToSelf.selector);
+        vm.expectRevert(CannotOpenStreamToSelf.selector);
         sharesStreaming.openSharesStream(alice, shares, 1 days);
     }
 
     // *** #claimShares ***
 
     function test_claim_failsIfStreamDoesNotExist() public {
-        vm.expectRevert(SharesStreaming.StreamDoesNotExist.selector);
+        vm.expectRevert(StreamDoesNotExist.selector);
         vm.prank(bob);
         sharesStreaming.claimShares(alice);
     }
@@ -258,7 +259,7 @@ contract SharesStreamingTest is Test {
     // *** #closeStream *** ///
 
     function test_closeStream_failsIfStreamDoesNotExist() public {
-        vm.expectRevert(SharesStreaming.StreamDoesNotExist.selector);
+        vm.expectRevert(StreamDoesNotExist.selector);
         vm.prank(bob);
         sharesStreaming.closeSharesStream(bob);
     }
@@ -308,7 +309,7 @@ contract SharesStreamingTest is Test {
         vm.prank(alice);
         sharesStreaming.closeSharesStream(bob);
 
-        vm.expectRevert(SharesStreaming.StreamDoesNotExist.selector);
+        vm.expectRevert(StreamDoesNotExist.selector);
         vm.prank(alice);
         sharesStreaming.closeSharesStream(bob);
     }
@@ -416,7 +417,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(SharesStreaming.ZeroShares.selector);
+        vm.expectRevert(ZeroShares.selector);
         sharesStreaming.topUpSharesStream(bob, 0, 1 days);
     }
 
@@ -427,7 +428,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(SharesStreaming.NotEnoughShares.selector);
+        vm.expectRevert(TransferExceedsAllowance.selector);
         sharesStreaming.topUpSharesStream(bob, shares + 1, 1 days);
     }
 
@@ -438,7 +439,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(SharesStreaming.AddressZero.selector);
+        vm.expectRevert(AddressZero.selector);
         sharesStreaming.topUpSharesStream(address(0), shares, 1 days);
     }
 
@@ -448,7 +449,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(SharesStreaming.StreamDoesNotExist.selector);
+        vm.expectRevert(StreamDoesNotExist.selector);
         sharesStreaming.topUpSharesStream(bob, shares, 1 days);
     }
 
@@ -737,7 +738,7 @@ contract SharesStreamingTest is Test {
         assertEq(stream.lastClaimTime, block.timestamp, "carol's stream - lastClaimTime");
 
         vm.startPrank(alice);
-        vm.expectRevert(SharesStreaming.StreamDoesNotExist.selector);
+        vm.expectRevert(StreamDoesNotExist.selector);
         sharesStreaming.closeSharesStream(bob);
 
         sharesStreaming.closeSharesStream(carol);
@@ -789,7 +790,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(carol), claimFromAlice + claimFromBob, "carol's balance after claims");
 
         vm.prank(alice);
-        vm.expectRevert(SharesStreaming.StreamDoesNotExist.selector);
+        vm.expectRevert(StreamDoesNotExist.selector);
         sharesStreaming.closeSharesStream(carol);
 
         vm.prank(bob);

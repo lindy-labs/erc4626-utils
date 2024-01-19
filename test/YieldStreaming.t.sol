@@ -231,7 +231,7 @@ contract YieldStreamingTests is Test {
 
         // bob opens a stream to carol
         vm.prank(bob);
-        vm.expectRevert(LossToleranceExceeded.selector);
+        vm.expectRevert(YieldStreaming.LossToleranceExceeded.selector);
         streamHub.openYieldStream(carol, bobsShares);
     }
 
@@ -478,7 +478,7 @@ contract YieldStreamingTests is Test {
 
         assertEq(streamHub.yieldFor(bob), 0, "bob's yield != 0");
 
-        vm.expectRevert(NoYieldToClaim.selector);
+        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
         vm.prank(bob);
         streamHub.claimYield(bob);
     }
@@ -493,7 +493,7 @@ contract YieldStreamingTests is Test {
         // create a 20% loss
         _createProfitForVault(-0.2e18);
 
-        vm.expectRevert(NoYieldToClaim.selector);
+        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
         vm.prank(bob);
         streamHub.claimYield(bob);
     }
