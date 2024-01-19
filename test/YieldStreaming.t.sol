@@ -11,16 +11,17 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
-import {ERC4626StreamHub} from "../src/ERC4626StreamHub.sol";
+import {YieldStreaming} from "../src/YieldStreaming.sol";
+import "../src/common/Errors.sol";
 
-contract ERC4626StreamHubTests is Test {
+contract YieldStreamingTests is Test {
     using FixedPointMathLib for uint256;
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
 
-    ERC4626StreamHub public streamHub;
+    YieldStreaming public streamHub;
     MockERC4626 public vault;
     MockERC20 public asset;
 
@@ -31,7 +32,7 @@ contract ERC4626StreamHubTests is Test {
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
-        streamHub = new ERC4626StreamHub(IERC4626(address(vault)));
+        streamHub = new YieldStreaming(IERC4626(address(vault)));
 
         // make initial deposit to vault
         _depositToVault(address(this), 1e18);
@@ -42,8 +43,8 @@ contract ERC4626StreamHubTests is Test {
     // *** constructor ***
 
     function test_constructor_failsForAddress0() public {
-        vm.expectRevert(ERC4626StreamHub.AddressZero.selector);
-        new ERC4626StreamHub(IERC4626(address(0)));
+        vm.expectRevert(AddressZero.selector);
+        new YieldStreaming(IERC4626(address(0)));
     }
 
     // *** #openYieldStream ***
@@ -54,7 +55,7 @@ contract ERC4626StreamHubTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        vm.expectRevert(ERC4626StreamHub.CannotOpenStreamToSelf.selector);
+        vm.expectRevert(CannotOpenStreamToSelf.selector);
         streamHub.openYieldStream(alice, shares);
     }
 
@@ -63,7 +64,7 @@ contract ERC4626StreamHubTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        vm.expectRevert(ERC4626StreamHub.TransferExceedsAllowance.selector);
+        vm.expectRevert(TransferExceedsAllowance.selector);
         streamHub.openYieldStream(bob, shares + 1);
     }
 
@@ -72,7 +73,7 @@ contract ERC4626StreamHubTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        vm.expectRevert(ERC4626StreamHub.ZeroShares.selector);
+        vm.expectRevert(ZeroShares.selector);
         streamHub.openYieldStream(bob, 0);
     }
 
@@ -81,7 +82,7 @@ contract ERC4626StreamHubTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        vm.expectRevert(ERC4626StreamHub.AddressZero.selector);
+        vm.expectRevert(AddressZero.selector);
         streamHub.openYieldStream(address(0), shares);
     }
 
@@ -230,7 +231,7 @@ contract ERC4626StreamHubTests is Test {
 
         // bob opens a stream to carol
         vm.prank(bob);
-        vm.expectRevert(ERC4626StreamHub.LossToleranceExceeded.selector);
+        vm.expectRevert(LossToleranceExceeded.selector);
         streamHub.openYieldStream(carol, bobsShares);
     }
 
@@ -463,7 +464,7 @@ contract ERC4626StreamHubTests is Test {
 
         assertEq(streamHub.yieldFor(bob), 0, "bob's yield != 0");
 
-        vm.expectRevert(ERC4626StreamHub.AddressZero.selector);
+        vm.expectRevert(AddressZero.selector);
         vm.prank(bob);
         streamHub.claimYield(address(0));
     }
@@ -477,7 +478,7 @@ contract ERC4626StreamHubTests is Test {
 
         assertEq(streamHub.yieldFor(bob), 0, "bob's yield != 0");
 
-        vm.expectRevert(ERC4626StreamHub.NoYieldToClaim.selector);
+        vm.expectRevert(NoYieldToClaim.selector);
         vm.prank(bob);
         streamHub.claimYield(bob);
     }
@@ -492,7 +493,7 @@ contract ERC4626StreamHubTests is Test {
         // create a 20% loss
         _createProfitForVault(-0.2e18);
 
-        vm.expectRevert(ERC4626StreamHub.NoYieldToClaim.selector);
+        vm.expectRevert(NoYieldToClaim.selector);
         vm.prank(bob);
         streamHub.claimYield(bob);
     }
@@ -629,7 +630,7 @@ contract ERC4626StreamHubTests is Test {
         streamHub.closeYieldStream(bob);
 
         // fails
-        vm.expectRevert(ERC4626StreamHub.StreamDoesNotExist.selector);
+        vm.expectRevert(StreamDoesNotExist.selector);
         streamHub.closeYieldStream(bob);
     }
 
@@ -701,8 +702,8 @@ contract ERC4626StreamHubTests is Test {
         uint256 shares = _depositToVault(alice, 1e18);
 
         bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeWithSelector(ERC4626StreamHub.openYieldStream.selector, bob, (shares * 3) / 4);
-        data[1] = abi.encodeWithSelector(ERC4626StreamHub.openYieldStream.selector, carol, shares / 4);
+        data[0] = abi.encodeWithSelector(YieldStreaming.openYieldStream.selector, bob, (shares * 3) / 4);
+        data[1] = abi.encodeWithSelector(YieldStreaming.openYieldStream.selector, carol, shares / 4);
 
         vm.startPrank(alice);
         vault.approve(address(streamHub), shares);
@@ -725,7 +726,7 @@ contract ERC4626StreamHubTests is Test {
         address[] memory receivers = new address[](10);
         for (uint256 i = 0; i < 10; i++) {
             // generate random receiver address
-            receivers[i] = address(uint160(uint256(keccak256(abi.encodePacked(block.timestamp + i, block.difficulty)))));
+            receivers[i] = address(uint160(uint256(keccak256(abi.encodePacked(block.timestamp + i, block.prevrandao)))));
             streamHub.openYieldStream(receivers[i], sharesToOpen);
         }
 
