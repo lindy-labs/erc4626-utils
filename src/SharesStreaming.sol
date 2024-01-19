@@ -19,7 +19,7 @@ contract SharesStreaming is StreamingBase {
     error ZeroDuration();
     error StreamAlreadyExists();
     error StreamExpired();
-    error StreamRatePerSecondMustNotDecrease();
+    error RatePerSecondDecreased();
     error NoSharesToClaim();
 
     event OpenSharesStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 duration);
@@ -142,7 +142,7 @@ contract SharesStreaming is StreamingBase {
 
         uint256 newRatePerSecond = stream.shares / (timeRemaining + _additionalDuration);
 
-        if (newRatePerSecond < stream.ratePerSecond) revert StreamRatePerSecondMustNotDecrease();
+        if (newRatePerSecond < stream.ratePerSecond) revert RatePerSecondDecreased();
 
         stream.ratePerSecond = newRatePerSecond;
 

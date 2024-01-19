@@ -322,7 +322,7 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        uint256 claimed = sharesStreaming.claimShares(alice);
 
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares / 2, 0.0001e18, "sharesStreaming balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -331,12 +331,16 @@ contract SharesStreamingTest is Test {
         // around 1/4 should be claimable
         vm.warp(block.timestamp + 6 hours);
 
+        (uint256 remaining, uint256 unclaimed) = sharesStreaming.previewCloseSharesStream(alice, bob);
+
         vm.prank(alice);
         sharesStreaming.closeSharesStream(bob);
 
         assertEq(vault.balanceOf(address(sharesStreaming)), 0, "sharesStreaming balance");
         assertApproxEqRel(vault.balanceOf(alice), shares / 4, 0.0001e18, "alice's balance");
+        assertApproxEqRel(vault.balanceOf(alice), remaining, 0.0001e18, "alice's balance");
         assertApproxEqRel(vault.balanceOf(bob), shares * 3 / 4, 0.0001e18, "receiver balance");
+        assertApproxEqRel(vault.balanceOf(bob), claimed + unclaimed, 0.0001e18, "receiver balance");
         assertEq(vault.balanceOf(address(sharesStreaming)), 0, "sharesStreaming balance");
     }
 
@@ -529,6 +533,22 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(address(sharesStreaming)), 0, "sharesStreaming balance");
         assertApproxEqRel(vault.balanceOf(alice), shares, 0.0001e18, "alice's balance");
         assertApproxEqRel(vault.balanceOf(bob), shares, 0.0001e18, "receiver balance");
+    }
+
+    function test_topUpStream_failsIfRatePerSecondDrops() public {
+        uint256 shares = _depositToVault(alice, 1e18);
+        uint256 duration = 1 days;
+        _openStream(alice, bob, shares, duration);
+
+        vm.warp(block.timestamp + 6 hours);
+
+        shares = _depositToVault(alice, 1e18);
+        vm.startPrank(alice);
+        vault.approve(address(sharesStreaming), shares);
+
+        // top up with same amount of shares and 2x the initial duration will decrease the rate per second
+        vm.expectRevert(SharesStreaming.RatePerSecondDecreased.selector);
+        sharesStreaming.topUpSharesStream(bob, shares, duration * 2);
     }
 
     /// *** #openStreamUsingPermit *** ///
