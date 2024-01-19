@@ -6,6 +6,10 @@ import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {YieldStreaming} from "./YieldStreaming.sol";
 import {SharesStreaming} from "./SharesStreaming.sol";
 
+/**
+ * @title ERC4626StreamHub
+ * @notice This is a convenience contract that combines functionalities YieldStreaming and SharesStreaming contracts
+ */
 contract ERC4626StreamHub is YieldStreaming, SharesStreaming {
     constructor(IERC4626 _vault) YieldStreaming(_vault) SharesStreaming(_vault) {}
 }

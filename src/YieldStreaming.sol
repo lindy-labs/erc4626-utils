@@ -19,12 +19,12 @@ contract YieldStreaming is StreamingBase {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
 
+    error NoYieldToClaim();
+    error LossToleranceExceeded();
+
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
-
-    error NoYieldToClaim();
-    error LossToleranceExceeded();
 
     // the maximum loss tolerance percentage when opening a stream to a receiver which is in debt
     // a receiver is in debt if his existing streams have negative yield

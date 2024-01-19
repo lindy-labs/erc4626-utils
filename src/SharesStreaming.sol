@@ -7,11 +7,12 @@ import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol"
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import "./common/Errors.sol";
-import "./common/StreamingBase.sol";
+import {StreamingBase} from "./common/StreamingBase.sol";
 
-/// @title A contract for streaming shares with unique stream IDs per streamer-receiver pair
-/// @notice This contract allows users to open, top up, claim from, and close share streams. Receiver can only claim from one stream at a time or use multicall.
-/// @dev Inherits from Multicall and uses SafeERC20 for token interactions
+/**
+ * @title A contract for streaming ERC4626 shares with unique stream IDs per streamer-receiver pair.
+ * @notice This contract allows users to open, top up, claim from, and close share streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
+ */
 contract SharesStreaming is StreamingBase {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
@@ -46,37 +47,45 @@ contract SharesStreaming is StreamingBase {
         vault = _vault;
     }
 
-    /// @notice Calculates the stream ID for a given streamer and receiver
-    /// @param _streamer The address of the streamer
-    /// @param _receiver The address of the receiver
-    /// @return The calculated stream ID
+    /**
+     * @notice Calculates the stream ID for a given streamer and receiver
+     * @param _streamer The address of the streamer
+     * @param _receiver The address of the receiver
+     * @return The calculated stream ID
+     */
     function getSharesStreamId(address _streamer, address _receiver) public pure returns (uint256) {
         return uint256(keccak256(abi.encodePacked(_streamer, _receiver)));
     }
 
-    /// @notice Retrieves the stream information for a given stream ID
-    /// @param streamId The ID of the stream
-    /// @return The Stream struct containing all the stream information
+    /**
+     * @notice Retrieves the stream information for a given stream ID
+     * @param streamId The ID of the stream
+     * @return The Stream struct containing all the stream information
+     */
     function getSharesStream(uint256 streamId) public view returns (Stream memory) {
         return streamsById[streamId];
     }
 
-    /// @notice Opens a new share stream from the sender to a specified receiver
-    /// @param _receiver The address of the receiver
-    /// @param _shares The number of shares to stream
-    /// @param _duration The duration of the stream in seconds
+    /**
+     * @notice Opens a new share stream from the sender to a specified receiver
+     * @param _receiver The address of the receiver
+     * @param _shares The number of shares to stream
+     * @param _duration The duration of the stream in seconds
+     */
     function openSharesStream(address _receiver, uint256 _shares, uint256 _duration) public {
         _openSharesStream(msg.sender, _receiver, _shares, _duration);
     }
 
-    /// @notice Opens a new share stream using EIP-2612 permit for allowance
-    /// @param _receiver The address of the receiver
-    /// @param _shares The number of shares to stream
-    /// @param _duration The duration of the stream in seconds
-    /// @param _deadline Expiration time of the permit
-    /// @param _v The recovery byte of the signature
-    /// @param _r Half of the ECDSA signature pair
-    /// @param _s Half of the ECDSA signature pair
+    /**
+     * @notice Opens a new share stream using EIP-2612 permit for allowance
+     * @param _receiver The address of the receiver
+     * @param _shares The number of shares to stream
+     * @param _duration The duration of the stream in seconds
+     * @param _deadline Expiration time of the permit
+     * @param _v The recovery byte of the signature
+     * @param _r Half of the ECDSA signature pair
+     * @param _s Half of the ECDSA signature pair
+     */
     function openSharesStreamUsingPermit(
         address _receiver,
         uint256 _shares,
@@ -122,10 +131,12 @@ contract SharesStreaming is StreamingBase {
         vault.safeTransferFrom(_streamer, address(this), _shares);
     }
 
-    /// @notice Tops up an existing share stream with additional shares and/or duration
-    /// @param _receiver The address of the receiver
-    /// @param _additionalShares The additional number of shares to add to the stream
-    /// @param _additionalDuration The additional duration to add to the stream in seconds
+    /**
+     * @notice Tops up an existing share stream with additional shares and/or duration
+     * @param _receiver The address of the receiver
+     * @param _additionalShares The additional number of shares to add to the stream
+     * @param _additionalDuration The additional duration to add to the stream in seconds
+     */
     function topUpSharesStream(address _receiver, uint256 _additionalShares, uint256 _additionalDuration) public {
         _checkZeroAddress(_receiver);
         _checkShares(msg.sender, _additionalShares);
@@ -151,15 +162,17 @@ contract SharesStreaming is StreamingBase {
         vault.safeTransferFrom(msg.sender, address(this), _additionalShares);
     }
 
-    /// @notice Tops up an existing share stream using EIP-2612 permit for allowance
-    /// @dev Emits a TopUpSharesStream event
-    /// @param _receiver The address of the receiver
-    /// @param _additionalShares The additional number of shares to add to the stream
-    /// @param _additionalDuration The additional duration to add to the stream in seconds
-    /// @param _deadline Expiration time of the permit
-    /// @param _v The recovery byte of the signature
-    /// @param _r Half of the ECDSA signature pair
-    /// @param _s Half of the ECDSA signature pair
+    /**
+     * @notice Tops up an existing share stream using EIP-2612 permit for allowance
+     * @dev Emits a TopUpSharesStream event
+     * @param _receiver The address of the receiver
+     * @param _additionalShares The additional number of shares to add to the stream
+     * @param _additionalDuration The additional duration to add to the stream in seconds
+     * @param _deadline Expiration time of the permit
+     * @param _v The recovery byte of the signature
+     * @param _r Half of the ECDSA signature pair
+     * @param _s Half of the ECDSA signature pair
+     */
     function topUpSharesStreamUsingPermit(
         address _receiver,
         uint256 _additionalShares,
@@ -174,9 +187,11 @@ contract SharesStreaming is StreamingBase {
         topUpSharesStream(_receiver, _additionalShares, _additionalDuration);
     }
 
-    /// @notice Claims shares from an open stream
-    /// @param _streamer The address of the streamer
-    /// @return The number of shares claime
+    /**
+     * @notice Claims shares from an open stream
+     * @param _streamer The address of the streamer
+     * @return The number of shares claime
+     */
     function claimShares(address _streamer) public returns (uint256) {
         uint256 streamId = getSharesStreamId(_streamer, msg.sender);
         Stream storage stream = streamsById[streamId];
@@ -202,10 +217,12 @@ contract SharesStreaming is StreamingBase {
         return sharesToClaim;
     }
 
-    /// @notice Previews the amount of shares claimable from a stream
-    /// @param _streamer The address of the streamer
-    /// @param _receiver The address of the receiver
-    /// @return The number of shares that can be claimed
+    /**
+     * @notice Previews the amount of shares claimable from a stream
+     * @param _streamer The address of the streamer
+     * @param _receiver The address of the receiver
+     * @return The number of shares that can be claimed
+     */
     function previewClaimShares(address _streamer, address _receiver) public view returns (uint256) {
         return _previewClaimShares(streamsById[getSharesStreamId(_streamer, _receiver)]);
     }
@@ -220,11 +237,13 @@ contract SharesStreaming is StreamingBase {
         if (claimableShares > _stream.shares) claimableShares = _stream.shares;
     }
 
-    /// @notice Closes an existing share stream and distributes the shares accordingly
-    /// @dev Emits a CloseShareStream event
-    /// @param _receiver The address of the receiver
-    /// @return remainingShares The number of shares returned to the streamer
-    /// @return streamedShares The number of shares transferred to the receiver
+    /**
+     * @notice Closes an existing share stream and distributes the shares accordingly
+     * @dev Emits a CloseShareStream event
+     * @param _receiver The address of the receiver
+     * @return remainingShares The number of shares returned to the streamer
+     * @return streamedShares The number of shares transferred to the receiver
+     */
     function closeSharesStream(address _receiver) external returns (uint256 remainingShares, uint256 streamedShares) {
         uint256 streamId = getSharesStreamId(msg.sender, _receiver);
         Stream memory stream = streamsById[streamId];
@@ -240,11 +259,13 @@ contract SharesStreaming is StreamingBase {
         if (streamedShares != 0) vault.safeTransfer(_receiver, streamedShares);
     }
 
-    /// @notice Previews the outcome of closing a stream without actually closing it
-    /// @param _streamer The address of the streamer
-    /// @param _receiver The address of the receiver
-    /// @return remainingShares The number of shares that would be returned to the streamer
-    /// @return streamedShares The number of shares that would be transferred to the receiver
+    /**
+     * @notice Previews the outcome of closing a stream without actually closing it
+     * @param _streamer The address of the streamer
+     * @param _receiver The address of the receiver
+     * @return remainingShares The number of shares that would be returned to the streamer
+     * @return streamedShares The number of shares that would be transferred to the receiver
+     */
     function previewCloseSharesStream(address _streamer, address _receiver)
         public
         view
