@@ -247,10 +247,13 @@ contract SharesStreamingTest is Test {
 
         _openStream(alice, bob, shares, duration);
 
+        // warp 1 day and 1 second so the stream is completely claimable
         vm.warp(block.timestamp + duration + 1);
 
         vm.expectEmit(true, true, true, true);
         emit ClaimShares(alice, bob, shares);
+        // also emits CloseSharesStream if stream is complete
+        emit CloseSharesStream(alice, bob, 0, 0);
 
         vm.startPrank(bob);
         sharesStreaming.claimShares(alice);

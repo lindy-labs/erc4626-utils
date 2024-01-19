@@ -95,7 +95,7 @@ contract SharesStreaming is StreamingBase {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
         _checkShares(_streamer, _shares);
-        _checkDuration(_duration);
+        _checkZeroDuration(_duration);
 
         uint256 streamId = getSharesStreamId(_streamer, _receiver);
         Stream storage stream = streamsById[streamId];
@@ -186,10 +186,10 @@ contract SharesStreaming is StreamingBase {
         if (sharesToClaim == 0) revert NoSharesToClaim();
 
         if (sharesToClaim == stream.shares) {
-            // TODO: delete stream because it expired? reconsider this
             delete streamsById[streamId];
 
-            // TODO: emit event?
+            // emit with 0s to indicate that the stream was closed during the claim
+            emit CloseSharesStream(_streamer, msg.sender, 0, 0);
         } else {
             stream.lastClaimTime = block.timestamp;
             stream.shares -= sharesToClaim;
@@ -272,7 +272,7 @@ contract SharesStreaming is StreamingBase {
         return (remainingShares, streamedShares);
     }
 
-    function _checkDuration(uint256 _duration) internal pure {
+    function _checkZeroDuration(uint256 _duration) internal pure {
         if (_duration == 0) revert ZeroDuration();
     }
 
