@@ -40,7 +40,11 @@ contract YieldStreaming is StreamingBase {
     // receiver to total amount of assets (principal) allocated from a single address
     mapping(address => mapping(address => uint256)) public receiverPrincipal;
 
-    constructor(IERC4626 _vault) StreamingBase(_vault) {}
+    constructor(IERC4626 _vault) {
+        _checkZeroAddress(address(_vault));
+
+        vault = _vault;
+    }
 
     /**
      * @dev Opens a yield stream for a specific receiver with a given number of shares. If stream already exists, it will be topped up.

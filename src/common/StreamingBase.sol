@@ -13,12 +13,6 @@ import "./Errors.sol";
 abstract contract StreamingBase is Multicall {
     IERC4626 public immutable vault;
 
-    constructor(IERC4626 _vault) {
-        _checkZeroAddress(address(_vault));
-
-        vault = _vault;
-    }
-
     function _checkZeroAddress(address _receiver) internal pure {
         if (_receiver == address(0)) revert AddressZero();
     }

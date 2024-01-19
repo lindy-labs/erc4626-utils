@@ -2,18 +2,17 @@
 pragma solidity ^0.8.19;
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
-import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
-import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import "./common/Errors.sol";
+import "./common/StreamingBase.sol";
 
 /// @title A contract for streaming shares with unique stream IDs per streamer-receiver pair
 /// @notice This contract allows users to open, top up, claim from, and close share streams. Receiver can only claim from one stream at a time or use multicall.
 /// @dev Inherits from Multicall and uses SafeERC20 for token interactions
-contract SharesStreaming is Multicall {
+contract SharesStreaming is StreamingBase {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
 
@@ -39,11 +38,11 @@ contract SharesStreaming is Multicall {
         uint256 lastClaimTime;
     }
 
-    IERC4626 public immutable vault;
-
     mapping(uint256 => Stream) public streamsById;
 
     constructor(IERC4626 _vault) {
+        _checkZeroAddress(address(_vault));
+
         vault = _vault;
     }
 
@@ -93,7 +92,7 @@ contract SharesStreaming is Multicall {
     }
 
     function _openSharesStream(address _streamer, address _receiver, uint256 _shares, uint256 _duration) internal {
-        _checkAddress(_receiver);
+        _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
         _checkShares(_streamer, _shares);
         _checkDuration(_duration);
@@ -118,9 +117,9 @@ contract SharesStreaming is Multicall {
         stream.startTime = block.timestamp;
         stream.lastClaimTime = block.timestamp;
 
-        vault.safeTransferFrom(_streamer, address(this), _shares);
-
         emit OpenSharesStream(_streamer, _receiver, stream.shares, _duration);
+
+        vault.safeTransferFrom(_streamer, address(this), _shares);
     }
 
     /// @notice Tops up an existing share stream with additional shares and/or duration
@@ -128,7 +127,7 @@ contract SharesStreaming is Multicall {
     /// @param _additionalShares The additional number of shares to add to the stream
     /// @param _additionalDuration The additional duration to add to the stream in seconds
     function topUpSharesStream(address _receiver, uint256 _additionalShares, uint256 _additionalDuration) public {
-        _checkAddress(_receiver);
+        _checkZeroAddress(_receiver);
         _checkShares(msg.sender, _additionalShares);
 
         Stream storage stream = streamsById[getSharesStreamId(msg.sender, _receiver)];
@@ -147,9 +146,9 @@ contract SharesStreaming is Multicall {
 
         stream.ratePerSecond = newRatePerSecond;
 
-        vault.safeTransferFrom(msg.sender, address(this), _additionalShares);
-
         emit TopUpSharesStream(msg.sender, _receiver, _additionalShares, _additionalDuration);
+
+        vault.safeTransferFrom(msg.sender, address(this), _additionalShares);
     }
 
     /// @notice Tops up an existing share stream using EIP-2612 permit for allowance
@@ -196,9 +195,9 @@ contract SharesStreaming is Multicall {
             stream.shares -= sharesToClaim;
         }
 
-        vault.safeTransfer(msg.sender, sharesToClaim);
-
         emit ClaimShares(_streamer, msg.sender, sharesToClaim);
+
+        vault.safeTransfer(msg.sender, sharesToClaim);
 
         return sharesToClaim;
     }
@@ -234,11 +233,11 @@ contract SharesStreaming is Multicall {
 
         delete streamsById[streamId];
 
+        emit CloseSharesStream(msg.sender, _receiver, remainingShares, streamedShares);
+
         if (remainingShares != 0) vault.safeTransfer(msg.sender, remainingShares);
 
         if (streamedShares != 0) vault.safeTransfer(_receiver, streamedShares);
-
-        emit CloseSharesStream(msg.sender, _receiver, remainingShares, streamedShares);
     }
 
     /// @notice Previews the outcome of closing a stream without actually closing it
@@ -273,22 +272,8 @@ contract SharesStreaming is Multicall {
         return (remainingShares, streamedShares);
     }
 
-    function _checkAddress(address _receiver) internal pure {
-        if (_receiver == address(0)) revert AddressZero();
-    }
-
-    function _checkShares(address _streamer, uint256 _shares) internal view {
-        if (_shares == 0) revert ZeroShares();
-
-        if (vault.allowance(_streamer, address(this)) < _shares) revert TransferExceedsAllowance();
-    }
-
     function _checkDuration(uint256 _duration) internal pure {
         if (_duration == 0) revert ZeroDuration();
-    }
-
-    function _checkOpenStreamToSelf(address _receiver) internal view {
-        if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
     }
 
     function _checkExistingStream(Stream memory _stream) internal pure {
