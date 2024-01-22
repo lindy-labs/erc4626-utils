@@ -35,11 +35,11 @@ contract SharesStreaming is StreamingBase {
     struct Stream {
         uint256 shares;
         uint256 ratePerSecond;
-        uint256 startTime;
-        uint256 lastClaimTime;
+        uint128 startTime;
+        uint128 lastClaimTime;
     }
 
-    mapping(uint256 => Stream) public streamsById;
+    mapping(uint256 => Stream) public sharesStreamById;
 
     constructor(IERC4626 _vault) {
         _checkZeroAddress(address(_vault));
@@ -59,11 +59,11 @@ contract SharesStreaming is StreamingBase {
 
     /**
      * @notice Retrieves the stream information for a given stream ID
-     * @param streamId The ID of the stream
+     * @param _streamId The ID of the stream
      * @return The Stream struct containing all the stream information
      */
-    function getSharesStream(uint256 streamId) public view returns (Stream memory) {
-        return streamsById[streamId];
+    function getSharesStream(uint256 _streamId) public view returns (Stream memory) {
+        return sharesStreamById[_streamId];
     }
 
     /**
@@ -73,7 +73,34 @@ contract SharesStreaming is StreamingBase {
      * @param _duration The duration of the stream in seconds
      */
     function openSharesStream(address _receiver, uint256 _shares, uint256 _duration) public {
-        _openSharesStream(msg.sender, _receiver, _shares, _duration);
+        _checkZeroAddress(_receiver);
+        _checkOpenStreamToSelf(_receiver);
+        _checkShares(msg.sender, _shares);
+        _checkZeroDuration(_duration);
+
+        uint256 streamId = getSharesStreamId(msg.sender, _receiver);
+        Stream storage stream = sharesStreamById[streamId];
+
+        if (stream.shares > 0) {
+            // If the stream already exists and isn't expired, revert
+            if (block.timestamp < stream.startTime + stream.shares / stream.ratePerSecond) revert StreamAlreadyExists();
+
+            // if is expired, transfer unclaimed shares to receiver & emit close event
+            emit CloseSharesStream(msg.sender, _receiver, 0, stream.shares);
+
+            vault.safeTransfer(_receiver, stream.shares);
+        }
+
+        uint256 ratePerSecond = _shares / _duration;
+
+        stream.shares = _shares;
+        stream.ratePerSecond = ratePerSecond;
+        stream.startTime = uint128(block.timestamp);
+        stream.lastClaimTime = uint128(block.timestamp);
+
+        emit OpenSharesStream(msg.sender, _receiver, stream.shares, _duration);
+
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     /**
@@ -97,38 +124,7 @@ contract SharesStreaming is StreamingBase {
     ) external {
         IERC2612(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
 
-        _openSharesStream(msg.sender, _receiver, _shares, _duration);
-    }
-
-    function _openSharesStream(address _streamer, address _receiver, uint256 _shares, uint256 _duration) internal {
-        _checkZeroAddress(_receiver);
-        _checkOpenStreamToSelf(_receiver);
-        _checkShares(_streamer, _shares);
-        _checkZeroDuration(_duration);
-
-        uint256 streamId = getSharesStreamId(_streamer, _receiver);
-        Stream storage stream = streamsById[streamId];
-
-        if (stream.shares > 0) {
-            // If the stream already exists and isn't expired, revert
-            if (block.timestamp < stream.startTime + stream.shares / stream.ratePerSecond) {
-                revert StreamAlreadyExists();
-            }
-
-            // if is expired, transfer unclaimed shares to receiver
-            vault.safeTransfer(_receiver, stream.shares);
-        }
-
-        uint256 _ratePerSecond = _shares / _duration;
-
-        stream.shares = _shares;
-        stream.ratePerSecond = _ratePerSecond;
-        stream.startTime = block.timestamp;
-        stream.lastClaimTime = block.timestamp;
-
-        emit OpenSharesStream(_streamer, _receiver, stream.shares, _duration);
-
-        vault.safeTransferFrom(_streamer, address(this), _shares);
+        openSharesStream(_receiver, _shares, _duration);
     }
 
     /**
@@ -141,7 +137,7 @@ contract SharesStreaming is StreamingBase {
         _checkZeroAddress(_receiver);
         _checkShares(msg.sender, _additionalShares);
 
-        Stream storage stream = streamsById[getSharesStreamId(msg.sender, _receiver)];
+        Stream storage stream = sharesStreamById[getSharesStreamId(msg.sender, _receiver)];
 
         _checkExistingStream(stream);
 
@@ -194,19 +190,19 @@ contract SharesStreaming is StreamingBase {
      */
     function claimShares(address _streamer) public returns (uint256) {
         uint256 streamId = getSharesStreamId(_streamer, msg.sender);
-        Stream storage stream = streamsById[streamId];
+        Stream storage stream = sharesStreamById[streamId];
 
         uint256 sharesToClaim = _previewClaimShares(stream);
 
         if (sharesToClaim == 0) revert NoSharesToClaim();
 
         if (sharesToClaim == stream.shares) {
-            delete streamsById[streamId];
+            delete sharesStreamById[streamId];
 
             // emit with 0s to indicate that the stream was closed during the claim
             emit CloseSharesStream(_streamer, msg.sender, 0, 0);
         } else {
-            stream.lastClaimTime = block.timestamp;
+            stream.lastClaimTime = uint128(block.timestamp);
             stream.shares -= sharesToClaim;
         }
 
@@ -224,7 +220,7 @@ contract SharesStreaming is StreamingBase {
      * @return The number of shares that can be claimed
      */
     function previewClaimShares(address _streamer, address _receiver) public view returns (uint256) {
-        return _previewClaimShares(streamsById[getSharesStreamId(_streamer, _receiver)]);
+        return _previewClaimShares(sharesStreamById[getSharesStreamId(_streamer, _receiver)]);
     }
 
     function _previewClaimShares(Stream memory _stream) internal view returns (uint256 claimableShares) {
@@ -246,11 +242,11 @@ contract SharesStreaming is StreamingBase {
      */
     function closeSharesStream(address _receiver) external returns (uint256 remainingShares, uint256 streamedShares) {
         uint256 streamId = getSharesStreamId(msg.sender, _receiver);
-        Stream memory stream = streamsById[streamId];
+        Stream memory stream = sharesStreamById[streamId];
 
         (remainingShares, streamedShares) = _previewCloseSharesStream(stream);
 
-        delete streamsById[streamId];
+        delete sharesStreamById[streamId];
 
         emit CloseSharesStream(msg.sender, _receiver, remainingShares, streamedShares);
 
@@ -271,7 +267,7 @@ contract SharesStreaming is StreamingBase {
         view
         returns (uint256 remainingShares, uint256 streamedShares)
     {
-        Stream memory stream = streamsById[getSharesStreamId(_streamer, _receiver)];
+        Stream memory stream = sharesStreamById[getSharesStreamId(_streamer, _receiver)];
 
         return _previewCloseSharesStream(stream);
     }

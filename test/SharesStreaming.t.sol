@@ -89,25 +89,33 @@ contract SharesStreamingTest is Test {
 
     function test_openShareStream_worksIfExistingStreamHasExpiredAndIsNotClaimed() public {
         uint256 shares = _depositToVault(alice, 1e18);
+        uint256 duration = 1 days;
 
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        sharesStreaming.openSharesStream(bob, shares, 1 days);
+        sharesStreaming.openSharesStream(bob, shares, duration);
         vm.stopPrank();
 
-        shares = _depositToVault(alice, 1e18);
+        uint256 shares2 = _depositToVault(alice, 3e18);
+        uint256 duration2 = 2 days;
 
         vm.startPrank(alice);
-        vault.approve(address(sharesStreaming), shares);
+        vault.approve(address(sharesStreaming), shares2);
 
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + duration + 1);
 
-        sharesStreaming.openSharesStream(bob, shares, 1 days);
+        vm.expectEmit(true, true, true, true);
+        emit CloseSharesStream(alice, bob, 0, shares);
+
+        vm.expectEmit(true, true, true, true);
+        emit OpenSharesStream(alice, bob, shares2, duration2);
+
+        sharesStreaming.openSharesStream(bob, shares2, duration2);
 
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
         assertEq(vault.balanceOf(bob), shares, "receiver's balance");
-        assertEq(vault.balanceOf(address(sharesStreaming)), shares, "sharesStreaming's balance");
+        assertEq(vault.balanceOf(address(sharesStreaming)), shares2, "sharesStreaming's balance");
     }
 
     function test_openShareStream_failsIfReceiverIsZeroAddress() public {
@@ -250,10 +258,12 @@ contract SharesStreamingTest is Test {
         // warp 1 day and 1 second so the stream is completely claimable
         vm.warp(block.timestamp + duration + 1);
 
+        // also emits CloseSharesStream if stream is complete
+        vm.expectEmit(true, true, true, true);
+        emit CloseSharesStream(alice, bob, 0, 0);
+
         vm.expectEmit(true, true, true, true);
         emit ClaimShares(alice, bob, shares);
-        // also emits CloseSharesStream if stream is complete
-        emit CloseSharesStream(alice, bob, 0, 0);
 
         vm.startPrank(bob);
         sharesStreaming.claimShares(alice);
