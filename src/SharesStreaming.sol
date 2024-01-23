@@ -10,7 +10,7 @@ import "./common/Errors.sol";
 import {StreamingBase} from "./common/StreamingBase.sol";
 
 /**
- * @title A contract for streaming ERC4626 shares with unique stream IDs per streamer-receiver pair.
+ * @title This contract facilitates the streaming of ERC4626 shares with unique stream IDs per streamer-receiver pair.
  * @notice This contract allows users to open, top up, claim from, and close share streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
  */
 contract SharesStreaming is StreamingBase {
@@ -139,7 +139,7 @@ contract SharesStreaming is StreamingBase {
 
         Stream storage stream = sharesStreamById[getSharesStreamId(msg.sender, _receiver)];
 
-        _checkExistingStream(stream);
+        _checkNonExistingStream(stream);
 
         uint256 timeRemaining = stream.shares / stream.ratePerSecond;
 
@@ -224,7 +224,7 @@ contract SharesStreaming is StreamingBase {
     }
 
     function _previewClaimShares(Stream memory _stream) internal view returns (uint256 claimableShares) {
-        _checkExistingStream(_stream);
+        _checkNonExistingStream(_stream);
 
         uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
         claimableShares = elapsedTime * _stream.ratePerSecond;
@@ -277,7 +277,7 @@ contract SharesStreaming is StreamingBase {
         view
         returns (uint256 remainingShares, uint256 streamedShares)
     {
-        _checkExistingStream(_stream);
+        _checkNonExistingStream(_stream);
 
         uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
         streamedShares = elapsedTime * _stream.ratePerSecond;
@@ -293,7 +293,7 @@ contract SharesStreaming is StreamingBase {
         if (_duration == 0) revert ZeroDuration();
     }
 
-    function _checkExistingStream(Stream memory _stream) internal pure {
+    function _checkNonExistingStream(Stream memory _stream) internal pure {
         if (_stream.shares == 0) revert StreamDoesNotExist();
     }
 }
