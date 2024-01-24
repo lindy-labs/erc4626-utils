@@ -47,6 +47,8 @@ contract ERC4626StreamHubForkTests is Test {
         factory.create(address(scUsdc));
     }
 
+    /// *** yield streaming tests *** ///
+
     function test_openYieldStream() public {
         uint256 depositAmount = 1 ether;
         uint256 shares = _deposit(scEth, alice, depositAmount);
@@ -273,7 +275,160 @@ contract ERC4626StreamHubForkTests is Test {
         assertApproxEqAbs(wethStreamHub.yieldFor(carol), expectedYield, 1, "yieldFor carol");
     }
 
-    // *** helpers ***
+    /// *** shares streaming tests *** ///
+
+    function test_openSharesStream_claimShares() public {
+        uint256 duration = 2 days;
+        uint256 shares = _deposit(scEth, alice, 1 ether);
+        _approve(alice, shares, scEth, wethStreamHub);
+
+        vm.prank(alice);
+        wethStreamHub.openSharesStream(bob, shares, duration);
+
+        assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
+
+        // assert yield stream is not created
+        assertEq(wethStreamHub.receiverShares(bob), 0, "receiverShares");
+        assertEq(wethStreamHub.receiverPrincipal(bob, alice), 0, "receiverPrincipal");
+        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+
+        _createProfitForVault(0.05e18, scEth); // 5%
+        assertApproxEqAbs(wethStreamHub.yieldFor(bob), 0, 1, "yieldFor bob");
+
+        vm.warp(block.timestamp + duration / 2);
+
+        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+
+        // assert shares stream
+        uint256 previewClaim = wethStreamHub.previewClaimShares(alice, bob);
+        assertApproxEqRel(previewClaim, shares / 2, 0.00001e18, "previewClaimShares");
+
+        vm.prank(bob);
+        wethStreamHub.claimShares(alice);
+
+        assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
+        assertEq(scEth.balanceOf(address(wethStreamHub)), shares - previewClaim, "totalShares");
+    }
+
+    function test_closeSharesStream() public {
+        uint256 duration = 2 days;
+        uint256 shares = _deposit(scEth, alice, 1 ether);
+        _approve(alice, shares, scEth, wethStreamHub);
+
+        vm.prank(alice);
+        wethStreamHub.openSharesStream(bob, shares, duration);
+
+        assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
+
+        vm.warp(block.timestamp + duration / 2);
+
+        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+
+        // assert shares stream
+        uint256 previewClaim = wethStreamHub.previewClaimShares(alice, bob);
+        assertApproxEqRel(previewClaim, shares / 2, 0.00001e18, "previewClaimShares");
+
+        vm.prank(alice);
+        wethStreamHub.closeSharesStream(bob);
+
+        assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
+        assertEq(scEth.balanceOf(alice), shares - previewClaim, "alice's shares");
+        assertEq(scEth.balanceOf(address(wethStreamHub)), 0, "totalShares");
+    }
+
+    function test_openMultipleShareStreams() public {
+        uint256 shares1 = _deposit(scEth, alice, 1 ether);
+        uint256 duration1 = 2 days;
+        uint256 shares2 = _deposit(scEth, bob, 2 ether);
+        uint256 duration2 = 4 days;
+        _approve(alice, shares1, scEth, wethStreamHub);
+        _approve(bob, shares2, scEth, wethStreamHub);
+
+        vm.prank(alice);
+        wethStreamHub.openSharesStream(carol, shares1, duration1);
+        vm.prank(bob);
+        wethStreamHub.openSharesStream(carol, shares2, duration2);
+
+        vm.warp(block.timestamp + 1 days);
+
+        uint256 shares3 = _deposit(scEth, carol, 3 ether);
+        uint256 duration3 = 6 days;
+        _approve(carol, shares3, scEth, wethStreamHub);
+
+        vm.prank(carol);
+        wethStreamHub.openSharesStream(alice, shares3, duration3);
+
+        vm.warp(block.timestamp + 1 days);
+
+        vm.startPrank(carol);
+        wethStreamHub.claimShares(alice);
+        wethStreamHub.claimShares(bob);
+        vm.stopPrank();
+
+        assertEq(scEth.balanceOf(alice), 0, "alice's shares");
+        assertEq(scEth.balanceOf(bob), 0, "bob's shares");
+        assertApproxEqRel(scEth.balanceOf(carol), shares1 + shares2 / 2, 0.00001e18, "carol's shares");
+
+        vm.prank(alice);
+        wethStreamHub.claimShares(carol);
+
+        vm.warp(block.timestamp + 2 days);
+
+        vm.startPrank(carol);
+        wethStreamHub.claimShares(bob);
+        wethStreamHub.closeSharesStream(alice);
+        vm.stopPrank();
+
+        assertApproxEqRel(scEth.balanceOf(alice), shares3 / 2, 0.00001e18, "alice's shares");
+        assertEq(scEth.balanceOf(bob), 0, "bob's shares");
+        assertApproxEqRel(scEth.balanceOf(carol), shares1 + shares2 + shares3 / 2, 0.00001e18, "carol's shares");
+    }
+
+    /// *** combined yield and shares streaming tests *** ///
+
+    function test_openYieldStream_and_openSharesStream() public {
+        uint256 depositAmount = 2 ether;
+        uint256 duration = 4 days;
+        uint256 shares = _deposit(scEth, alice, depositAmount);
+        _approve(alice, shares, scEth, wethStreamHub);
+        uint256 yieldStreamShares = shares / 2;
+        uint256 sharesStreamShares = shares - yieldStreamShares;
+
+        vm.startPrank(alice);
+        wethStreamHub.openYieldStream(bob, yieldStreamShares);
+        wethStreamHub.openSharesStream(bob, sharesStreamShares, duration);
+        vm.stopPrank();
+
+        assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
+        assertEq(wethStreamHub.receiverShares(bob), yieldStreamShares, "receiverShares");
+        assertEq(
+            wethStreamHub.receiverPrincipal(bob, alice), scEth.convertToAssets(yieldStreamShares), "receiverPrincipal"
+        );
+
+        _createProfitForVault(0.05e18, scEth); // 5%
+        vm.warp(block.timestamp + duration / 2);
+
+        uint256 expectedYield = wethStreamHub.yieldFor(bob);
+        uint256 previewClaimShares = wethStreamHub.previewClaimShares(alice, bob);
+
+        vm.startPrank(bob);
+        wethStreamHub.claimShares(alice);
+        wethStreamHub.claimYield(bob);
+        vm.stopPrank();
+
+        assertEq(scEth.balanceOf(bob), previewClaimShares, "bob's shares");
+        assertApproxEqAbs(weth.balanceOf(bob), expectedYield, 1, "bob's weth balance");
+
+        vm.startPrank(alice);
+        uint256 closeYield = wethStreamHub.closeYieldStream(bob);
+        (uint256 closeShares,) = wethStreamHub.closeSharesStream(bob);
+        vm.stopPrank();
+
+        assertEq(scEth.balanceOf(alice), closeShares + closeYield, "alice's shares");
+        assertEq(scEth.balanceOf(address(wethStreamHub)), 0, "totalShares");
+    }
+
+    /// *** helpers *** ///
 
     function _deposit(IERC4626 _vault, address _from, uint256 _amount) internal returns (uint256 shares) {
         vm.startPrank(_from);

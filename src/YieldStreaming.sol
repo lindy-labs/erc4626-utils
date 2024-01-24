@@ -19,6 +19,9 @@ contract YieldStreaming is StreamingBase {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
 
+    error NoYieldToClaim();
+    error LossToleranceExceeded();
+
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
@@ -37,7 +40,11 @@ contract YieldStreaming is StreamingBase {
     // receiver to total amount of assets (principal) allocated from a single address
     mapping(address => mapping(address => uint256)) public receiverPrincipal;
 
-    constructor(IERC4626 _vault) StreamingBase(_vault) {}
+    constructor(IERC4626 _vault) {
+        _checkZeroAddress(address(_vault));
+
+        vault = _vault;
+    }
 
     /**
      * @dev Opens a yield stream for a specific receiver with a given number of shares. If stream already exists, it will be topped up.

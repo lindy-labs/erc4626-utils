@@ -40,14 +40,14 @@ contract YieldStreamingTests is Test {
         deal(address(asset), address(vault), 2e18);
     }
 
-    // *** constructor ***
+    // *** constructor *** ///
 
     function test_constructor_failsForAddress0() public {
         vm.expectRevert(AddressZero.selector);
         new YieldStreaming(IERC4626(address(0)));
     }
 
-    // *** #openYieldStream ***
+    // *** #openYieldStream *** ///
 
     function test_openYieldStream_failsOpeningStreamToSelf() public {
         uint256 amount = 10e18;
@@ -231,7 +231,7 @@ contract YieldStreamingTests is Test {
 
         // bob opens a stream to carol
         vm.prank(bob);
-        vm.expectRevert(LossToleranceExceeded.selector);
+        vm.expectRevert(YieldStreaming.LossToleranceExceeded.selector);
         streamHub.openYieldStream(carol, bobsShares);
     }
 
@@ -294,7 +294,7 @@ contract YieldStreamingTests is Test {
         assertEq(streamHub.receiverPrincipal(bob, dave), amount, "receiver principal");
     }
 
-    // *** #yieldFor ***
+    // *** #yieldFor *** ///
 
     function test_yieldFor_returns0IfNoYield() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -397,7 +397,7 @@ contract YieldStreamingTests is Test {
         assertEq(streamHub.yieldFor(bob), 0, "bob's yield");
     }
 
-    // *** #claimYield ***
+    // *** #claimYield *** ///
 
     function test_claimYield_toClaimerAccount() public {
         uint256 amount = 1e18;
@@ -478,7 +478,7 @@ contract YieldStreamingTests is Test {
 
         assertEq(streamHub.yieldFor(bob), 0, "bob's yield != 0");
 
-        vm.expectRevert(NoYieldToClaim.selector);
+        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
         vm.prank(bob);
         streamHub.claimYield(bob);
     }
@@ -493,7 +493,7 @@ contract YieldStreamingTests is Test {
         // create a 20% loss
         _createProfitForVault(-0.2e18);
 
-        vm.expectRevert(NoYieldToClaim.selector);
+        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
         vm.prank(bob);
         streamHub.claimYield(bob);
     }
@@ -530,7 +530,7 @@ contract YieldStreamingTests is Test {
         assertEq(streamHub.yieldFor(carol), 0, "carols's yield");
     }
 
-    // *** #closeYieldStream ***
+    // *** #closeYieldStream *** ///
 
     function test_closeYieldStream_restoresSenderBalance() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -696,7 +696,7 @@ contract YieldStreamingTests is Test {
         assertEq(streamHub.receiverTotalPrincipal(carol), bobsDeposit, "carol's total principal");
     }
 
-    // *** #multicall ***
+    // *** #multicall *** ///
 
     function test_multicall_OpenMultipleYieldStreams() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -714,6 +714,8 @@ contract YieldStreamingTests is Test {
         assertEq(streamHub.receiverShares(bob), (shares * 3) / 4, "receiver shares bob");
         assertEq(streamHub.receiverShares(carol), shares / 4, "receiver shares carol");
     }
+
+    /// *** fuzzing *** ///
 
     function testFuzz_open_claim_close_stream(uint256 amount) public {
         amount = bound(amount, 10000, 1000 ether);
@@ -757,7 +759,7 @@ contract YieldStreamingTests is Test {
         assertEq(vault.balanceOf(address(streamHub)), 0, "streamHub's shares");
     }
 
-    // *** helpers ***
+    // *** helpers *** ///
 
     function _depositToVault(address _from, uint256 _amount) internal returns (uint256 shares) {
         vm.startPrank(_from);
