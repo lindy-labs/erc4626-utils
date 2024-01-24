@@ -28,6 +28,7 @@ contract YieldStreaming is StreamingBase, Ownable {
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
+    event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
 
@@ -170,7 +171,7 @@ contract YieldStreaming is StreamingBase, Ownable {
     function claimYield(address _to) external returns (uint256 assets) {
         _checkZeroAddress(_to);
 
-        uint256 yieldInSHares = yieldForInShares(msg.sender);
+        uint256 yieldInSHares = previewClaimYieldInShares(msg.sender);
 
         if (yieldInSHares == 0) revert NoYieldToClaim();
 
@@ -186,7 +187,7 @@ contract YieldStreaming is StreamingBase, Ownable {
      * @param _receiver The address of the receiver.
      * @return yield The calculated yield, 0 if there is no yield or yield is negative.
      */
-    function yieldFor(address _receiver) public view returns (uint256 yield) {
+    function previewClaimYield(address _receiver) public view returns (uint256 yield) {
         uint256 principal = receiverTotalPrincipal[_receiver];
         uint256 currentValue = _convertToAssets(receiverShares[_receiver]);
 
@@ -199,7 +200,7 @@ contract YieldStreaming is StreamingBase, Ownable {
      * @param _receiver The address of the receiver.
      * @return yieldInShares The calculated yield in shares, 0 if there is no yield or yield is negative.
      */
-    function yieldForInShares(address _receiver) public view returns (uint256 yieldInShares) {
+    function previewClaimYieldInShares(address _receiver) public view returns (uint256 yieldInShares) {
         uint256 principalInShares = _convertToShares(receiverTotalPrincipal[_receiver]);
         uint256 shares = receiverShares[_receiver];
 
