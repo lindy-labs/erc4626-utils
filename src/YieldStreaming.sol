@@ -5,6 +5,7 @@ import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {Ownable} from "openzeppelin-contracts/access/Ownable.sol";
 
 import "./common/Errors.sol";
 import {StreamingBase} from "./common/StreamingBase.sol";
@@ -15,21 +16,24 @@ import {StreamingBase} from "./common/StreamingBase.sol";
  * It allows users to open yield streams, claim yield from streams, and close streams to withdraw remaining shares.
  * The contract assumes that ERC4626 tokens are appreciating assets, meaning that the value of a single share increases over time, ie generates yield.
  */
-contract YieldStreaming is StreamingBase {
+contract YieldStreaming is StreamingBase, Ownable {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
 
+    uint256 public constant MAX_LOSS_TOLERANCE_PERCENT = 0.05e18; // 5%
+
     error NoYieldToClaim();
     error LossToleranceExceeded();
+    error LossTolerancePercentTooHigh();
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
+    event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
 
     // the maximum loss tolerance percentage when opening a stream to a receiver which is in debt
-    // a receiver is in debt if his existing streams have negative yield
-    // TODO: should this be configurable?
-    uint256 public immutable lossTolerancePercent = 0.01e18; // 1%
+    // a receiver is in debt if his existing streams have negative yield in total
+    uint256 public lossTolerancePercent = 0.01e18; // 1%
 
     // receiver to number of shares it is entitled to as the yield beneficiary
     mapping(address => uint256) public receiverShares;
@@ -40,10 +44,22 @@ contract YieldStreaming is StreamingBase {
     // receiver to total amount of assets (principal) allocated from a single address
     mapping(address => mapping(address => uint256)) public receiverPrincipal;
 
-    constructor(IERC4626 _vault) {
+    constructor(address _owner, IERC4626 _vault) Ownable(_owner) {
         _checkZeroAddress(address(_vault));
 
         vault = _vault;
+    }
+
+    /**
+     * @dev Sets the loss tolerance percentage for the contract.
+     * @param _newlossTolerancePercent The loss tolerance percentage to set.
+     */
+    function setLossTolerancePercent(uint256 _newlossTolerancePercent) external onlyOwner {
+        if (_newlossTolerancePercent > MAX_LOSS_TOLERANCE_PERCENT) revert LossTolerancePercentTooHigh();
+
+        emit LossTolerancePercentUpdated(msg.sender, lossTolerancePercent, _newlossTolerancePercent);
+
+        lossTolerancePercent = _newlossTolerancePercent;
     }
 
     /**

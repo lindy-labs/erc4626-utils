@@ -15,9 +15,11 @@ contract DeployScriptTestnet is CREATE3Script {
 
     function run() external returns (ERC4626StreamHub streamHub) {
         uint256 deployerPrivateKey = uint256(vm.envBytes32("PRIVATE_KEY"));
-        vm.startBroadcast(vm.addr(deployerPrivateKey));
+        address deployer = vm.addr(deployerPrivateKey);
 
-        streamHub = new ERC4626StreamHub(RemovableAssetsERC4626Mock(erc4626Mock));
+        vm.startBroadcast(deployer);
+
+        streamHub = new ERC4626StreamHub(deployer, RemovableAssetsERC4626Mock(erc4626Mock));
 
         vm.stopBroadcast();
     }
