@@ -6,11 +6,14 @@ import "forge-std/Test.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import "../src/common/Errors.sol";
 import {SharesStreaming} from "../src/SharesStreaming.sol";
 
 contract SharesStreamingTest is Test {
+    using FixedPointMathLib for uint256;
+
     MockERC20 public asset;
     MockERC4626 public vault;
     SharesStreaming public sharesStreaming;
@@ -34,15 +37,23 @@ contract SharesStreamingTest is Test {
         sharesStreaming = new SharesStreaming(IERC4626(address(vault)));
     }
 
-    // *** #openShareStream ***
+    // *** constructor *** ///
+
+    function test_constructor_failsForAddress0() public {
+        vm.expectRevert(AddressZero.selector);
+        new SharesStreaming(IERC4626(address(0)));
+    }
+
+    // *** #openShareStream *** ///
 
     function test_openShareStream_createsNewStream() public {
         uint256 shares = _depositToVault(alice, 1e18);
+        uint256 duration = 1 days;
 
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        sharesStreaming.openSharesStream(bob, shares, 1 days);
+        sharesStreaming.openSharesStream(bob, shares, duration);
 
         assertEq(vault.balanceOf(alice), 0);
         assertEq(vault.balanceOf(bob), 0);
@@ -50,10 +61,10 @@ contract SharesStreamingTest is Test {
 
         SharesStreaming.Stream memory stream =
             sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, bob));
-        assertEq(stream.shares, shares);
-        assertEq(stream.ratePerSecond, shares / 1 days);
-        assertEq(stream.startTime, block.timestamp);
-        assertEq(stream.lastClaimTime, block.timestamp);
+        assertEq(stream.shares, shares, "stream shares");
+        assertEq(stream.ratePerSecond, shares.divWadUp(duration), "stream rate per second");
+        assertEq(stream.startTime, block.timestamp, "stream start time");
+        assertEq(stream.lastClaimTime, block.timestamp, "stream last claim time");
     }
 
     function test_openShareStream_emitsEvent() public {
@@ -178,7 +189,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.openSharesStream(alice, shares, 1 days);
     }
 
-    // *** #claimShares ***
+    // *** #claimShares *** ///
 
     function test_claim_failsIfStreamDoesNotExist() public {
         vm.expectRevert(StreamDoesNotExist.selector);
@@ -379,7 +390,7 @@ contract SharesStreamingTest is Test {
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance 2");
     }
 
-    // *** #topUpStream ***
+    // *** #topUpStream *** ///
 
     function test_topUpStream_addsSharesAndExtendsDuration() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -404,8 +415,11 @@ contract SharesStreamingTest is Test {
         SharesStreaming.Stream memory updatedStream = sharesStreaming.getSharesStream(streamId);
 
         assertEq(updatedStream.shares, shares + additionalShares, "totalShares");
-        assertEq(
-            updatedStream.ratePerSecond, (shares + additionalShares) / (duration + additionalDuration), "ratePerSecond"
+        assertApproxEqRel(
+            updatedStream.ratePerSecond,
+            (shares + additionalShares).divWadUp(duration + additionalDuration),
+            0.00001e18,
+            "ratePerSecond"
         );
         assertEq(updatedStream.startTime, stream.startTime, "startTime");
         assertEq(updatedStream.lastClaimTime, stream.lastClaimTime, "lastClaimTime");
@@ -600,7 +614,7 @@ contract SharesStreamingTest is Test {
         SharesStreaming.Stream memory stream =
             sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(dave, alice));
         assertEq(stream.shares, shares, "totalShares");
-        assertEq(stream.ratePerSecond, shares / duration, "ratePerSecond");
+        assertEq(stream.ratePerSecond, shares.divWadUp(duration), "ratePerSecond");
         assertEq(stream.startTime, block.timestamp, "startTime");
         assertEq(stream.lastClaimTime, block.timestamp, "lastClaimTime");
     }
@@ -648,8 +662,11 @@ contract SharesStreamingTest is Test {
         SharesStreaming.Stream memory updatedStream =
             sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(dave, bob));
         assertEq(updatedStream.shares, shares + additionalShares, "totalShares");
-        assertEq(
-            updatedStream.ratePerSecond, (shares + additionalShares) / (duration + additionalDuration), "ratePerSecond"
+        assertApproxEqRel(
+            updatedStream.ratePerSecond,
+            (shares + additionalShares).divWadUp(duration + additionalDuration),
+            0.00001e18,
+            "ratePerSecond"
         );
 
         // advance time to the half way point of the stream
@@ -717,7 +734,9 @@ contract SharesStreamingTest is Test {
         SharesStreaming.Stream memory bobsStream =
             sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, bob));
         assertEq(bobsStream.shares, bobsStreamShares, "bob's stream shares");
-        assertEq(bobsStream.ratePerSecond, bobsStreamShares / bobsStreamDuration, "bob's stream rate per second");
+        assertEq(
+            bobsStream.ratePerSecond, bobsStreamShares.divWadUp(bobsStreamDuration), "bob's stream rate per second"
+        );
         assertEq(bobsStream.startTime, block.timestamp, "bob's stream start time");
         assertEq(bobsStream.lastClaimTime, block.timestamp, "bob's stream last claim time");
 
@@ -726,7 +745,9 @@ contract SharesStreamingTest is Test {
             sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, carol));
         assertEq(carolsStream.shares, carolsStreamShares, "carol's stream shares");
         assertEq(
-            carolsStream.ratePerSecond, carolsStreamShares / carolsStreamDuration, "carol's stream rate per second"
+            carolsStream.ratePerSecond,
+            carolsStreamShares.divWadUp(carolsStreamDuration),
+            "carol's stream rate per second"
         );
         assertEq(carolsStream.startTime, block.timestamp, "carol's stream start time");
         assertEq(carolsStream.lastClaimTime, block.timestamp, "carol's stream last claim time");
@@ -766,7 +787,9 @@ contract SharesStreamingTest is Test {
 
         stream = sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, carol));
         assertEq(stream.shares, carolsStreamShares - carolsClaim, "carol's stream - totalShares");
-        assertEq(stream.ratePerSecond, carolsStreamShares / carolsStreamDuration, "carol's stream - ratePerSecond");
+        assertEq(
+            stream.ratePerSecond, carolsStreamShares.divWadUp(carolsStreamDuration), "carol's stream - ratePerSecond"
+        );
         assertEq(stream.startTime, carolsStream.startTime, "carol's stream - startTime");
         assertEq(stream.lastClaimTime, block.timestamp, "carol's stream - lastClaimTime");
 
@@ -835,28 +858,48 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(carol), claimFromAlice + claimFromBob, "carol's balance after closing");
     }
 
-    // TODO:
-    // test from multiple streamers to single receiver - done
-    // test single streamer to multiple receivers - done
-    // test consecutive calls to claimShares and closeShareStream - done
-    // top up stream - done
-    // top up stream and claim - done
-    // top up stream and close - done
-    // top up stream and claim and close - done
-    // open with permit - done
-    // error types - done
-    // events - done
-    // multicall - done
-    // refactor - done
-    // cleanup / renaming
-    // upgrade open zeppelin - done
-    // add docs - done
-    // separate tests & contracts - done
-    // top up using permit - done
-    // prevent reentrancy?
-    // gas optimizations
-    // improve integer operations precision?
-    // fork/fuzz tests
+    /// *** fuzzing *** ///
+
+    function testFuzz_open_claim_close_stream(uint256 _amount, uint256 _duration) public {
+        _amount = bound(_amount, 10000, 10000 ether);
+        _duration = bound(_duration, 100 seconds, 5000 days);
+        uint256 shares = _depositToVault(alice, _amount);
+        uint256 sharesStreamedPerSecond = shares.divWadUp(_duration * 1e18);
+
+        console2.log("shares", shares);
+        console2.log("_duration", _duration);
+        console2.log("sharesStreamedPerSecond", sharesStreamedPerSecond);
+
+        vm.startPrank(alice);
+        vault.approve(address(sharesStreaming), shares);
+
+        sharesStreaming.openSharesStream(bob, shares, _duration);
+
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + _duration / 2);
+
+        uint256 expectedSharesToClaim = shares / 2;
+
+        // claim shares
+        uint256 previewClaim = sharesStreaming.previewClaimShares(alice, bob);
+        assertApproxEqAbs(previewClaim, expectedSharesToClaim, sharesStreamedPerSecond, "previewClaim");
+        console2.log("previewClaim", previewClaim);
+
+        vm.prank(bob);
+        sharesStreaming.claimShares(alice);
+
+        assertEq(vault.balanceOf(bob), previewClaim, "claimed shares");
+        assertEq(sharesStreaming.previewClaimShares(alice, bob), 0, "previewClaim after claim");
+
+        // close streams
+        vm.startPrank(alice);
+        sharesStreaming.closeSharesStream(bob);
+
+        assertEq(vault.balanceOf(address(sharesStreaming)), 0, "streamHub's shares");
+        assertApproxEqAbs(vault.balanceOf(alice), shares / 2, sharesStreamedPerSecond, "alice's shares");
+        assertApproxEqRel(vault.balanceOf(alice), shares / 2, 0.01e18, "alice's shares");
+    }
 
     function _depositToVault(address _account, uint256 _amount) internal returns (uint256 shares) {
         vm.startPrank(_account);

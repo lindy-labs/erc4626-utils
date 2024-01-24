@@ -83,7 +83,9 @@ contract SharesStreaming is StreamingBase {
 
         if (stream.shares > 0) {
             // If the stream already exists and isn't expired, revert
-            if (block.timestamp < stream.startTime + stream.shares / stream.ratePerSecond) revert StreamAlreadyExists();
+            if (block.timestamp < stream.startTime + stream.shares.divWadUp(stream.ratePerSecond)) {
+                revert StreamAlreadyExists();
+            }
 
             // if is expired, transfer unclaimed shares to receiver & emit close event
             emit CloseSharesStream(msg.sender, _receiver, 0, stream.shares);
@@ -91,7 +93,7 @@ contract SharesStreaming is StreamingBase {
             vault.safeTransfer(_receiver, stream.shares);
         }
 
-        uint256 ratePerSecond = _shares / _duration;
+        uint256 ratePerSecond = _shares.divWadUp(_duration);
 
         stream.shares = _shares;
         stream.ratePerSecond = ratePerSecond;
@@ -141,13 +143,13 @@ contract SharesStreaming is StreamingBase {
 
         _checkNonExistingStream(stream);
 
-        uint256 timeRemaining = stream.shares / stream.ratePerSecond;
+        uint256 timeRemaining = stream.shares.divWadDown(stream.ratePerSecond);
 
         if (block.timestamp > stream.lastClaimTime + timeRemaining) revert StreamExpired();
 
         stream.shares += _additionalShares;
 
-        uint256 newRatePerSecond = stream.shares / (timeRemaining + _additionalDuration);
+        uint256 newRatePerSecond = stream.shares.divWadUp(timeRemaining + _additionalDuration);
 
         if (newRatePerSecond < stream.ratePerSecond) revert RatePerSecondDecreased();
 
@@ -227,7 +229,7 @@ contract SharesStreaming is StreamingBase {
         _checkNonExistingStream(_stream);
 
         uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
-        claimableShares = elapsedTime * _stream.ratePerSecond;
+        claimableShares = elapsedTime.mulWadUp(_stream.ratePerSecond);
 
         // Cap the shares to claim to the total allocated shares
         if (claimableShares > _stream.shares) claimableShares = _stream.shares;
@@ -280,7 +282,7 @@ contract SharesStreaming is StreamingBase {
         _checkNonExistingStream(_stream);
 
         uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
-        streamedShares = elapsedTime * _stream.ratePerSecond;
+        streamedShares = elapsedTime.mulWadUp(_stream.ratePerSecond);
 
         if (streamedShares > _stream.shares) streamedShares = _stream.shares;
 
