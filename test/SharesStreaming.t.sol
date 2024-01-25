@@ -308,15 +308,15 @@ contract SharesStreamingTest is Test {
         sharesStreaming.claimShares(alice, bob);
     }
 
-    // *** #closeStream *** ///
+    // *** #closeSharesStream *** ///
 
-    function test_closeStream_failsIfStreamDoesNotExist() public {
+    function test_closeSharesStream_failsIfStreamDoesNotExist() public {
         vm.expectRevert(StreamDoesNotExist.selector);
         vm.prank(bob);
         sharesStreaming.closeSharesStream(bob);
     }
 
-    function test_closeStream_transfersUnclaimedSharesToReceiver() public {
+    function test_closeSharesStream_transfersUnclaimedSharesToReceiver() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -339,7 +339,7 @@ contract SharesStreamingTest is Test {
         assertEq(stream.lastClaimTime, 0, "lastClaimTime");
     }
 
-    function test_closeStream_emitsEvent() public {
+    function test_closeSharesStream_emitsEvent() public {
         uint256 shares = _depositToVault(alice, 1e18);
         uint256 duration = 1 days;
 
@@ -354,7 +354,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.closeSharesStream(bob);
     }
 
-    function test_closeStream_failsIfAlreadyClosed() public {
+    function test_closeSharesStream_failsIfAlreadyClosed() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -366,7 +366,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.closeSharesStream(bob);
     }
 
-    function test_closeStream_transfersRemainingUnclaimedSharesToReceiverAfterLastClaim() public {
+    function test_closeSharesStream_transfersRemainingUnclaimedSharesToReceiverAfterLastClaim() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -396,7 +396,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(address(sharesStreaming)), 0, "sharesStreaming balance");
     }
 
-    function test_closeStream_transfersRemainingSharesToStreamer() public {
+    function test_closeSharesStream_transfersRemainingSharesToStreamer() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -418,9 +418,9 @@ contract SharesStreamingTest is Test {
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance 2");
     }
 
-    // *** #topUpStream *** ///
+    // *** #topUpSharesStream *** ///
 
-    function test_topUpStream_addsSharesAndExtendsDuration() public {
+    function test_topUpSharesStream_addsSharesAndExtendsDuration() public {
         uint256 shares = _depositToVault(alice, 1e18);
         uint256 duration = 1 days;
         _openStream(alice, bob, shares, duration);
@@ -453,7 +453,7 @@ contract SharesStreamingTest is Test {
         assertEq(updatedStream.lastClaimTime, stream.lastClaimTime, "lastClaimTime");
     }
 
-    function test_topUpStream_emitsEvent() public {
+    function test_topUpSharesStream_emitsEvent() public {
         uint256 shares = _depositToVault(alice, 1e18);
         uint256 duration = 1 days;
 
@@ -469,7 +469,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.topUpSharesStream(bob, additionalShares, additionalDuration);
     }
 
-    function test_topUpStream_failsIfSharesIsZero() public {
+    function test_topUpSharesStream_failsIfSharesIsZero() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -480,7 +480,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.topUpSharesStream(bob, 0, 1 days);
     }
 
-    function test_topUpStream_failsIfSharesIsGreaterThanAllowance() public {
+    function test_topUpSharesStream_failsIfSharesIsGreaterThanAllowance() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -491,7 +491,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.topUpSharesStream(bob, shares + 1, 1 days);
     }
 
-    function test_topUpStream_failsIfReceiverIsZeroAddress() public {
+    function test_topUpSharesStream_failsIfReceiverIsZeroAddress() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -502,7 +502,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.topUpSharesStream(address(0), shares, 1 days);
     }
 
-    function test_topUpStream_failsIfStreamDoesNotExist() public {
+    function test_topUpSharesStream_failsIfStreamDoesNotExist() public {
         uint256 shares = _depositToVault(alice, 1e18);
 
         vm.startPrank(alice);
@@ -512,7 +512,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.topUpSharesStream(bob, shares, 1 days);
     }
 
-    function test_topUpStream_failsIfStreamIsExpired() public {
+    function test_topUpSharesStream_failsIfStreamIsExpired() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -526,7 +526,7 @@ contract SharesStreamingTest is Test {
         sharesStreaming.topUpSharesStream(bob, shares, 1 days);
     }
 
-    function test_topUpStream_worksAfterSomeSharesAreClaimed() public {
+    function test_topUpSharesStream_worksAfterSomeSharesAreClaimed() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -557,7 +557,7 @@ contract SharesStreamingTest is Test {
         assertApproxEqRel(vault.balanceOf(bob), firstClaim + secondClaim, 0.0001e18, "receiver balance");
     }
 
-    function test_topUpStream_worksIfDurationIsZero() public {
+    function test_topUpSharesStream_worksIfDurationIsZero() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -590,7 +590,7 @@ contract SharesStreamingTest is Test {
         assertApproxEqRel(vault.balanceOf(bob), shares, 0.0001e18, "receiver balance");
     }
 
-    function test_topUpStream_failsIfRatePerSecondDrops() public {
+    function test_topUpSharesStream_failsIfRatePerSecondDrops() public {
         uint256 shares = _depositToVault(alice, 1e18);
         uint256 duration = 1 days;
         _openStream(alice, bob, shares, duration);
@@ -606,9 +606,9 @@ contract SharesStreamingTest is Test {
         sharesStreaming.topUpSharesStream(bob, shares, duration * 2);
     }
 
-    /// *** #openStreamUsingPermit *** ///
+    /// *** #openSharesStreamUsingPermit *** ///
 
-    function test_openStreamUsingPermit() public {
+    function test_openSharesStreamUsingPermit() public {
         uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
         address dave = vm.addr(davesPrivateKey);
 
@@ -647,9 +647,9 @@ contract SharesStreamingTest is Test {
         assertEq(stream.lastClaimTime, block.timestamp, "lastClaimTime");
     }
 
-    /// *** #topUpStreamUsingPermit *** ///
+    /// *** #topUpSharesStreamUsingPermit *** ///
 
-    function test_topUpStreamUsingPermit() public {
+    function test_topUpSharesStreamUsingPermit() public {
         uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
         address dave = vm.addr(davesPrivateKey);
         uint256 shares = _depositToVault(dave, 1e18);
@@ -736,6 +736,8 @@ contract SharesStreamingTest is Test {
         stream = sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, carol));
         assertEq(stream.shares, shares / 2, "carol's stream shares");
     }
+
+    /// *** multiple streamers / receivers *** ///
 
     function test_oneStreamertoMultipleReceivers() public {
         // alice streams to bob and carol
