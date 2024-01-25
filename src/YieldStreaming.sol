@@ -211,7 +211,7 @@ contract YieldStreaming is StreamingBase, Ownable {
 
         emit ClaimYieldInShares(msg.sender, _sendTo, shares);
 
-        vault.transfer(_sendTo, shares);
+        vault.safeTransfer(_sendTo, shares);
     }
 
     /**
