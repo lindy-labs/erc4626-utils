@@ -11,5 +11,5 @@ import {SharesStreaming} from "./SharesStreaming.sol";
  * @notice This is a convenience contract that combines functionalities YieldStreaming and SharesStreaming contracts
  */
 contract ERC4626StreamHub is YieldStreaming, SharesStreaming {
-    constructor(IERC4626 _vault) YieldStreaming(_vault) SharesStreaming(_vault) {}
+    constructor(address _owner, IERC4626 _vault) YieldStreaming(_owner, _vault) SharesStreaming(_vault) {}
 }

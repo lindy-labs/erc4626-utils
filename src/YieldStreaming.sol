@@ -5,6 +5,7 @@ import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {Ownable} from "openzeppelin-contracts/access/Ownable.sol";
 
 import "./common/Errors.sol";
 import {StreamingBase} from "./common/StreamingBase.sol";
@@ -15,21 +16,25 @@ import {StreamingBase} from "./common/StreamingBase.sol";
  * It allows users to open yield streams, claim yield from streams, and close streams to withdraw remaining shares.
  * The contract assumes that ERC4626 tokens are appreciating assets, meaning that the value of a single share increases over time, ie generates yield.
  */
-contract YieldStreaming is StreamingBase {
+contract YieldStreaming is StreamingBase, Ownable {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
 
+    uint256 public constant MAX_LOSS_TOLERANCE_PERCENT = 0.05e18; // 5%
+
     error NoYieldToClaim();
     error LossToleranceExceeded();
+    error LossTolerancePercentTooHigh();
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
+    event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
+    event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
 
     // the maximum loss tolerance percentage when opening a stream to a receiver which is in debt
-    // a receiver is in debt if his existing streams have negative yield
-    // TODO: should this be configurable?
-    uint256 public immutable lossTolerancePercent = 0.01e18; // 1%
+    // a receiver is in debt if his existing streams have negative yield in total
+    uint256 public lossTolerancePercent = 0.01e18; // 1%
 
     // receiver to number of shares it is entitled to as the yield beneficiary
     mapping(address => uint256) public receiverShares;
@@ -40,15 +45,27 @@ contract YieldStreaming is StreamingBase {
     // receiver to total amount of assets (principal) allocated from a single address
     mapping(address => mapping(address => uint256)) public receiverPrincipal;
 
-    constructor(IERC4626 _vault) {
+    constructor(address _owner, IERC4626 _vault) Ownable(_owner) {
         _checkZeroAddress(address(_vault));
 
         vault = _vault;
     }
 
     /**
+     * @dev Sets the loss tolerance percentage for the contract.
+     * @param _newlossTolerancePercent The loss tolerance percentage to set.
+     */
+    function setLossTolerancePercent(uint256 _newlossTolerancePercent) external onlyOwner {
+        if (_newlossTolerancePercent > MAX_LOSS_TOLERANCE_PERCENT) revert LossTolerancePercentTooHigh();
+
+        emit LossTolerancePercentUpdated(msg.sender, lossTolerancePercent, _newlossTolerancePercent);
+
+        lossTolerancePercent = _newlossTolerancePercent;
+    }
+
+    /**
      * @dev Opens a yield stream for a specific receiver with a given number of shares. If stream already exists, it will be topped up.
-     * When opening a new stream, the sender is taking an immediate loss if the receiver is in debt. Acceptable loss is defined by the loss tolerance percentage configured for the contract.
+     * When opening a new stream for a receiver who is in debt, the sender is taking a small amount of immediate loss. Acceptable loss amount is defined by the loss tolerance percentage configuration field.
      * @param _receiver The address of the receiver.
      * @param _shares The number of shares to allocate for the yield stream.
      * @return principal The amount of assets (tokens) allocated to the stream.
@@ -148,21 +165,21 @@ contract YieldStreaming is StreamingBase {
 
     /**
      * @dev Claims the yield from all streams for the sender and transfers it to the specified receiver address.
-     * @param _to The address to receive the claimed yield.
+     * @param _sendTo The address to receive the claimed yield.
      * @return assets The amount of assets (tokens) claimed as yield.
      */
-    function claimYield(address _to) external returns (uint256 assets) {
-        _checkZeroAddress(_to);
+    function claimYield(address _sendTo) external returns (uint256 assets) {
+        _checkZeroAddress(_sendTo);
 
-        uint256 yieldInSHares = yieldForInShares(msg.sender);
+        uint256 yieldInSHares = previewClaimYieldInShares(msg.sender);
 
         if (yieldInSHares == 0) revert NoYieldToClaim();
 
         receiverShares[msg.sender] -= yieldInSHares;
 
-        assets = vault.redeem(yieldInSHares, _to, address(this));
+        assets = vault.redeem(yieldInSHares, _sendTo, address(this));
 
-        emit ClaimYield(msg.sender, _to, yieldInSHares, assets);
+        emit ClaimYield(msg.sender, _sendTo, yieldInSHares, assets);
     }
 
     /**
@@ -170,7 +187,7 @@ contract YieldStreaming is StreamingBase {
      * @param _receiver The address of the receiver.
      * @return yield The calculated yield, 0 if there is no yield or yield is negative.
      */
-    function yieldFor(address _receiver) public view returns (uint256 yield) {
+    function previewClaimYield(address _receiver) public view returns (uint256 yield) {
         uint256 principal = receiverTotalPrincipal[_receiver];
         uint256 currentValue = _convertToAssets(receiverShares[_receiver]);
 
@@ -179,11 +196,30 @@ contract YieldStreaming is StreamingBase {
     }
 
     /**
+     * @dev Claims the yield from all streams for the sender and transfers it to the specified receiver address as shares.
+     * @param _sendTo The address to receive the claimed yield.
+     * @return shares The amount of shares claimed as yield.
+     */
+    function claimYieldInShares(address _sendTo) external returns (uint256 shares) {
+        _checkZeroAddress(_sendTo);
+
+        shares = previewClaimYieldInShares(msg.sender);
+
+        if (shares == 0) revert NoYieldToClaim();
+
+        receiverShares[msg.sender] -= shares;
+
+        emit ClaimYieldInShares(msg.sender, _sendTo, shares);
+
+        vault.safeTransfer(_sendTo, shares);
+    }
+
+    /**
      * @dev Calculates the yield for a given receiver as claimable shares.
      * @param _receiver The address of the receiver.
      * @return yieldInShares The calculated yield in shares, 0 if there is no yield or yield is negative.
      */
-    function yieldForInShares(address _receiver) public view returns (uint256 yieldInShares) {
+    function previewClaimYieldInShares(address _receiver) public view returns (uint256 yieldInShares) {
         uint256 principalInShares = _convertToShares(receiverTotalPrincipal[_receiver]);
         uint256 shares = receiverShares[_receiver];
 
@@ -192,7 +228,7 @@ contract YieldStreaming is StreamingBase {
     }
 
     /**
-     * @dev Calculates the debt for a given receiver. The receiver is in debt if the yield is on all his streams is negative.
+     * @dev Calculates the debt for a given receiver. The receiver is in debt all streams he is entitled to have negative yield in total.
      * @param _receiver The address of the receiver.
      * @return The calculated debt, 0 if there is no debt or yield is not negative.
      */

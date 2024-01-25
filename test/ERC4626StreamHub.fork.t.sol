@@ -60,18 +60,18 @@ contract ERC4626StreamHubForkTests is Test {
         assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
         assertEq(wethStreamHub.receiverShares(bob), shares, "receiverShares");
         assertEq(wethStreamHub.receiverPrincipal(bob, alice), scEth.convertToAssets(shares), "receiverPrincipal");
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
 
         _createProfitForVault(0.05e18, scEth); // 5%
 
         uint256 expectedYield = 0.05 ether;
 
-        assertApproxEqAbs(wethStreamHub.yieldFor(bob), expectedYield, 1, "yieldFor bob");
+        assertApproxEqAbs(wethStreamHub.previewClaimYield(bob), expectedYield, 1, "yieldFor bob");
 
         vm.prank(bob);
         wethStreamHub.claimYield(bob);
 
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
         assertEq(weth.balanceOf(bob), expectedYield, "bob's balance");
     }
 
@@ -93,32 +93,32 @@ contract ERC4626StreamHubForkTests is Test {
         assertEq(
             usdcStreamHub.receiverPrincipal(bob, alice), scUsdc.convertToAssets(bobsShares), "bob's receiverPrincipal"
         );
-        assertEq(usdcStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(usdcStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
         assertEq(usdcStreamHub.receiverShares(carol), carolsShares, "carol's receiverShares");
         assertEq(
             usdcStreamHub.receiverPrincipal(carol, alice),
             scUsdc.convertToAssets(carolsShares),
             "carol's receiverPrincipal"
         );
-        assertEq(usdcStreamHub.yieldFor(carol), 0, "yieldFor carol");
+        assertEq(usdcStreamHub.previewClaimYield(carol), 0, "yieldFor carol");
 
         _createProfitForVault(0.05e18, scUsdc); // 5%
 
         uint256 bobsExpectedYield = 50e6;
         uint256 carolsExpectedYield = 100e6;
 
-        assertApproxEqAbs(usdcStreamHub.yieldFor(bob), bobsExpectedYield, 1, "yieldFor bob");
-        assertApproxEqAbs(usdcStreamHub.yieldFor(carol), carolsExpectedYield, 1, "yieldFor carol");
+        assertApproxEqAbs(usdcStreamHub.previewClaimYield(bob), bobsExpectedYield, 1, "yieldFor bob");
+        assertApproxEqAbs(usdcStreamHub.previewClaimYield(carol), carolsExpectedYield, 1, "yieldFor carol");
 
         vm.prank(bob);
         usdcStreamHub.claimYield(bob);
 
-        assertEq(usdcStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(usdcStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
         assertEq(usdc.balanceOf(bob), bobsExpectedYield, "bob's balance");
 
         vm.prank(carol);
         usdcStreamHub.claimYield(carol);
-        assertEq(usdcStreamHub.yieldFor(carol), 0, "yieldFor carol");
+        assertEq(usdcStreamHub.previewClaimYield(carol), 0, "yieldFor carol");
         assertApproxEqAbs(usdc.balanceOf(carol), carolsExpectedYield, 1, "carol's balance");
 
         vm.prank(alice);
@@ -126,8 +126,8 @@ contract ERC4626StreamHubForkTests is Test {
 
         _createProfitForVault(0.05e18, scUsdc); // 5%
 
-        assertEq(usdcStreamHub.yieldFor(bob), 0, "yieldFor bob");
-        assertApproxEqAbs(usdcStreamHub.yieldFor(carol), carolsExpectedYield, 2, "yieldFor carol");
+        assertEq(usdcStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
+        assertApproxEqAbs(usdcStreamHub.previewClaimYield(carol), carolsExpectedYield, 2, "yieldFor carol");
     }
 
     function test_openYieldStream_topUp() public {
@@ -142,11 +142,11 @@ contract ERC4626StreamHubForkTests is Test {
 
         uint256 expectedYield = 0.05 ether;
 
-        assertApproxEqAbs(wethStreamHub.yieldFor(bob), expectedYield, 1, "yieldFor bob");
+        assertApproxEqAbs(wethStreamHub.previewClaimYield(bob), expectedYield, 1, "yieldFor bob");
 
         vm.prank(bob);
         wethStreamHub.claimYield(bob);
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
 
         uint256 sharesBeforeTopUp = wethStreamHub.receiverShares(bob);
 
@@ -157,7 +157,7 @@ contract ERC4626StreamHubForkTests is Test {
         vm.prank(alice);
         wethStreamHub.openYieldStream(bob, topUpShares);
 
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
         assertEq(wethStreamHub.receiverShares(bob), sharesBeforeTopUp + topUpShares, "receiverShares");
 
         uint256 profitPct = 0.1e18; // 10%
@@ -166,7 +166,7 @@ contract ERC4626StreamHubForkTests is Test {
 
         _createProfitForVault(int256(profitPct), scEth); // 10%
 
-        assertApproxEqAbs(wethStreamHub.yieldFor(bob), expectedYield, 1, "yieldFor bob");
+        assertApproxEqAbs(wethStreamHub.previewClaimYield(bob), expectedYield, 1, "yieldFor bob");
     }
 
     function test_openYieldStream_fromTwoAccountsToSameReceiver() public {
@@ -194,14 +194,14 @@ contract ERC4626StreamHubForkTests is Test {
 
         _createProfitForVault(int256(profitPct), scEth);
 
-        assertEq(wethStreamHub.yieldFor(alice), 0, "yieldFor alice");
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
-        assertApproxEqAbs(wethStreamHub.yieldFor(carol), expectedYield, 1, "yieldFor carol");
+        assertEq(wethStreamHub.previewClaimYield(alice), 0, "yieldFor alice");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
+        assertApproxEqAbs(wethStreamHub.previewClaimYield(carol), expectedYield, 1, "yieldFor carol");
 
         vm.prank(carol);
         wethStreamHub.claimYield(carol);
 
-        assertEq(wethStreamHub.yieldFor(carol), 0, "yieldFor carol");
+        assertEq(wethStreamHub.previewClaimYield(carol), 0, "yieldFor carol");
         assertApproxEqAbs(weth.balanceOf(carol), expectedYield, 1, "carol's balance");
     }
 
@@ -233,12 +233,12 @@ contract ERC4626StreamHubForkTests is Test {
         _createProfitForVault(0.1e18, scEth); // 10%
         expectedYield = 0.055 ether;
 
-        assertApproxEqAbs(wethStreamHub.yieldFor(bob), expectedYield, 1, "yieldFor bob");
+        assertApproxEqAbs(wethStreamHub.previewClaimYield(bob), expectedYield, 1, "yieldFor bob");
 
         vm.prank(bob);
         wethStreamHub.claimYield(bob);
 
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
         assertEq(weth.balanceOf(bob), expectedYield, "bob's balance");
     }
 
@@ -266,13 +266,13 @@ contract ERC4626StreamHubForkTests is Test {
         vm.prank(carol);
         wethStreamHub.claimYield(carol);
 
-        assertEq(wethStreamHub.yieldFor(carol), 0, "yieldFor carol");
+        assertEq(wethStreamHub.previewClaimYield(carol), 0, "yieldFor carol");
         assertApproxEqAbs(weth.balanceOf(carol), expectedYield, 1, "carol's balance");
 
         expectedYield = bobsDepositAmount.mulWadDown(profitPct);
         _createProfitForVault(int256(profitPct), scEth);
 
-        assertApproxEqAbs(wethStreamHub.yieldFor(carol), expectedYield, 1, "yieldFor carol");
+        assertApproxEqAbs(wethStreamHub.previewClaimYield(carol), expectedYield, 1, "yieldFor carol");
     }
 
     /// *** shares streaming tests *** ///
@@ -290,21 +290,21 @@ contract ERC4626StreamHubForkTests is Test {
         // assert yield stream is not created
         assertEq(wethStreamHub.receiverShares(bob), 0, "receiverShares");
         assertEq(wethStreamHub.receiverPrincipal(bob, alice), 0, "receiverPrincipal");
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
 
         _createProfitForVault(0.05e18, scEth); // 5%
-        assertApproxEqAbs(wethStreamHub.yieldFor(bob), 0, 1, "yieldFor bob");
+        assertApproxEqAbs(wethStreamHub.previewClaimYield(bob), 0, 1, "yieldFor bob");
 
         vm.warp(block.timestamp + duration / 2);
 
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
 
         // assert shares stream
         uint256 previewClaim = wethStreamHub.previewClaimShares(alice, bob);
         assertApproxEqRel(previewClaim, shares / 2, 0.00001e18, "previewClaimShares");
 
         vm.prank(bob);
-        wethStreamHub.claimShares(alice);
+        wethStreamHub.claimShares(alice, bob);
 
         assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
         assertEq(scEth.balanceOf(address(wethStreamHub)), shares - previewClaim, "totalShares");
@@ -322,7 +322,7 @@ contract ERC4626StreamHubForkTests is Test {
 
         vm.warp(block.timestamp + duration / 2);
 
-        assertEq(wethStreamHub.yieldFor(bob), 0, "yieldFor bob");
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
 
         // assert shares stream
         uint256 previewClaim = wethStreamHub.previewClaimShares(alice, bob);
@@ -361,8 +361,8 @@ contract ERC4626StreamHubForkTests is Test {
         vm.warp(block.timestamp + 1 days);
 
         vm.startPrank(carol);
-        wethStreamHub.claimShares(alice);
-        wethStreamHub.claimShares(bob);
+        wethStreamHub.claimShares(alice, carol);
+        wethStreamHub.claimShares(bob, carol);
         vm.stopPrank();
 
         assertEq(scEth.balanceOf(alice), 0, "alice's shares");
@@ -370,12 +370,12 @@ contract ERC4626StreamHubForkTests is Test {
         assertApproxEqRel(scEth.balanceOf(carol), shares1 + shares2 / 2, 0.00001e18, "carol's shares");
 
         vm.prank(alice);
-        wethStreamHub.claimShares(carol);
+        wethStreamHub.claimShares(carol, alice);
 
         vm.warp(block.timestamp + 2 days);
 
         vm.startPrank(carol);
-        wethStreamHub.claimShares(bob);
+        wethStreamHub.claimShares(bob, carol);
         wethStreamHub.closeSharesStream(alice);
         vm.stopPrank();
 
@@ -408,11 +408,11 @@ contract ERC4626StreamHubForkTests is Test {
         _createProfitForVault(0.05e18, scEth); // 5%
         vm.warp(block.timestamp + duration / 2);
 
-        uint256 expectedYield = wethStreamHub.yieldFor(bob);
+        uint256 expectedYield = wethStreamHub.previewClaimYield(bob);
         uint256 previewClaimShares = wethStreamHub.previewClaimShares(alice, bob);
 
         vm.startPrank(bob);
-        wethStreamHub.claimShares(alice);
+        wethStreamHub.claimShares(alice, bob);
         wethStreamHub.claimYield(bob);
         vm.stopPrank();
 

@@ -23,7 +23,8 @@ contract ERC4626StreamHubFactory {
      */
     function create(address _vault) public returns (address deployed) {
         bytes32 salt = keccak256(abi.encode(_vault));
-        bytes memory creationCode = abi.encodePacked(type(ERC4626StreamHub).creationCode, abi.encode(_vault));
+        bytes memory creationCode =
+            abi.encodePacked(type(ERC4626StreamHub).creationCode, abi.encode(msg.sender, _vault));
 
         deployed = CREATE3.deploy(salt, creationCode, 0);
 
