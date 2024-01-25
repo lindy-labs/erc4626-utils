@@ -191,13 +191,13 @@ contract SharesStreamingTest is Test {
 
     // *** #claimShares *** ///
 
-    function test_claim_failsIfStreamDoesNotExist() public {
+    function test_claimShares_failsIfStreamDoesNotExist() public {
         vm.expectRevert(StreamDoesNotExist.selector);
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, bob);
     }
 
-    function test_claim_whenStreamIsComplete() public {
+    function test_claimShares_worksWhenStreamIsComplete() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -205,7 +205,7 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 1 days + 1);
 
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, bob);
 
         assertEq(vault.balanceOf(address(sharesStreaming)), 0, "sharesStreaming balance");
         assertEq(vault.balanceOf(bob), shares, "receiver balance");
@@ -219,7 +219,7 @@ contract SharesStreamingTest is Test {
         assertEq(stream.lastClaimTime, 0, "lastClaimTime");
     }
 
-    function test_claim_whenStreamIsNotComplete() public {
+    function test_claimShares_worksWhenStreamIsNotComplete() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -227,14 +227,14 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        uint256 claimed = sharesStreaming.claimShares(alice);
+        uint256 claimed = sharesStreaming.claimShares(alice, bob);
 
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares / 2, 0.0001e18, "sharesStreaming balance");
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance");
         assertApproxEqRel(claimed, shares / 2, 0.0001e18, "claimed");
     }
 
-    function test_claim_twoConsecutiveClaims() public {
+    function test_claimShares_transfersSharesToSpecifiedAccount() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
 
@@ -242,25 +242,53 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        // send claimed shares to carol
+        uint256 claimed = sharesStreaming.claimShares(alice, carol);
+
+        assertEq(vault.balanceOf(bob), 0, "bob's balance");
+        assertEq(vault.balanceOf(alice), 0, "alice's balance");
+        assertApproxEqRel(vault.balanceOf(carol), claimed, 0.0001e18, "carol's balance");
+    }
+
+    function test_claimShares_failsIfTransferToAccountIsZeroAddress() public {
+        uint256 shares = _depositToVault(alice, 1e18);
+        _openStream(alice, bob, shares, 1 days);
+
+        // warp 12 hours so the stream is half claimable
+        vm.warp(block.timestamp + 12 hours);
+
+        vm.prank(bob);
+        vm.expectRevert(AddressZero.selector);
+        sharesStreaming.claimShares(alice, address(0));
+    }
+
+    function test_claimShares_twoConsecutiveClaims() public {
+        uint256 shares = _depositToVault(alice, 1e18);
+        _openStream(alice, bob, shares, 1 days);
+
+        // warp 12 hours so the stream is half claimable
+        vm.warp(block.timestamp + 12 hours);
+
+        vm.prank(bob);
+        sharesStreaming.claimShares(alice, bob);
 
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares / 2, 0.0001e18, "sharesStreaming balance");
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance");
 
         vm.expectRevert(SharesStreaming.NoSharesToClaim.selector);
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, bob);
 
         vm.warp(block.timestamp + 6 hours);
 
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, bob);
 
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares / 4, 0.0001e18, "sharesStreaming balance");
         assertApproxEqRel(vault.balanceOf(bob), shares * 3 / 4, 0.0001e18, "receiver balance");
     }
 
-    function test_claim_emitsEvent() public {
+    function test_claimShares_emitsEvent() public {
         uint256 shares = _depositToVault(alice, 1e18);
         uint256 duration = 1 days;
 
@@ -277,7 +305,7 @@ contract SharesStreamingTest is Test {
         emit ClaimShares(alice, bob, shares);
 
         vm.startPrank(bob);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, bob);
     }
 
     // *** #closeStream *** ///
@@ -346,7 +374,7 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        uint256 claimed = sharesStreaming.claimShares(alice);
+        uint256 claimed = sharesStreaming.claimShares(alice, bob);
 
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares / 2, 0.0001e18, "sharesStreaming balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -376,7 +404,7 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, bob);
 
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares / 2, 0.0001e18, "sharesStreaming balance 1");
         assertEq(vault.balanceOf(alice), 0, "alice's balance 1 ");
@@ -505,7 +533,7 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        uint256 firstClaim = sharesStreaming.claimShares(alice);
+        uint256 firstClaim = sharesStreaming.claimShares(alice, bob);
 
         shares = _depositToVault(alice, 1e18);
         vm.startPrank(alice);
@@ -522,7 +550,7 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        uint256 secondClaim = sharesStreaming.claimShares(alice);
+        uint256 secondClaim = sharesStreaming.claimShares(alice, bob);
 
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares, 0.0001e18, "sharesStreaming balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -548,7 +576,7 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 6 hours);
 
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, bob);
 
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares, 0.0001e18, "sharesStreaming balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -673,7 +701,7 @@ contract SharesStreamingTest is Test {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        sharesStreaming.claimShares(dave);
+        sharesStreaming.claimShares(dave, bob);
 
         assertApproxEqRel(
             vault.balanceOf(address(sharesStreaming)),
@@ -763,7 +791,7 @@ contract SharesStreamingTest is Test {
         );
 
         vm.prank(bob);
-        uint256 bobsClaim = sharesStreaming.claimShares(alice);
+        uint256 bobsClaim = sharesStreaming.claimShares(alice, bob);
 
         assertEq(vault.balanceOf(address(sharesStreaming)), shares - bobsClaim, "sharesStreaming balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -771,7 +799,7 @@ contract SharesStreamingTest is Test {
         assertEq(bobsClaim, bobsStreamShares, "bobsClaim");
 
         vm.prank(carol);
-        uint256 carolsClaim = sharesStreaming.claimShares(alice);
+        uint256 carolsClaim = sharesStreaming.claimShares(alice, carol);
 
         assertEq(vault.balanceOf(address(sharesStreaming)), shares - bobsClaim - carolsClaim, "sharesStreaming balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -819,9 +847,9 @@ contract SharesStreamingTest is Test {
 
         vm.startPrank(carol);
         vm.expectRevert(SharesStreaming.NoSharesToClaim.selector);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, carol);
         vm.expectRevert(SharesStreaming.NoSharesToClaim.selector);
-        sharesStreaming.claimShares(bob);
+        sharesStreaming.claimShares(bob, carol);
         vm.stopPrank();
 
         vm.warp(block.timestamp + 1 days + 1);
@@ -832,8 +860,8 @@ contract SharesStreamingTest is Test {
         );
 
         vm.startPrank(carol);
-        uint256 claimFromAlice = sharesStreaming.claimShares(alice);
-        uint256 claimFromBob = sharesStreaming.claimShares(bob);
+        uint256 claimFromAlice = sharesStreaming.claimShares(alice, carol);
+        uint256 claimFromBob = sharesStreaming.claimShares(bob, carol);
         vm.stopPrank();
 
         assertEq(
@@ -887,7 +915,7 @@ contract SharesStreamingTest is Test {
         console2.log("previewClaim", previewClaim);
 
         vm.prank(bob);
-        sharesStreaming.claimShares(alice);
+        sharesStreaming.claimShares(alice, bob);
 
         assertEq(vault.balanceOf(bob), previewClaim, "claimed shares");
         assertEq(sharesStreaming.previewClaimShares(alice, bob), 0, "previewClaim after claim");

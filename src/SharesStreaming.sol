@@ -188,31 +188,31 @@ contract SharesStreaming is StreamingBase {
     /**
      * @notice Claims shares from an open stream
      * @param _streamer The address of the streamer
-     * @return The number of shares claime
+     * @param _sendTo The address to send the claimed shares to
+     * @return claimedShares The number of shares claimed
      */
-    function claimShares(address _streamer) public returns (uint256) {
+    function claimShares(address _streamer, address _sendTo) public returns (uint256 claimedShares) {
+        _checkZeroAddress(_sendTo);
         uint256 streamId = getSharesStreamId(_streamer, msg.sender);
         Stream storage stream = sharesStreamById[streamId];
 
-        uint256 sharesToClaim = _previewClaimShares(stream);
+        claimedShares = _previewClaimShares(stream);
 
-        if (sharesToClaim == 0) revert NoSharesToClaim();
+        if (claimedShares == 0) revert NoSharesToClaim();
 
-        if (sharesToClaim == stream.shares) {
+        if (claimedShares == stream.shares) {
             delete sharesStreamById[streamId];
 
             // emit with 0s to indicate that the stream was closed during the claim
             emit CloseSharesStream(_streamer, msg.sender, 0, 0);
         } else {
             stream.lastClaimTime = uint128(block.timestamp);
-            stream.shares -= sharesToClaim;
+            stream.shares -= claimedShares;
         }
 
-        emit ClaimShares(_streamer, msg.sender, sharesToClaim);
+        emit ClaimShares(_streamer, msg.sender, claimedShares);
 
-        vault.safeTransfer(msg.sender, sharesToClaim);
-
-        return sharesToClaim;
+        vault.safeTransfer(_sendTo, claimedShares);
     }
 
     /**

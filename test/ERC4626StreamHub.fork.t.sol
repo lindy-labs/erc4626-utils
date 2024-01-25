@@ -304,7 +304,7 @@ contract ERC4626StreamHubForkTests is Test {
         assertApproxEqRel(previewClaim, shares / 2, 0.00001e18, "previewClaimShares");
 
         vm.prank(bob);
-        wethStreamHub.claimShares(alice);
+        wethStreamHub.claimShares(alice, bob);
 
         assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
         assertEq(scEth.balanceOf(address(wethStreamHub)), shares - previewClaim, "totalShares");
@@ -361,8 +361,8 @@ contract ERC4626StreamHubForkTests is Test {
         vm.warp(block.timestamp + 1 days);
 
         vm.startPrank(carol);
-        wethStreamHub.claimShares(alice);
-        wethStreamHub.claimShares(bob);
+        wethStreamHub.claimShares(alice, carol);
+        wethStreamHub.claimShares(bob, carol);
         vm.stopPrank();
 
         assertEq(scEth.balanceOf(alice), 0, "alice's shares");
@@ -370,12 +370,12 @@ contract ERC4626StreamHubForkTests is Test {
         assertApproxEqRel(scEth.balanceOf(carol), shares1 + shares2 / 2, 0.00001e18, "carol's shares");
 
         vm.prank(alice);
-        wethStreamHub.claimShares(carol);
+        wethStreamHub.claimShares(carol, alice);
 
         vm.warp(block.timestamp + 2 days);
 
         vm.startPrank(carol);
-        wethStreamHub.claimShares(bob);
+        wethStreamHub.claimShares(bob, carol);
         wethStreamHub.closeSharesStream(alice);
         vm.stopPrank();
 
@@ -412,7 +412,7 @@ contract ERC4626StreamHubForkTests is Test {
         uint256 previewClaimShares = wethStreamHub.previewClaimShares(alice, bob);
 
         vm.startPrank(bob);
-        wethStreamHub.claimShares(alice);
+        wethStreamHub.claimShares(alice, bob);
         wethStreamHub.claimYield(bob);
         vm.stopPrank();
 
