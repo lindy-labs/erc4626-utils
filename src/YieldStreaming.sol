@@ -65,7 +65,7 @@ contract YieldStreaming is StreamingBase, Ownable {
 
     /**
      * @dev Opens a yield stream for a specific receiver with a given number of shares. If stream already exists, it will be topped up.
-     * When opening a new stream, the sender is taking an immediate loss if the receiver is in debt. Acceptable loss is defined by the loss tolerance percentage configured for the contract.
+     * When opening a new stream for a receiver who is in debt, the sender is taking a small amount of immediate loss. Acceptable loss amount is defined by the loss tolerance percentage configuration field.
      * @param _receiver The address of the receiver.
      * @param _shares The number of shares to allocate for the yield stream.
      * @return principal The amount of assets (tokens) allocated to the stream.
@@ -165,11 +165,11 @@ contract YieldStreaming is StreamingBase, Ownable {
 
     /**
      * @dev Claims the yield from all streams for the sender and transfers it to the specified receiver address.
-     * @param _to The address to receive the claimed yield.
+     * @param _sendTo The address to receive the claimed yield.
      * @return assets The amount of assets (tokens) claimed as yield.
      */
-    function claimYield(address _to) external returns (uint256 assets) {
-        _checkZeroAddress(_to);
+    function claimYield(address _sendTo) external returns (uint256 assets) {
+        _checkZeroAddress(_sendTo);
 
         uint256 yieldInSHares = previewClaimYieldInShares(msg.sender);
 
@@ -177,9 +177,9 @@ contract YieldStreaming is StreamingBase, Ownable {
 
         receiverShares[msg.sender] -= yieldInSHares;
 
-        assets = vault.redeem(yieldInSHares, _to, address(this));
+        assets = vault.redeem(yieldInSHares, _sendTo, address(this));
 
-        emit ClaimYield(msg.sender, _to, yieldInSHares, assets);
+        emit ClaimYield(msg.sender, _sendTo, yieldInSHares, assets);
     }
 
     /**
@@ -196,6 +196,25 @@ contract YieldStreaming is StreamingBase, Ownable {
     }
 
     /**
+     * @dev Claims the yield from all streams for the sender and transfers it to the specified receiver address as shares.
+     * @param _sendTo The address to receive the claimed yield.
+     * @return shares The amount of shares claimed as yield.
+     */
+    function claimYieldInShares(address _sendTo) external returns (uint256 shares) {
+        _checkZeroAddress(_sendTo);
+
+        shares = previewClaimYieldInShares(msg.sender);
+
+        if (shares == 0) revert NoYieldToClaim();
+
+        receiverShares[msg.sender] -= shares;
+
+        emit ClaimYieldInShares(msg.sender, _sendTo, shares);
+
+        vault.transfer(_sendTo, shares);
+    }
+
+    /**
      * @dev Calculates the yield for a given receiver as claimable shares.
      * @param _receiver The address of the receiver.
      * @return yieldInShares The calculated yield in shares, 0 if there is no yield or yield is negative.
@@ -209,7 +228,7 @@ contract YieldStreaming is StreamingBase, Ownable {
     }
 
     /**
-     * @dev Calculates the debt for a given receiver. The receiver is in debt if the yield is on all his streams is negative.
+     * @dev Calculates the debt for a given receiver. The receiver is in debt all streams he is entitled to have negative yield in total.
      * @param _receiver The address of the receiver.
      * @return The calculated debt, 0 if there is no debt or yield is not negative.
      */

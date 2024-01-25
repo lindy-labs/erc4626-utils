@@ -20,6 +20,7 @@ contract YieldStreamingTests is Test {
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
+    event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
 
@@ -500,7 +501,8 @@ contract YieldStreamingTests is Test {
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield != 0");
+        // add 50% profit to vault
+        _createProfitForVault(0.5e18);
 
         vm.expectRevert(AddressZero.selector);
         vm.prank(bob);
@@ -537,10 +539,11 @@ contract YieldStreamingTests is Test {
     }
 
     function test_claimYield_claimsFromAllOpenedStreams() public {
-        uint256 amount = 1e18;
-        uint256 alicesShares = _depositToVault(alice, amount);
+        uint256 amount1 = 1e18;
+        uint256 alicesShares = _depositToVault(alice, amount1);
         _approveStreamHub(alice, alicesShares);
-        uint256 bobsShares = _depositToVault(bob, amount * 2);
+        uint256 amount2 = 3e18;
+        uint256 bobsShares = _depositToVault(bob, amount2);
         _approveStreamHub(bob, bobsShares);
 
         vm.prank(alice);
@@ -551,21 +554,150 @@ contract YieldStreamingTests is Test {
         // add 100% profit to vault
         _createProfitForVault(1e18);
 
-        address[] memory froms = new address[](2);
-        froms[0] = alice;
-        froms[1] = bob;
-        address[] memory tos = new address[](2);
-        tos[0] = carol;
-        tos[1] = carol;
-
-        assertEq(yieldStreaming.previewClaimYield(carol), amount * 3, "carol's yield");
+        assertEq(yieldStreaming.previewClaimYield(carol), amount1 + amount2, "carol's yield");
 
         vm.prank(carol);
         uint256 claimed = yieldStreaming.claimYield(carol);
 
-        assertEq(claimed, amount * 3, "claimed");
+        assertEq(claimed, amount1 + amount2, "claimed");
         assertEq(asset.balanceOf(carol), claimed, "carol's assets");
         assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
+    }
+
+    // *** #claimYieldInShares *** ///
+
+    function test_claimYieldInShares_toClaimerAccount() public {
+        uint256 shares = _depositToVault(alice, 1e18);
+        _approveStreamHub(alice, shares);
+
+        vm.prank(alice);
+        yieldStreaming.openYieldStream(bob, shares);
+
+        // add 100% profit to vault
+        _createProfitForVault(1e18);
+
+        vm.prank(bob);
+        uint256 claimed = yieldStreaming.claimYieldInShares(bob);
+
+        assertEq(vault.balanceOf(alice), 0, "alice's shares");
+        assertEq(asset.balanceOf(bob), 0, "bob's assets");
+        assertEq(vault.balanceOf(bob), shares / 2, "bob's shares");
+        assertEq(vault.balanceOf(bob), claimed, "claimed yield in shares");
+    }
+
+    function test_claimYieldInShares_toAnotherAccount() public {
+        uint256 amount = 1e18;
+        uint256 shares = _depositToVault(alice, amount);
+        _approveStreamHub(alice, shares);
+
+        vm.prank(alice);
+        yieldStreaming.openYieldStream(bob, shares);
+
+        // add 50% profit to vault
+        _createProfitForVault(0.5e18);
+
+        uint256 expectedYieldInShares = vault.convertToShares(amount / 2);
+
+        vm.prank(bob);
+        uint256 claimed = yieldStreaming.claimYieldInShares(carol);
+
+        assertEq(vault.balanceOf(alice), 0, "alice's shares");
+        assertEq(vault.balanceOf(bob), 0, "bob's shares");
+        assertApproxEqAbs(vault.balanceOf(carol), claimed, 1, "carol's shares");
+        assertApproxEqAbs(claimed, expectedYieldInShares, 1, "claimed yield in shares");
+    }
+
+    function test_claimYieldInShares_emitsEvent() public {
+        uint256 shares = _depositToVault(alice, 3e18);
+        _approveStreamHub(alice, shares);
+
+        vm.prank(alice);
+        yieldStreaming.openYieldStream(bob, shares);
+
+        // add 50% profit to vault
+        _createProfitForVault(0.5e18);
+
+        uint256 yield = yieldStreaming.previewClaimYieldInShares(bob);
+
+        vm.expectEmit(true, true, true, true);
+        emit ClaimYieldInShares(bob, carol, yield);
+
+        vm.prank(bob);
+        yieldStreaming.claimYieldInShares(carol);
+    }
+
+    function test_claimYieldInShares_revertsToAddressIs0() public {
+        uint256 shares = _depositToVault(alice, 1e18);
+        _approveStreamHub(alice, shares);
+
+        vm.prank(alice);
+        yieldStreaming.openYieldStream(bob, shares);
+
+        // add 50% profit to vault
+        _createProfitForVault(0.5e18);
+
+        vm.expectRevert(AddressZero.selector);
+        vm.prank(bob);
+        yieldStreaming.claimYieldInShares(address(0));
+    }
+
+    function test_claimYieldInShares_revertsIfNoYield() public {
+        uint256 shares = _depositToVault(alice, 1e18);
+        _approveStreamHub(alice, shares);
+
+        vm.prank(alice);
+        yieldStreaming.openYieldStream(bob, shares);
+
+        assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield != 0");
+
+        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
+        vm.prank(bob);
+        yieldStreaming.claimYieldInShares(bob);
+    }
+
+    function test_claimYieldInShares_revertsIfVaultMadeLosses() public {
+        uint256 shares = _depositToVault(alice, 1e18);
+        _approveStreamHub(alice, shares);
+
+        vm.prank(alice);
+        yieldStreaming.openYieldStream(bob, shares);
+
+        // create a 20% loss
+        _createProfitForVault(-0.2e18);
+
+        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
+        vm.prank(bob);
+        yieldStreaming.claimYield(bob);
+    }
+
+    function test_claimYieldInShares_claimsFromAllOpenedStreams() public {
+        uint256 amount1 = 1e18;
+        uint256 alicesShares = _depositToVault(alice, amount1);
+        _approveStreamHub(alice, alicesShares);
+        uint256 amount2 = 3e18;
+        uint256 bobsShares = _depositToVault(bob, amount2);
+        _approveStreamHub(bob, bobsShares);
+
+        vm.prank(alice);
+        yieldStreaming.openYieldStream(carol, alicesShares);
+        vm.prank(bob);
+        yieldStreaming.openYieldStream(carol, bobsShares);
+
+        // add 50% profit to vault
+        _createProfitForVault(0.5e18);
+
+        uint256 expectedYield = amount1 / 2 + amount2 / 2;
+        uint256 expectedYieldInShares = vault.convertToShares(expectedYield);
+
+        assertApproxEqAbs(yieldStreaming.previewClaimYieldInShares(carol), expectedYieldInShares, 1, "carol's yield");
+
+        vm.prank(carol);
+        uint256 claimed = yieldStreaming.claimYieldInShares(carol);
+
+        assertApproxEqAbs(claimed, expectedYieldInShares, 1, "claimed");
+        assertEq(vault.balanceOf(carol), claimed, "carol's shares");
+        assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
+        assertEq(asset.balanceOf(carol), 0, "carol's assets");
     }
 
     // *** #closeYieldStream *** ///
