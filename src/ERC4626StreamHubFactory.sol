@@ -2,29 +2,56 @@
 pragma solidity ^0.8.19;
 
 import {CREATE3} from "solmate/utils/CREATE3.sol";
+import {Ownable} from "openzeppelin-contracts/access/Ownable.sol";
+
 import {ERC4626StreamHub} from "./ERC4626StreamHub.sol";
 
 /**
  * @title ERC4626StreamHubFactory
  * @dev A contract for creating and managing ERC4626StreamHub instances.
  */
-contract ERC4626StreamHubFactory {
+contract ERC4626StreamHubFactory is Ownable {
     /// @dev The addresses of deployed ERC4626StreamHub instances.
     address[] public deployedAddresses;
     /// @dev The number of deployed ERC4626StreamHub instances.
     uint256 public deployedCount;
 
+    /// @dev The address of the owner of the deployed ERC4626StreamHub instances.
+    address public hubInstanceOwner;
+
     event Deployed(address indexed vault, address indexed deployed);
+    event HubInstanceOwnerUpdated(address indexed sender, address oldOwner, address newOwner);
+
+    constructor(address _hubInstanceOwner) Ownable(msg.sender) {
+        require(_hubInstanceOwner != address(0), "invalid hub instance owner");
+
+        hubInstanceOwner = _hubInstanceOwner;
+    }
+
+    /**
+     * @dev Sets the address of the owner of the deployed ERC4626StreamHub instances.
+     * @param _newHubInstanceOwner The address of the new owner of the deployed ERC4626StreamHub instances.
+     */
+    function setHubInstanceOwner(address _newHubInstanceOwner) public onlyOwner {
+        require(_newHubInstanceOwner != address(0), "invalid hub instance owner");
+
+        emit HubInstanceOwnerUpdated(msg.sender, hubInstanceOwner, _newHubInstanceOwner);
+
+        hubInstanceOwner = _newHubInstanceOwner;
+    }
 
     /**
      * @dev Creates a new ERC4626StreamHub instance.
      * @param _vault The address of the vault contract.
      * @return deployed The address of the deployed ERC4626StreamHub instance.
      */
-    function create(address _vault) public returns (address deployed) {
+    function create(address _vault) public onlyOwner returns (address deployed) {
+        require(!isDeployed(_vault), "already deployed");
+        require(_vault != address(0), "invalid vault address");
+
         bytes32 salt = keccak256(abi.encode(_vault));
         bytes memory creationCode =
-            abi.encodePacked(type(ERC4626StreamHub).creationCode, abi.encode(msg.sender, _vault));
+            abi.encodePacked(type(ERC4626StreamHub).creationCode, abi.encode(hubInstanceOwner, _vault));
 
         deployed = CREATE3.deploy(salt, creationCode, 0);
 
