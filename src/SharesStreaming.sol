@@ -14,7 +14,7 @@ import {StreamingBase} from "./common/StreamingBase.sol";
  * @title This contract facilitates the streaming of ERC4626 shares with unique stream IDs per streamer-receiver pair.
  * @notice This contract allows users to open, top up, claim from, and close share streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
  */
-contract SharesStreaming is StreamingBase {
+contract ERC20Streaming is StreamingBase {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC4626;
