@@ -23,17 +23,13 @@ contract ERC20Streaming is StreamingBase {
     error RatePerSecondDecreased();
     error NoTokensToClaim();
 
-    event OpenSharesStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 duration);
-    event ClaimShares(address indexed streamer, address indexed receiver, uint256 claimedShares);
-    event CloseSharesStream(
-        address indexed streamer, address indexed receiver, uint256 remainingShares, uint256 claimedShares
-    );
-    event TopUpSharesStream(
-        address indexed streamer, address indexed receiver, uint256 addedShares, uint256 addedDuration
-    );
+    event OpenStream(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
+    event Claim(address indexed streamer, address indexed receiver, uint256 claimed);
+    event CloseStream(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
+    event TopUpStream(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
 
     struct Stream {
-        uint256 shares;
+        uint256 amount;
         uint256 ratePerSecond;
         uint128 startTime;
         uint128 lastClaimTime;
@@ -81,26 +77,26 @@ contract ERC20Streaming is StreamingBase {
         uint256 streamId = getStreamId(msg.sender, _receiver);
         Stream storage stream = streamById[streamId];
 
-        if (stream.shares > 0) {
+        if (stream.amount > 0) {
             // If the stream already exists and isn't expired, revert
-            if (block.timestamp < stream.startTime + stream.shares.divWadUp(stream.ratePerSecond)) {
+            if (block.timestamp < stream.startTime + stream.amount.divWadUp(stream.ratePerSecond)) {
                 revert StreamAlreadyExists();
             }
 
             // if is expired, transfer unclaimed shares to receiver & emit close event
-            emit CloseSharesStream(msg.sender, _receiver, 0, stream.shares);
+            emit CloseStream(msg.sender, _receiver, 0, stream.amount);
 
-            IERC20(token).safeTransfer(_receiver, stream.shares);
+            IERC20(token).safeTransfer(_receiver, stream.amount);
         }
 
         uint256 ratePerSecond = _shares.divWadUp(_duration);
 
-        stream.shares = _shares;
+        stream.amount = _shares;
         stream.ratePerSecond = ratePerSecond;
         stream.startTime = uint128(block.timestamp);
         stream.lastClaimTime = uint128(block.timestamp);
 
-        emit OpenSharesStream(msg.sender, _receiver, stream.shares, _duration);
+        emit OpenStream(msg.sender, _receiver, stream.amount, _duration);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
     }
@@ -143,19 +139,19 @@ contract ERC20Streaming is StreamingBase {
 
         _checkNonExistingStream(stream);
 
-        uint256 timeRemaining = stream.shares.divWadDown(stream.ratePerSecond);
+        uint256 timeRemaining = stream.amount.divWadDown(stream.ratePerSecond);
 
         if (block.timestamp > stream.lastClaimTime + timeRemaining) revert StreamExpired();
 
-        stream.shares += _additionalShares;
+        stream.amount += _additionalShares;
 
-        uint256 newRatePerSecond = stream.shares.divWadUp(timeRemaining + _additionalDuration);
+        uint256 newRatePerSecond = stream.amount.divWadUp(timeRemaining + _additionalDuration);
 
         if (newRatePerSecond < stream.ratePerSecond) revert RatePerSecondDecreased();
 
         stream.ratePerSecond = newRatePerSecond;
 
-        emit TopUpSharesStream(msg.sender, _receiver, _additionalShares, _additionalDuration);
+        emit TopUpStream(msg.sender, _receiver, _additionalShares, _additionalDuration);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _additionalShares);
     }
@@ -200,17 +196,17 @@ contract ERC20Streaming is StreamingBase {
 
         if (claimedShares == 0) revert NoTokensToClaim();
 
-        if (claimedShares == stream.shares) {
+        if (claimedShares == stream.amount) {
             delete streamById[streamId];
 
             // emit with 0s to indicate that the stream was closed during the claim
-            emit CloseSharesStream(_streamer, msg.sender, 0, 0);
+            emit CloseStream(_streamer, msg.sender, 0, 0);
         } else {
             stream.lastClaimTime = uint128(block.timestamp);
-            stream.shares -= claimedShares;
+            stream.amount -= claimedShares;
         }
 
-        emit ClaimShares(_streamer, msg.sender, claimedShares);
+        emit Claim(_streamer, msg.sender, claimedShares);
 
         IERC20(token).safeTransfer(_sendTo, claimedShares);
     }
@@ -232,7 +228,7 @@ contract ERC20Streaming is StreamingBase {
         claimableShares = elapsedTime.mulWadUp(_stream.ratePerSecond);
 
         // Cap the shares to claim to the total allocated shares
-        if (claimableShares > _stream.shares) claimableShares = _stream.shares;
+        if (claimableShares > _stream.amount) claimableShares = _stream.amount;
     }
 
     /**
@@ -250,7 +246,7 @@ contract ERC20Streaming is StreamingBase {
 
         delete streamById[streamId];
 
-        emit CloseSharesStream(msg.sender, _receiver, remainingShares, streamedShares);
+        emit CloseStream(msg.sender, _receiver, remainingShares, streamedShares);
 
         if (remainingShares != 0) IERC20(token).safeTransfer(msg.sender, remainingShares);
 
@@ -284,9 +280,9 @@ contract ERC20Streaming is StreamingBase {
         uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
         streamedShares = elapsedTime.mulWadUp(_stream.ratePerSecond);
 
-        if (streamedShares > _stream.shares) streamedShares = _stream.shares;
+        if (streamedShares > _stream.amount) streamedShares = _stream.amount;
 
-        remainingShares = _stream.shares - streamedShares;
+        remainingShares = _stream.amount - streamedShares;
 
         return (remainingShares, streamedShares);
     }
@@ -296,6 +292,6 @@ contract ERC20Streaming is StreamingBase {
     }
 
     function _checkNonExistingStream(Stream memory _stream) internal pure {
-        if (_stream.shares == 0) revert StreamDoesNotExist();
+        if (_stream.amount == 0) revert StreamDoesNotExist();
     }
 }
