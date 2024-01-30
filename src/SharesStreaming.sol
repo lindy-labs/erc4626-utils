@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
+import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
@@ -15,6 +16,7 @@ import {StreamingBase} from "./common/StreamingBase.sol";
  */
 contract SharesStreaming is StreamingBase {
     using FixedPointMathLib for uint256;
+    using SafeERC20 for IERC20;
     using SafeERC20 for IERC4626;
 
     error ZeroDuration();
@@ -44,7 +46,7 @@ contract SharesStreaming is StreamingBase {
     constructor(IERC4626 _vault) {
         _checkZeroAddress(address(_vault));
 
-        vault = _vault;
+        vault = address(_vault);
     }
 
     /**
@@ -75,7 +77,7 @@ contract SharesStreaming is StreamingBase {
     function openSharesStream(address _receiver, uint256 _shares, uint256 _duration) public {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
-        _checkShares(msg.sender, _shares);
+        _checkBalance(msg.sender, _shares);
         _checkZeroDuration(_duration);
 
         uint256 streamId = getSharesStreamId(msg.sender, _receiver);
@@ -90,7 +92,7 @@ contract SharesStreaming is StreamingBase {
             // if is expired, transfer unclaimed shares to receiver & emit close event
             emit CloseSharesStream(msg.sender, _receiver, 0, stream.shares);
 
-            vault.safeTransfer(_receiver, stream.shares);
+            IERC20(vault).safeTransfer(_receiver, stream.shares);
         }
 
         uint256 ratePerSecond = _shares.divWadUp(_duration);
@@ -102,7 +104,7 @@ contract SharesStreaming is StreamingBase {
 
         emit OpenSharesStream(msg.sender, _receiver, stream.shares, _duration);
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
+        IERC20(vault).safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     /**
@@ -137,7 +139,7 @@ contract SharesStreaming is StreamingBase {
      */
     function topUpSharesStream(address _receiver, uint256 _additionalShares, uint256 _additionalDuration) public {
         _checkZeroAddress(_receiver);
-        _checkShares(msg.sender, _additionalShares);
+        _checkBalance(msg.sender, _additionalShares);
 
         Stream storage stream = sharesStreamById[getSharesStreamId(msg.sender, _receiver)];
 
@@ -157,7 +159,7 @@ contract SharesStreaming is StreamingBase {
 
         emit TopUpSharesStream(msg.sender, _receiver, _additionalShares, _additionalDuration);
 
-        vault.safeTransferFrom(msg.sender, address(this), _additionalShares);
+        IERC20(vault).safeTransferFrom(msg.sender, address(this), _additionalShares);
     }
 
     /**
@@ -212,7 +214,7 @@ contract SharesStreaming is StreamingBase {
 
         emit ClaimShares(_streamer, msg.sender, claimedShares);
 
-        vault.safeTransfer(_sendTo, claimedShares);
+        IERC20(vault).safeTransfer(_sendTo, claimedShares);
     }
 
     /**
@@ -252,9 +254,9 @@ contract SharesStreaming is StreamingBase {
 
         emit CloseSharesStream(msg.sender, _receiver, remainingShares, streamedShares);
 
-        if (remainingShares != 0) vault.safeTransfer(msg.sender, remainingShares);
+        if (remainingShares != 0) IERC20(vault).safeTransfer(msg.sender, remainingShares);
 
-        if (streamedShares != 0) vault.safeTransfer(_receiver, streamedShares);
+        if (streamedShares != 0) IERC20(vault).safeTransfer(_receiver, streamedShares);
     }
 
     /**
