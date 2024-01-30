@@ -9,7 +9,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import "../src/common/Errors.sol";
-import {ERC20Streaming} from "../src/SharesStreaming.sol";
+import {ERC20Streaming} from "../src/ERC20Streaming.sol";
 
 contract SharesStreamingTest is Test {
     using FixedPointMathLib for uint256;
@@ -59,8 +59,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(bob), 0);
         assertEq(vault.balanceOf(address(sharesStreaming)), shares);
 
-        ERC20Streaming.Stream memory stream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, bob));
+        ERC20Streaming.Stream memory stream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, bob));
         assertEq(stream.shares, shares, "stream shares");
         assertEq(stream.ratePerSecond, shares.divWadUp(duration), "stream rate per second");
         assertEq(stream.startTime, block.timestamp, "stream start time");
@@ -145,7 +144,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(ZeroShares.selector);
+        vm.expectRevert(AmountZero.selector);
         sharesStreaming.openSharesStream(bob, 0, 1 days);
     }
 
@@ -211,8 +210,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(bob), shares, "receiver balance");
 
         // assert stream is deleted
-        ERC20Streaming.Stream memory stream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, bob));
+        ERC20Streaming.Stream memory stream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, bob));
         assertEq(stream.shares, 0, "totalShares");
         assertEq(stream.ratePerSecond, 0, "ratePerSecond");
         assertEq(stream.startTime, 0, "startTime");
@@ -275,7 +273,7 @@ contract SharesStreamingTest is Test {
         assertApproxEqRel(vault.balanceOf(address(sharesStreaming)), shares / 2, 0.0001e18, "sharesStreaming balance");
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance");
 
-        vm.expectRevert(ERC20Streaming.NoSharesToClaim.selector);
+        vm.expectRevert(ERC20Streaming.NoTokensToClaim.selector);
         vm.prank(bob);
         sharesStreaming.claimShares(alice, bob);
 
@@ -331,8 +329,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(bob), shares, "receiver balance");
 
         // assert stream is deleted
-        ERC20Streaming.Stream memory stream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, bob));
+        ERC20Streaming.Stream memory stream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, bob));
         assertEq(stream.shares, 0, "totalShares");
         assertEq(stream.ratePerSecond, 0, "ratePerSecond");
         assertEq(stream.startTime, 0, "startTime");
@@ -425,8 +422,8 @@ contract SharesStreamingTest is Test {
         uint256 duration = 1 days;
         _openStream(alice, bob, shares, duration);
 
-        uint256 streamId = sharesStreaming.getSharesStreamId(alice, bob);
-        ERC20Streaming.Stream memory stream = sharesStreaming.getSharesStream(streamId);
+        uint256 streamId = sharesStreaming.getStreamId(alice, bob);
+        ERC20Streaming.Stream memory stream = sharesStreaming.getStream(streamId);
 
         vm.warp(block.timestamp + 12 hours);
 
@@ -440,7 +437,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
         assertEq(vault.balanceOf(bob), 0, "receiver balance");
 
-        ERC20Streaming.Stream memory updatedStream = sharesStreaming.getSharesStream(streamId);
+        ERC20Streaming.Stream memory updatedStream = sharesStreaming.getStream(streamId);
 
         assertEq(updatedStream.shares, shares + additionalShares, "totalShares");
         assertApproxEqRel(
@@ -476,7 +473,7 @@ contract SharesStreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(sharesStreaming), shares);
 
-        vm.expectRevert(ZeroShares.selector);
+        vm.expectRevert(AmountZero.selector);
         sharesStreaming.topUpSharesStream(bob, 0, 1 days);
     }
 
@@ -639,8 +636,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
         assertEq(vault.balanceOf(address(sharesStreaming)), shares, "sharesStreaming's balance");
 
-        ERC20Streaming.Stream memory stream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(dave, alice));
+        ERC20Streaming.Stream memory stream = sharesStreaming.getStream(sharesStreaming.getStreamId(dave, alice));
         assertEq(stream.shares, shares, "totalShares");
         assertEq(stream.ratePerSecond, shares.divWadUp(duration), "ratePerSecond");
         assertEq(stream.startTime, block.timestamp, "startTime");
@@ -687,8 +683,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(dave), 0, "dave's balance");
         assertEq(vault.balanceOf(bob), 0, "receiver balance");
 
-        ERC20Streaming.Stream memory updatedStream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(dave, bob));
+        ERC20Streaming.Stream memory updatedStream = sharesStreaming.getStream(sharesStreaming.getStreamId(dave, bob));
         assertEq(updatedStream.shares, shares + additionalShares, "totalShares");
         assertApproxEqRel(
             updatedStream.ratePerSecond,
@@ -730,10 +725,9 @@ contract SharesStreamingTest is Test {
         vm.stopPrank();
 
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
-        ERC20Streaming.Stream memory stream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, bob));
+        ERC20Streaming.Stream memory stream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, bob));
         assertEq(stream.shares, shares / 2, "bob's stream shares");
-        stream = sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, carol));
+        stream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, carol));
         assertEq(stream.shares, shares / 2, "carol's stream shares");
     }
 
@@ -761,8 +755,7 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(address(sharesStreaming)), shares);
 
         assertEq(sharesStreaming.previewClaimShares(alice, bob), 0, "previewClaim(alice, bob)");
-        ERC20Streaming.Stream memory bobsStream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, bob));
+        ERC20Streaming.Stream memory bobsStream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, bob));
         assertEq(bobsStream.shares, bobsStreamShares, "bob's stream shares");
         assertEq(
             bobsStream.ratePerSecond, bobsStreamShares.divWadUp(bobsStreamDuration), "bob's stream rate per second"
@@ -771,8 +764,7 @@ contract SharesStreamingTest is Test {
         assertEq(bobsStream.lastClaimTime, block.timestamp, "bob's stream last claim time");
 
         assertEq(sharesStreaming.previewClaimShares(alice, carol), 0, "previewClaim(alice, carol)");
-        ERC20Streaming.Stream memory carolsStream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, carol));
+        ERC20Streaming.Stream memory carolsStream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, carol));
         assertEq(carolsStream.shares, carolsStreamShares, "carol's stream shares");
         assertEq(
             carolsStream.ratePerSecond,
@@ -808,14 +800,13 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(carol), carolsClaim, "carol's balance");
         assertApproxEqRel(carolsClaim, carolsStreamShares / 2, 0.0001e18, "claimed");
 
-        ERC20Streaming.Stream memory stream =
-            sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, bob));
+        ERC20Streaming.Stream memory stream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, bob));
         assertEq(stream.shares, 0, "bob's stream not deleted - totalShares");
         assertEq(stream.ratePerSecond, 0, "bob's stream not deleted - ratePerSecond");
         assertEq(stream.startTime, 0, "bob's stream not deleted - startTime");
         assertEq(stream.lastClaimTime, 0, "bob's stream not deleted - lastClaimTime");
 
-        stream = sharesStreaming.getSharesStream(sharesStreaming.getSharesStreamId(alice, carol));
+        stream = sharesStreaming.getStream(sharesStreaming.getStreamId(alice, carol));
         assertEq(stream.shares, carolsStreamShares - carolsClaim, "carol's stream - totalShares");
         assertEq(
             stream.ratePerSecond, carolsStreamShares.divWadUp(carolsStreamDuration), "carol's stream - ratePerSecond"
@@ -848,9 +839,9 @@ contract SharesStreamingTest is Test {
         assertEq(vault.balanceOf(carol), 0);
 
         vm.startPrank(carol);
-        vm.expectRevert(ERC20Streaming.NoSharesToClaim.selector);
+        vm.expectRevert(ERC20Streaming.NoTokensToClaim.selector);
         sharesStreaming.claimShares(alice, carol);
-        vm.expectRevert(ERC20Streaming.NoSharesToClaim.selector);
+        vm.expectRevert(ERC20Streaming.NoTokensToClaim.selector);
         sharesStreaming.claimShares(bob, carol);
         vm.stopPrank();
 

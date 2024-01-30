@@ -50,7 +50,7 @@ contract YieldStreaming is StreamingBase, Ownable {
     constructor(address _owner, IERC4626 _vault) Ownable(_owner) {
         _checkZeroAddress(address(_vault));
 
-        vault = address(_vault);
+        token = address(_vault);
     }
 
     /**
@@ -87,7 +87,7 @@ contract YieldStreaming is StreamingBase, Ownable {
 
         emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
 
-        IERC20(vault).safeTransferFrom(msg.sender, address(this), _shares);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     /**
@@ -109,7 +109,7 @@ contract YieldStreaming is StreamingBase, Ownable {
         bytes32 r,
         bytes32 s
     ) public returns (uint256 principal) {
-        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         principal = openYieldStream(_receiver, _shares);
     }
@@ -133,7 +133,7 @@ contract YieldStreaming is StreamingBase, Ownable {
 
         emit CloseYieldStream(msg.sender, _receiver, shares, principal);
 
-        IERC20(vault).safeTransfer(msg.sender, shares);
+        IERC20(token).safeTransfer(msg.sender, shares);
     }
 
     /**
@@ -173,15 +173,15 @@ contract YieldStreaming is StreamingBase, Ownable {
     function claimYield(address _sendTo) external returns (uint256 assets) {
         _checkZeroAddress(_sendTo);
 
-        uint256 yieldInSHares = previewClaimYieldInShares(msg.sender);
+        uint256 yieldInShares = previewClaimYieldInShares(msg.sender);
 
-        if (yieldInSHares == 0) revert NoYieldToClaim();
+        if (yieldInShares == 0) revert NoYieldToClaim();
 
-        receiverShares[msg.sender] -= yieldInSHares;
+        receiverShares[msg.sender] -= yieldInShares;
 
-        assets = IERC4626(vault).redeem(yieldInSHares, _sendTo, address(this));
+        assets = IERC4626(token).redeem(yieldInShares, _sendTo, address(this));
 
-        emit ClaimYield(msg.sender, _sendTo, yieldInSHares, assets);
+        emit ClaimYield(msg.sender, _sendTo, yieldInShares, assets);
     }
 
     /**
@@ -213,7 +213,7 @@ contract YieldStreaming is StreamingBase, Ownable {
 
         emit ClaimYieldInShares(msg.sender, _sendTo, shares);
 
-        IERC20(vault).safeTransfer(_sendTo, shares);
+        IERC20(token).safeTransfer(_sendTo, shares);
     }
 
     /**
@@ -260,10 +260,10 @@ contract YieldStreaming is StreamingBase, Ownable {
     }
 
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {
-        return IERC4626(vault).convertToAssets(_shares);
+        return IERC4626(token).convertToAssets(_shares);
     }
 
     function _convertToShares(uint256 _assets) internal view returns (uint256) {
-        return IERC4626(vault).convertToShares(_assets);
+        return IERC4626(token).convertToShares(_assets);
     }
 }

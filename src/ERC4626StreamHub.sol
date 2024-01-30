@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 
 import {YieldStreaming} from "./YieldStreaming.sol";
-import {ERC20Streaming} from "./SharesStreaming.sol";
+import {ERC20Streaming} from "./ERC20Streaming.sol";
 
 /**
  * @title ERC4626StreamHub

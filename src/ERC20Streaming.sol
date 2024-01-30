@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
-import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
@@ -11,19 +10,18 @@ import "./common/Errors.sol";
 import {StreamingBase} from "./common/StreamingBase.sol";
 
 /**
- * @title This contract facilitates the streaming of ERC4626 shares with unique stream IDs per streamer-receiver pair.
- * @notice This contract allows users to open, top up, claim from, and close share streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
+ * @title This contract facilitates the streaming of ERC20 tokens with unique stream IDs per streamer-receiver pair.
+ * @notice This contract allows users to open, top up, claim from, and close streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
  */
 contract ERC20Streaming is StreamingBase {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC20;
-    using SafeERC20 for IERC4626;
 
     error ZeroDuration();
     error StreamAlreadyExists();
     error StreamExpired();
     error RatePerSecondDecreased();
-    error NoSharesToClaim();
+    error NoTokensToClaim();
 
     event OpenSharesStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 duration);
     event ClaimShares(address indexed streamer, address indexed receiver, uint256 claimedShares);
@@ -41,12 +39,12 @@ contract ERC20Streaming is StreamingBase {
         uint128 lastClaimTime;
     }
 
-    mapping(uint256 => Stream) public sharesStreamById;
+    mapping(uint256 => Stream) public streamById;
 
-    constructor(IERC4626 _vault) {
-        _checkZeroAddress(address(_vault));
+    constructor(IERC20 _token) {
+        _checkZeroAddress(address(_token));
 
-        vault = address(_vault);
+        token = address(_token);
     }
 
     /**
@@ -55,7 +53,7 @@ contract ERC20Streaming is StreamingBase {
      * @param _receiver The address of the receiver
      * @return The calculated stream ID
      */
-    function getSharesStreamId(address _streamer, address _receiver) public pure returns (uint256) {
+    function getStreamId(address _streamer, address _receiver) public pure returns (uint256) {
         return uint256(keccak256(abi.encodePacked(_streamer, _receiver)));
     }
 
@@ -64,8 +62,8 @@ contract ERC20Streaming is StreamingBase {
      * @param _streamId The ID of the stream
      * @return The Stream struct containing all the stream information
      */
-    function getSharesStream(uint256 _streamId) public view returns (Stream memory) {
-        return sharesStreamById[_streamId];
+    function getStream(uint256 _streamId) public view returns (Stream memory) {
+        return streamById[_streamId];
     }
 
     /**
@@ -80,8 +78,8 @@ contract ERC20Streaming is StreamingBase {
         _checkBalance(msg.sender, _shares);
         _checkZeroDuration(_duration);
 
-        uint256 streamId = getSharesStreamId(msg.sender, _receiver);
-        Stream storage stream = sharesStreamById[streamId];
+        uint256 streamId = getStreamId(msg.sender, _receiver);
+        Stream storage stream = streamById[streamId];
 
         if (stream.shares > 0) {
             // If the stream already exists and isn't expired, revert
@@ -92,7 +90,7 @@ contract ERC20Streaming is StreamingBase {
             // if is expired, transfer unclaimed shares to receiver & emit close event
             emit CloseSharesStream(msg.sender, _receiver, 0, stream.shares);
 
-            IERC20(vault).safeTransfer(_receiver, stream.shares);
+            IERC20(token).safeTransfer(_receiver, stream.shares);
         }
 
         uint256 ratePerSecond = _shares.divWadUp(_duration);
@@ -104,7 +102,7 @@ contract ERC20Streaming is StreamingBase {
 
         emit OpenSharesStream(msg.sender, _receiver, stream.shares, _duration);
 
-        IERC20(vault).safeTransferFrom(msg.sender, address(this), _shares);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     /**
@@ -126,7 +124,7 @@ contract ERC20Streaming is StreamingBase {
         bytes32 _r,
         bytes32 _s
     ) external {
-        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
+        IERC2612(address(token)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
 
         openSharesStream(_receiver, _shares, _duration);
     }
@@ -141,7 +139,7 @@ contract ERC20Streaming is StreamingBase {
         _checkZeroAddress(_receiver);
         _checkBalance(msg.sender, _additionalShares);
 
-        Stream storage stream = sharesStreamById[getSharesStreamId(msg.sender, _receiver)];
+        Stream storage stream = streamById[getStreamId(msg.sender, _receiver)];
 
         _checkNonExistingStream(stream);
 
@@ -159,7 +157,7 @@ contract ERC20Streaming is StreamingBase {
 
         emit TopUpSharesStream(msg.sender, _receiver, _additionalShares, _additionalDuration);
 
-        IERC20(vault).safeTransferFrom(msg.sender, address(this), _additionalShares);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), _additionalShares);
     }
 
     /**
@@ -182,7 +180,7 @@ contract ERC20Streaming is StreamingBase {
         bytes32 _r,
         bytes32 _s
     ) external {
-        IERC2612(address(vault)).permit(msg.sender, address(this), _additionalShares, _deadline, _v, _r, _s);
+        IERC2612(address(token)).permit(msg.sender, address(this), _additionalShares, _deadline, _v, _r, _s);
 
         topUpSharesStream(_receiver, _additionalShares, _additionalDuration);
     }
@@ -195,15 +193,15 @@ contract ERC20Streaming is StreamingBase {
      */
     function claimShares(address _streamer, address _sendTo) public returns (uint256 claimedShares) {
         _checkZeroAddress(_sendTo);
-        uint256 streamId = getSharesStreamId(_streamer, msg.sender);
-        Stream storage stream = sharesStreamById[streamId];
+        uint256 streamId = getStreamId(_streamer, msg.sender);
+        Stream storage stream = streamById[streamId];
 
         claimedShares = _previewClaimShares(stream);
 
-        if (claimedShares == 0) revert NoSharesToClaim();
+        if (claimedShares == 0) revert NoTokensToClaim();
 
         if (claimedShares == stream.shares) {
-            delete sharesStreamById[streamId];
+            delete streamById[streamId];
 
             // emit with 0s to indicate that the stream was closed during the claim
             emit CloseSharesStream(_streamer, msg.sender, 0, 0);
@@ -214,7 +212,7 @@ contract ERC20Streaming is StreamingBase {
 
         emit ClaimShares(_streamer, msg.sender, claimedShares);
 
-        IERC20(vault).safeTransfer(_sendTo, claimedShares);
+        IERC20(token).safeTransfer(_sendTo, claimedShares);
     }
 
     /**
@@ -224,7 +222,7 @@ contract ERC20Streaming is StreamingBase {
      * @return The number of shares that can be claimed
      */
     function previewClaimShares(address _streamer, address _receiver) public view returns (uint256) {
-        return _previewClaimShares(sharesStreamById[getSharesStreamId(_streamer, _receiver)]);
+        return _previewClaimShares(streamById[getStreamId(_streamer, _receiver)]);
     }
 
     function _previewClaimShares(Stream memory _stream) internal view returns (uint256 claimableShares) {
@@ -245,18 +243,18 @@ contract ERC20Streaming is StreamingBase {
      * @return streamedShares The number of shares transferred to the receiver
      */
     function closeSharesStream(address _receiver) external returns (uint256 remainingShares, uint256 streamedShares) {
-        uint256 streamId = getSharesStreamId(msg.sender, _receiver);
-        Stream memory stream = sharesStreamById[streamId];
+        uint256 streamId = getStreamId(msg.sender, _receiver);
+        Stream memory stream = streamById[streamId];
 
         (remainingShares, streamedShares) = _previewCloseSharesStream(stream);
 
-        delete sharesStreamById[streamId];
+        delete streamById[streamId];
 
         emit CloseSharesStream(msg.sender, _receiver, remainingShares, streamedShares);
 
-        if (remainingShares != 0) IERC20(vault).safeTransfer(msg.sender, remainingShares);
+        if (remainingShares != 0) IERC20(token).safeTransfer(msg.sender, remainingShares);
 
-        if (streamedShares != 0) IERC20(vault).safeTransfer(_receiver, streamedShares);
+        if (streamedShares != 0) IERC20(token).safeTransfer(_receiver, streamedShares);
     }
 
     /**
@@ -271,7 +269,7 @@ contract ERC20Streaming is StreamingBase {
         view
         returns (uint256 remainingShares, uint256 streamedShares)
     {
-        Stream memory stream = sharesStreamById[getSharesStreamId(_streamer, _receiver)];
+        Stream memory stream = streamById[getStreamId(_streamer, _receiver)];
 
         return _previewCloseSharesStream(stream);
     }

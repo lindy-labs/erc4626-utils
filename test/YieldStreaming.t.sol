@@ -112,7 +112,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        vm.expectRevert(ZeroShares.selector);
+        vm.expectRevert(AmountZero.selector);
         yieldStreaming.openYieldStream(bob, 0);
     }
 
