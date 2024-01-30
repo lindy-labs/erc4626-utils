@@ -18,7 +18,6 @@ abstract contract StreamingBase is Multicall {
     }
 
     function _checkBalance(address _streamer, uint256 _amount) internal view {
-        // TODO: fix
         if (_amount == 0) revert AmountZero();
 
         if (IERC20(token).allowance(_streamer, address(this)) < _amount) revert TransferExceedsAllowance();
