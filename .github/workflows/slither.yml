@@ -14,19 +14,19 @@ jobs:
       contents: read
       security-events: write
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v3
+        with:
+          python-version: "3.x"
 
-    - name: Run Slither
-      uses: crytic/slither-action@v0.3.0
-      continue-on-error: true
-      id: slither
-      with:
-        sarif: results.sarif
+      - name: Run Slither
+        uses: crytic/slither-action@v0.3.0
+        continue-on-error: true
+        id: slither
+        with:
+          sarif: results.sarif
 
-    - name: Upload SARIF file
-      uses: github/codeql-action/upload-sarif@v2
-      with:
-        sarif_file: ${{ steps.slither.outputs.sarif }}
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.slither.outputs.sarif }}
