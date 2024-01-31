@@ -293,7 +293,7 @@ contract ERC4626StreamHubForkTests is Test {
         vm.prank(alice);
         wethStreamHub.openStream(bob, shares, duration);
 
-        assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
+        assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "contract shares");
 
         // assert yield stream is not created
         assertEq(wethStreamHub.receiverShares(bob), 0, "receiverShares");
@@ -307,7 +307,7 @@ contract ERC4626StreamHubForkTests is Test {
 
         assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
 
-        // assert shares stream
+        // assert token stream
         uint256 previewClaim = wethStreamHub.previewClaim(alice, bob);
         assertApproxEqRel(previewClaim, shares / 2, 0.00001e18, "previewClaimShares");
 
@@ -315,7 +315,7 @@ contract ERC4626StreamHubForkTests is Test {
         wethStreamHub.claim(alice, bob);
 
         assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
-        assertEq(scEth.balanceOf(address(wethStreamHub)), shares - previewClaim, "totalShares");
+        assertEq(scEth.balanceOf(address(wethStreamHub)), shares - previewClaim, "contract shares");
     }
 
     function test_closeStream() public {
@@ -326,7 +326,7 @@ contract ERC4626StreamHubForkTests is Test {
         vm.prank(alice);
         wethStreamHub.openStream(bob, shares, duration);
 
-        assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
+        assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "contract shares");
 
         vm.warp(block.timestamp + duration / 2);
 
@@ -341,10 +341,10 @@ contract ERC4626StreamHubForkTests is Test {
 
         assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
         assertEq(scEth.balanceOf(alice), shares - previewClaim, "alice's shares");
-        assertEq(scEth.balanceOf(address(wethStreamHub)), 0, "totalShares");
+        assertEq(scEth.balanceOf(address(wethStreamHub)), 0, "contract shares");
     }
 
-    function test_openMultipleShareStreams() public {
+    function test_openMultipleTokenStreams() public {
         uint256 shares1 = _deposit(scEth, alice, 1 ether);
         uint256 duration1 = 2 days;
         uint256 shares2 = _deposit(scEth, bob, 2 ether);
