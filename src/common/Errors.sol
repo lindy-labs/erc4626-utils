@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 error TransferExceedsAllowance();
-error ZeroShares();
+error AmountZero();
 error AddressZero();
 error CannotOpenStreamToSelf();
 error StreamDoesNotExist();

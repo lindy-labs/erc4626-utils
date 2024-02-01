@@ -11,16 +11,16 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import "./Errors.sol";
 
 abstract contract StreamingBase is Multicall {
-    IERC4626 public immutable vault;
+    address public immutable token;
 
     function _checkZeroAddress(address _receiver) internal pure {
         if (_receiver == address(0)) revert AddressZero();
     }
 
-    function _checkShares(address _streamer, uint256 _shares) internal view {
-        if (_shares == 0) revert ZeroShares();
+    function _checkBalance(address _streamer, uint256 _amount) internal view {
+        if (_amount == 0) revert AmountZero();
 
-        if (vault.allowance(_streamer, address(this)) < _shares) revert TransferExceedsAllowance();
+        if (IERC20(token).allowance(_streamer, address(this)) < _amount) revert TransferExceedsAllowance();
     }
 
     function _checkOpenStreamToSelf(address _receiver) internal view {
