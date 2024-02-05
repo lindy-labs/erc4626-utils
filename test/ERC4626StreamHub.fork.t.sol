@@ -52,7 +52,7 @@ contract ERC4626StreamHubForkTests is Test {
     /// *** #constructor *** ///
 
     function test_constructor_setsHubInstanceOwner() public {
-        assertEq(wethStreamHub.owner(), factory.hubInstanceOwner(), "wethStreamHub - isOwner");
+        assertEq(wethStreamHub.owner(), factory.instanceOwner(), "wethStreamHub - isOwner");
     }
 
     /// *** yield streaming tests *** ///

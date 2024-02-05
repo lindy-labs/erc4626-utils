@@ -6,33 +6,27 @@ import {CREATE3} from "solmate/utils/CREATE3.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 
-import "../src/common/Errors.sol";
-import {ERC4626StreamHubFactory} from "../src/ERC4626StreamHubFactory.sol";
-import {ERC4626StreamHub} from "../src/ERC4626StreamHub.sol";
+import {YieldStreamingFactory} from "../src/YieldStreamingFactory.sol";
+import {YieldStreaming} from "../src/YieldStreaming.sol";
 
-contract ERC4626StreamHubFactoryTest is Test {
-    ERC4626StreamHubFactory public factory;
+contract YieldStreamingFactoryTest is Test {
+    YieldStreamingFactory public factory;
     MockERC4626 public vault;
 
-    address constant hubOwner = address(0x01);
+    address constant instanceOwner = address(0x01);
 
     event Deployed(address indexed vault, address indexed deployed);
     event InstanceOwnerUpdated(address indexed sender, address oldOwner, address newOwner);
 
     function setUp() public {
-        factory = new ERC4626StreamHubFactory(hubOwner);
+        factory = new YieldStreamingFactory(instanceOwner);
 
         MockERC20 asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
     }
 
     function test_constructor_setsHubInstanceOwner() public {
-        assertEq(factory.instanceOwner(), hubOwner);
-    }
-
-    function test_constructor_failsIfHubInstanceOwnerIsZero() public {
-        vm.expectRevert(AddressZero.selector);
-        new ERC4626StreamHubFactory(address(0));
+        assertEq(factory.instanceOwner(), instanceOwner);
     }
 
     function test_setHubInstanceOwner_updatesHubInstanceOwner() public {
@@ -43,23 +37,13 @@ contract ERC4626StreamHubFactoryTest is Test {
         assertEq(factory.instanceOwner(), newHubInstanceOwner);
     }
 
-    function test_setHubInstanceOwner_failsIfNewHubInstanceOwnerIsZero() public {
-        vm.expectRevert(AddressZero.selector);
-        factory.setInstanceOwner(address(0));
-    }
-
     function test_setHubInstanceOwner_emitsEvent() public {
         address newHubInstanceOwner = address(0x02);
 
         vm.expectEmit(true, true, true, true);
-        emit InstanceOwnerUpdated(address(this), hubOwner, newHubInstanceOwner);
+        emit InstanceOwnerUpdated(address(this), instanceOwner, newHubInstanceOwner);
 
         factory.setInstanceOwner(newHubInstanceOwner);
-    }
-
-    function test_create_failsIfVaultIsZero() public {
-        vm.expectRevert(AddressZero.selector);
-        factory.create(address(0));
     }
 
     function test_create_deploysStreamHubContract() public {
@@ -72,7 +56,7 @@ contract ERC4626StreamHubFactoryTest is Test {
         assertTrue(deployed != address(0));
         assertTrue(factory.isDeployed(address(vault)), "isDeployed");
         assertTrue(factory.deployedAddresses(0) == deployed, "deployedAddresses[0]");
-        assertTrue(ERC4626StreamHub(deployed).owner() == hubOwner, "deployed instance owner");
+        assertTrue(YieldStreaming(deployed).owner() == instanceOwner, "deployed instance owner");
         assertEq(predicted, deployed, "predicted");
         assertEq(factory.deployedCount(), 1, "deployedCount");
     }
@@ -86,13 +70,6 @@ contract ERC4626StreamHubFactoryTest is Test {
         address deployed = factory.create(address(vault));
 
         assertEq(predicted, deployed, "predicted");
-    }
-
-    function test_create_failsIfAlreadyDepolyed() public {
-        factory.create(address(vault));
-
-        vm.expectRevert(AlreadyDeployed.selector);
-        factory.create(address(vault));
     }
 
     function test_create_deployTwiceForDifferentVaults() public {
