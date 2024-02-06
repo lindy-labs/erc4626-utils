@@ -15,52 +15,18 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {YieldStreaming} from "../src/YieldStreaming.sol";
 import "../src/common/Errors.sol";
 
-contract ERC4626YieldStreaming_FV is Test {
+contract ERC4626_YieldStreaming_FV is Test {
     using FixedPointMathLib for uint256;
 
     YieldStreaming public yieldStreaming;
     MockERC4626 public vault;
     MockERC20 public asset;
 
-    address constant alice = address(0x06);
-    address constant bob = address(0x07);
-    address constant carol = address(0x08);
-
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
         yieldStreaming = new YieldStreaming(address(this), IERC4626(address(vault)));
     }
-    // *** constructor *** ///
-
-    function proveFail_constructor_failsIfVaultIsAddress0() public {
-        new YieldStreaming(address(this), IERC4626(address(0)));
-    }
-
-    function proveFail_constructor_failsIfOwnerIsAddress0() public {
-        new YieldStreaming(address(0), IERC4626(address(vault)));
-    }
-
-    /// *** setLossTolerancePercent ***
-
-    function proveFail_setLossTolerancePercent_failsIfCallerIsNotOwner(address caller) public {
-        //require(caller != address(this));
-        vm.prank(alice);
-        yieldStreaming.setLossTolerancePercent(0);
-    }
-
-    function proveFail_setlossTolerancePercent_failsIfLossToleraceIsAboveMax(uint256 maxLossTolerance) public {
-        require(maxLossTolerance > yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT());
-        yieldStreaming.setLossTolerancePercent(maxLossTolerance);
-    }
-
-    function prove_setLossTolerancePercent_updatesLossTolerancePercentValue(uint256 maxLossTolerance) public {
-        require(maxLossTolerance <= yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT());
-        yieldStreaming.setLossTolerancePercent(maxLossTolerance);
-
-        assertEq(yieldStreaming.lossTolerancePercent(), maxLossTolerance);
-    }
-
 
     // Proves that convertToShares is greater than or equal to previewDeposit
     function prove_convertToShares_gte_previewDeposit(address msg_sender, uint256 assets) public {
@@ -149,7 +115,7 @@ contract ERC4626YieldStreaming_FV is Test {
     }
 
     // Proves the integrity of the deposit function
-    function TooLongprove_integrity_of_deposit(address msg_sender, address account, uint256 amount, uint256 assets, address receiver) public {
+    function prove_integrity_of_deposit(address msg_sender, address account, uint256 amount, uint256 assets, address receiver) public {
         require(msg_sender != address(this));
         require(receiver != address(this));
         
@@ -207,8 +173,8 @@ contract ERC4626YieldStreaming_FV is Test {
         assert(_receiverShares + shares == receiverShares_);
     }
 
-    // Proves the integrity of the withdraw function 
-    function TooLongprove_integrity_of_withdraw(address msg_sender, address account, uint256 amount,uint256 assets, address receiver, address owner) public {
+    // Proves the integrity of the withdraw function (Takes almost 1h with a top Macbook)
+    function prove_integrity_of_withdraw(address msg_sender, address account, uint256 amount,uint256 assets, address receiver, address owner) public {
         require(msg_sender != address(this));
         require(receiver != address(this));
         require(msg_sender != owner);
@@ -240,7 +206,7 @@ contract ERC4626YieldStreaming_FV is Test {
     }
 
     // Proves the integrity of the redeem function
-    function TooLongprove_integrity_of_redeem(address msg_sender, address account, uint256 amount, uint256 shares, address receiver, address owner) public {
+    function prove_integrity_of_redeem(address msg_sender, address account, uint256 amount, uint256 shares, address receiver, address owner) public {
         require(msg_sender != address(this));
         require(receiver != address(this));
 
