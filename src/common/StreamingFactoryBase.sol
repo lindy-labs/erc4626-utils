@@ -46,7 +46,7 @@ abstract contract StreamingFactoryBase is Ownable {
      * @param _vault The address of the vault contract.
      * @return deployed The address of the deployed ERC4626StreamHub instance.
      */
-    function create(address _vault) public onlyOwner returns (address deployed) {
+    function create(address _vault) public virtual onlyOwner returns (address deployed) {
         _checkZeroAddress(_vault);
         if (isDeployed(_vault)) revert AlreadyDeployed();
 
@@ -91,7 +91,7 @@ abstract contract StreamingFactoryBase is Ownable {
      * @param _vault The address of the vault contract.
      */
     // TODO: user IERC20 instead of address
-    function _getCreationCode(address _vault) internal view virtual returns (bytes memory) {}
+    function _getCreationCode(address _vault) internal view virtual returns (bytes memory);
 
     function _checkZeroAddress(address _address) internal pure {
         if (_address == address(0)) revert AddressZero();
