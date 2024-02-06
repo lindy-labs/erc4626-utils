@@ -465,4 +465,75 @@ contract ERC4626StreamHubForkTests is Test {
 
         deal(address(asset), address(_vault), balance + delta);
     }
+
+    function test_superfluid() public {
+        ISuperTokenFactory superFactory = ISuperTokenFactory(0x0422689cc4087b6B7280e0a7e7F655200ec86Ae1);
+
+        ISuperToken superScEth = superFactory.createERC20Wrapper(
+            IERC20Metadata(address(scEth)),
+            ISuperTokenFactory.Upgradability.SEMI_UPGRADABLE,
+            string.concat("x", scEth.name()),
+            string.concat("x", scEth.symbol())
+        );
+
+        // get some scETH
+        uint256 amount = 1 ether;
+        deal(address(weth), address(this), amount);
+        weth.approve(address(scEth), amount);
+        uint256 shares = scEth.deposit(amount, address(this));
+
+        // get some superScEth
+        scEth.approve(address(superScEth), shares);
+        superScEth.upgrade(shares);
+
+        ISuperfluid host = ISuperfluid(0x4E583d9390082B65Bef884b629DFA426114CED6d);
+        IConstantFlowAgreementV1 cfa = IConstantFlowAgreementV1(0x2844c1BBdA121E9E43105630b9C8310e5c72744b);
+
+        // create agreement
+        bytes32[] memory agreementData = new bytes32[](1);
+        agreementData[0] = bytes32(bytes20(address(cfa)));
+        superScEth.createAgreement(cfa.agreementType(), agreementData);
+
+        // assert superScEth balance
+        assertEq(superScEth.balanceOf(address(this)), shares, "superScEth balance");
+        console2.log("shares:", shares);
+        console2.log("superScEth.balanceOf(address(this)):", superScEth.balanceOf(address(this)));
+        (int256 availableBalance, uint256 deposit, uint256 owedDeposit) =
+            superScEth.realtimeBalanceOf(address(this), block.timestamp);
+        console2.log("superScETH availableBalance", availableBalance);
+        console2.log("superScETH deposit", deposit);
+        console2.log("superScETH owedDeposit", owedDeposit);
+
+        (availableBalance, deposit, owedDeposit) = cfa.realtimeBalanceOf(superScEth, address(this), block.timestamp);
+        console2.log("cfa availableBalance", availableBalance);
+        console2.log("cfa deposit", deposit);
+        console2.log("cfa owedDeposit", owedDeposit);
+
+        console2.log("address(this)", address(this));
+        console2.log("superScEth.getHost()", superScEth.getHost());
+
+        // create a flow
+        address receiver = address(0x02);
+        int96 flowRate = 115740740740740; // = 1e18 / 24 / 60 / 60;
+
+        host.callAgreement(
+            cfa, abi.encodeWithSelector(cfa.createFlow.selector, superScEth, receiver, flowRate, new bytes(0)), ""
+        );
+
+        // cfa.createFlow(superScEth, receiver, flowRate, "brka");
+    }
+
+    function uint256ToInt96(uint256 value) public pure returns (int96) {
+        // require(value <= uint256(type(int96).max), "Value out of int96 range");
+        // // Since direct conversion is disallowed, use an intermediate step.
+        // // This is more about conforming to Solidity's safety checks than a logical necessity.
+        // int256 intermediate = int256(value);
+        // return int96(intermediate);
+    }
 }
+
+import {IERC20Metadata} from "openzeppelin-contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {ISuperTokenFactory} from "./superfluid/ISuperTokenFactory.sol";
+import {ISuperToken} from "./superfluid/ISuperToken.sol";
+import {IConstantFlowAgreementV1} from "./agreements/IConstantFlowAgreementV1.sol";
+import {ISuperfluid} from "./superfluid/ISuperfluid.sol";
