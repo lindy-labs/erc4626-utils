@@ -504,31 +504,64 @@ contract ERC4626StreamHubForkTests is Test {
         console2.log("superScETH deposit", deposit);
         console2.log("superScETH owedDeposit", owedDeposit);
 
-        (availableBalance, deposit, owedDeposit) = cfa.realtimeBalanceOf(superScEth, address(this), block.timestamp);
-        console2.log("cfa availableBalance", availableBalance);
-        console2.log("cfa deposit", deposit);
-        console2.log("cfa owedDeposit", owedDeposit);
-
         console2.log("address(this)", address(this));
         console2.log("superScEth.getHost()", superScEth.getHost());
 
-        // create a flow
+        // create a flow to stream all shares during 1 day
         address receiver = address(0x02);
-        int96 flowRate = 115740740740740; // = 1e18 / 24 / 60 / 60;
+        int96 flowRate = int96(uint96(shares / 24 / 60 / 60));
 
         host.callAgreement(
-            cfa, abi.encodeWithSelector(cfa.createFlow.selector, superScEth, receiver, flowRate, new bytes(0)), ""
+            cfa, abi.encodeWithSelector(cfa.createFlow.selector, superScEth, receiver, flowRate, ""), "0x"
         );
 
-        // cfa.createFlow(superScEth, receiver, flowRate, "brka");
-    }
+        // warp time for 12 hours
+        vm.warp(block.timestamp + 12 hours);
+        console2.log("after 12 hours");
 
-    function uint256ToInt96(uint256 value) public pure returns (int96) {
-        // require(value <= uint256(type(int96).max), "Value out of int96 range");
-        // // Since direct conversion is disallowed, use an intermediate step.
-        // // This is more about conforming to Solidity's safety checks than a logical necessity.
-        // int256 intermediate = int256(value);
-        // return int96(intermediate);
+        // assert superScEth balance
+        (availableBalance, deposit, owedDeposit) = superScEth.realtimeBalanceOf(address(this), block.timestamp);
+        console2.log("streamer");
+        console2.log("superScETH availableBalance", availableBalance);
+        console2.log("superScETH deposit", deposit);
+        console2.log("superScETH owedDeposit", owedDeposit);
+
+        (availableBalance, deposit, owedDeposit) = cfa.realtimeBalanceOf(superScEth, receiver, block.timestamp);
+        console2.log("receiver");
+        console2.log("superScETH availableBalance", availableBalance);
+        console2.log("superScETH deposit", deposit);
+        console2.log("superScETH owedDeposit", owedDeposit);
+
+        // vm.warp(block.timestamp + 24 hours);
+        // console2.log("after 36 hours");
+
+        // (availableBalance, deposit, owedDeposit) = superScEth.realtimeBalanceOf(address(this), block.timestamp);
+        // console2.log("streamer");
+        // console2.log("superScETH availableBalance", availableBalance);
+        // console2.log("superScETH deposit", deposit);
+        // console2.log("superScETH owedDeposit", owedDeposit);
+
+        // (availableBalance, deposit, owedDeposit) = cfa.realtimeBalanceOf(superScEth, receiver, block.timestamp);
+        // console2.log("receiver");
+        // console2.log("superScETH availableBalance", availableBalance);
+        // console2.log("superScETH deposit", deposit);
+        // console2.log("superScETH owedDeposit", owedDeposit);
+
+        vm.prank(receiver);
+        uint256 receiverBalance = superScEth.balanceOf(receiver);
+        console2.log(receiverBalance);
+
+        // host.callAgreement(
+        //     cfa, abi.encodeWithSelector(cfa.deleteFlow.selector, superScEth, address(this), receiver, ""), "0x"
+        // );
+
+        receiverBalance = superScEth.balanceOf(receiver);
+        console2.log(receiverBalance);
+
+        vm.prank(receiver);
+        superScEth.downgrade(receiverBalance);
+
+        console2.log("scEth.balanceOf(receiver)", scEth.balanceOf(receiver));
     }
 }
 
