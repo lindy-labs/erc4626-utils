@@ -12,9 +12,7 @@ import {StreamingFactoryBase} from "./common/StreamingFactoryBase.sol";
  * @dev A contract for creating and managing ERC4626StreamHub instances.
  */
 contract ERC4626StreamHubFactory is StreamingFactoryBase {
-    constructor(address _hubInstanceOwner) StreamingFactoryBase(_hubInstanceOwner) {}
-
-    function _getCreationCode(address _vault) internal view override returns (bytes memory) {
-        return abi.encodePacked(type(ERC4626StreamHub).creationCode, abi.encode(instanceOwner, _vault));
+    function _getCreationCode(address _vault) internal pure override returns (bytes memory) {
+        return abi.encodePacked(type(ERC4626StreamHub).creationCode, abi.encode(_vault));
     }
 }

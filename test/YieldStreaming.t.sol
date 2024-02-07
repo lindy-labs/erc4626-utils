@@ -35,7 +35,7 @@ contract YieldStreamingTests is Test {
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
-        yieldStreaming = new YieldStreaming(address(this), IERC4626(address(vault)));
+        yieldStreaming = new YieldStreaming(IERC4626(address(vault)));
 
         // make initial deposit to vault
         _depositToVault(address(this), 1e18);
@@ -47,43 +47,7 @@ contract YieldStreamingTests is Test {
 
     function test_constructor_failsIfVaultIsAddress0() public {
         vm.expectRevert(AddressZero.selector);
-        new YieldStreaming(address(this), IERC4626(address(0)));
-    }
-
-    function test_constructor_failsIfOwnerIsAddress0() public {
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new YieldStreaming(address(0), IERC4626(address(vault)));
-    }
-
-    /// *** setLossTolerancePercent ***
-
-    function test_setLossTolerancePercent_failsIfCallerIsNotOwner() public {
-        vm.prank(alice);
-
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
-        yieldStreaming.setLossTolerancePercent(0);
-    }
-
-    function test_setlossTolerancePercent_failsIfLossToleraceIsAboveMax() public {
-        uint256 maxLossTolerance = yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT();
-
-        vm.expectRevert(YieldStreaming.LossTolerancePercentTooHigh.selector);
-        yieldStreaming.setLossTolerancePercent(maxLossTolerance + 1);
-    }
-
-    function test_setLossTolerancePercent_updatesLossTolerancePercentValue() public {
-        uint256 maxLossTolerance = yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT();
-
-        yieldStreaming.setLossTolerancePercent(maxLossTolerance);
-
-        assertEq(yieldStreaming.lossTolerancePercent(), maxLossTolerance);
-    }
-
-    function test_setLossTolerancePercent_emitsEvent() public {
-        vm.expectEmit(true, true, true, true);
-        emit LossTolerancePercentUpdated(address(this), yieldStreaming.lossTolerancePercent(), 1);
-
-        yieldStreaming.setLossTolerancePercent(1);
+        new YieldStreaming(IERC4626(address(0)));
     }
 
     // *** #openYieldStream ***

@@ -25,8 +25,6 @@ contract ERC4626StreamHubForkTests is Test {
     IERC4626 public scUsdc;
     IERC20 public usdc;
 
-    address constant hubOwner = address(0x01);
-
     address constant alice = address(0x06);
     address constant bob = address(0x07);
     address constant carol = address(0x08);
@@ -41,20 +39,13 @@ contract ERC4626StreamHubForkTests is Test {
         scUsdc = IERC4626(0x096697720056886b905D0DEB0f06AfFB8e4665E5); // scUSDC mainnet address
         usdc = IERC20(scUsdc.asset());
 
-        factory = new ERC4626StreamHubFactory(hubOwner);
+        factory = new ERC4626StreamHubFactory();
 
         wethStreamHub = ERC4626StreamHub(factory.predictDeploy(address(scEth)));
         factory.create(address(scEth));
         usdcStreamHub = ERC4626StreamHub(factory.predictDeploy(address(scUsdc)));
         factory.create(address(scUsdc));
     }
-
-    /// *** #constructor *** ///
-
-    function test_constructor_setsHubInstanceOwner() public {
-        assertEq(wethStreamHub.owner(), factory.instanceOwner(), "wethStreamHub - isOwner");
-    }
-
     /// *** yield streaming tests *** ///
 
     function test_openYieldStream() public {
