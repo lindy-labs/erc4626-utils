@@ -489,11 +489,6 @@ contract ERC4626StreamHubForkTests is Test {
         ISuperfluid host = ISuperfluid(0x4E583d9390082B65Bef884b629DFA426114CED6d);
         IConstantFlowAgreementV1 cfa = IConstantFlowAgreementV1(0x2844c1BBdA121E9E43105630b9C8310e5c72744b);
 
-        // create agreement
-        bytes32[] memory agreementData = new bytes32[](1);
-        agreementData[0] = bytes32(bytes20(address(cfa)));
-        superScEth.createAgreement(cfa.agreementType(), agreementData);
-
         // assert superScEth balance
         assertEq(superScEth.balanceOf(address(this)), shares, "superScEth balance");
         console2.log("shares:", shares);
