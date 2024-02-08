@@ -37,20 +37,44 @@ It has the following external/public functions that are view only and change not
 
 | No. | Property  | Specified | Verified |
 | ---- | --------  | -------- | -------- |
-| 1 | [`constructor` reverts if `vault == address(0)`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L31) | Y | Y |
-| 2 | [`constructor` reverts if `owner == address(0)`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L35) | Y | Y |
-| 3 | [`setLossTolerancePercent` reverts if `caller != owner`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L39) | Y | Y |
-| 4 | [`setLossTolerancePercent` reverts if `newToleramce > maxLossTolerance`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L45) | Y | Y |
-| 5 | [`setLossTolerancePercent` updates the `lossTolerancePercent` to `newToleramce`, if `newToleramce <= maxLossTolerance`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L50) | Y | Y |
-| 6 | [`debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal) <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L57) | Y | Y |
-| 7 | [Integrity of `openYieldStream`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L66) | Y | Y |
-| 8 | [Integrity of `openYieldStreamUsingPermit`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L92) | Y | Y |
-| 9 | [Integrity of `closeYieldStream`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L117) | Y | Y |
-| 10 | [Integrity of `claimYield`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L141) | Y | Y |
-| 11 | [Integrity of `claimYieldInShares`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L179) | Y | Y |
+| 1 | [Checks that constructing YieldStreaming with a zero vault address reverts](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L31) | Y | Y |
+| 2 | [Checks that constructing YieldStreaming with a zero owner address reverts](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L37) | Y | Y |
+| 3 | [Checks that setLossTolerancePercent fails if called by someone other than the owner](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L42) | Y | Y |
+| 4 | [Checks that setLossTolerancePercent fails if trying to set above the maximum](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L49) | Y | Y |
+| 5 | [Checks that setLossTolerancePercent updates lossTolerancePercent](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L55) | Y | Y |
+| 6 | [Auxiliary function for the symbolic test prove_integrity_of_openYieldStream below. Checks loss on open is within tolerance](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L63) | Y | Y |
+| 7 | [Symbolic test checking that openYieldStream updates receiver state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L73) | Y | Y |
+| 8 | [Symbolic test checking openYieldStreamUsingPermit updates receiver state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L100) | Y | Y |
+| 9 | [Checks closeYieldStream updates receiver state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L125) | Y | Y |
+| 10 | [Symbolic test checking claimYield transfers correct asset amount and updates state](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L151) | Y | Y |
+| 11 | [Checks claimYieldInShares transfers correct share amount and updates state](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L190) | Y | Y |
 
 ## Revertable Properties
 
 | No. | Property  | Specified | Verified |
 | ---- | --------  | -------- | -------- |
 | 1 | [Checks that openYieldStream should revert when the msg.sender is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L218) | Y | Y |
+| 2 | [Checks that openYieldStream should revert when the _receiver address parameter is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L237) | Y | Y |
+| 3 | [Checks that openYieldStream should revert when the _shares amount parameter is 0](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L256) | Y | Y |  
+| 4 | [Checks that openYieldStream should revert when the _receiver address parameter is the same as the msg.sender](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L275) | Y | Y |
+| 5 | [Checks that openYieldStream should revert when the receiver has no existing debt](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L294) | Y | Y |
+| 6 | [Checks that openYieldStreamUsingPermit should revert when the msg.sender is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L314) | Y | Y |
+| 7 | [Checks that openYieldStreamUsingPermit should revert when the _receiver address parameter is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L333) | Y | Y |  
+| 8 | [Checks that openYieldStreamUsingPermit should revert when the _shares amount parameter is 0](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L352) | Y | Y |
+| 9 | [Checks that openYieldStreamUsingPermit should revert when the _receiver address parameter is the same as the msg.sender](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L371) | Y | Y |
+| 10 | [Checks that openYieldStreamUsingPermit should revert when the deadline parameter is less than the current block timestamp](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L390) | Y | Y |
+| 11 | [Checks that openYieldStreamUsingPermit should revert when the vault allowance for the contract is less than the _shares amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L409) | Y | Y |
+| 12 | [Checks that openYieldStreamUsingPermit should revert when the receiver has no existing debt](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L428) | Y | Y |  
+| 13 | [Checks that closeYieldStream should revert when the msg.sender is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L447) | Y | Y |
+| 14 | [Checks that closeYieldStream should revert when the _receiver address parameter is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L466) | Y | Y |
+| 15 | [Checks that closeYieldStream should revert when the _receiver address parameter is the same as the msg.sender](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L485) | Y | Y |
+| 16 | [Checks that closeYieldStream should revert when previewCloseYieldStream returns 0 principal](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L504) | Y | Y |
+| 17 | [Checks that claimYield should revert when the msg.sender is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L523) | Y | Y | 
+| 18 | [Checks that claimYield should revert when the _sendTo address parameter is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L542) | Y | Y |
+| 19 | [Checks that claimYield should revert when the _sendTo address parameter is the same as the msg.sender](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L561) | Y | Y |
+| 20 | [Checks that claimYield should revert when previewClaimYieldInShares returns 0 shares](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L580) | Y | Y |
+| 21 | [Checks that claimYield should revert when the vault token balance is less than the yield share amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L599) | Y | Y |
+| 22 | [Checks that claimYieldInShares should revert when the msg.sender is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L618) | Y | Y |
+| 23 | [Checks that claimYieldInShares should revert when the _sendTo address parameter is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L637) | Y | Y |
+| 24 | [Checks that claimYieldInShares should revert when the _sendTo address parameter is the same as the msg.sender](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L656) | Y | Y | 
+| 25 | [Checks that claimYieldInShares should revert when previewClaimYieldInShares returns 0 shares](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L675) | Y | Y |
