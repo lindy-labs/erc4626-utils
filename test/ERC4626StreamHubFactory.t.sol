@@ -30,7 +30,7 @@ contract ERC4626StreamHubFactoryTest is Test {
         address receiver = address(0x02);
 
         // open yield stream
-        deployed.openYieldStream(receiver, shares / 2);
+        deployed.openYieldStream(receiver, shares / 2, 0);
 
         assertEq(vault.balanceOf(address(deployed)), shares / 2, "yield stream shares");
         assertEq(deployed.receiverShares(receiver), shares / 2, "yield receiver shares");
