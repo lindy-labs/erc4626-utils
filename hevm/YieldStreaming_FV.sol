@@ -28,25 +28,30 @@ contract YieldStreaming_FV is Test {
         yieldStreaming = new YieldStreaming(address(this), IERC4626(address(vault)));
     }
 
+    // Checks that constructing YieldStreaming with a zero vault address reverts
     function proveFail_constructor_failsIfVaultIsAddress0() public {
         new YieldStreaming(address(this), IERC4626(address(0)));
     }
 
+    // Checks that constructing YieldStreaming with a zero owner address reverts
     function proveFail_constructor_failsIfOwnerIsAddress0() public {
         new YieldStreaming(address(0), IERC4626(address(vault)));
     }
 
+    // Checks that setLossTolerancePercent fails if called by someone other than the owner
     function proveFail_setLossTolerancePercent_failsIfCallerIsNotOwner(address caller) public {
         require(caller != address(this));
         vm.prank(caller);
         yieldStreaming.setLossTolerancePercent(0);
     }
 
+    // Checks that setLossTolerancePercent fails if trying to set above the maximum
     function proveFail_setlossTolerancePercent_failsIfLossToleraceIsAboveMax(uint256 newLossTolerance) public {
         require(newLossTolerance > yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT());
         yieldStreaming.setLossTolerancePercent(newLossTolerance);
     }
 
+    // Checks that setLossTolerancePercent updates lossTolerancePercent
     function prove_setLossTolerancePercent_updatesLossTolerancePercentValue(uint256 newLossTolerance) public {
         require(newLossTolerance <= yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT());
         yieldStreaming.setLossTolerancePercent(newLossTolerance);
@@ -54,6 +59,7 @@ contract YieldStreaming_FV is Test {
         assertEq(yieldStreaming.lossTolerancePercent(), newLossTolerance);
     }
 
+    // Auxiliary function for the symbolic test prove_integrity_of_openYieldStream below. Checks loss on open is within tolerance
     function prove_auxiliary_integrity_of_openYieldStream(address _receiver, uint256 _principal) public { // This is needed by the next symbolic test
         require(_receiver != address(0));
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
@@ -63,6 +69,7 @@ contract YieldStreaming_FV is Test {
         require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
     }
 
+    // Symbolic test checking that openYieldStream updates receiver state properly
     function prove_integrity_of_openYieldStream(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
@@ -89,6 +96,7 @@ contract YieldStreaming_FV is Test {
         assert(_receiverPrincipal + principal == receiverPrincipal_);
     }
 
+    // Symbolic test checking openYieldStreamUsingPermit updates receiver state properly
     function prove_integrity_of_openYieldStreamUsingPermit(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
@@ -114,6 +122,7 @@ contract YieldStreaming_FV is Test {
         assert(_receiverPrincipal + principal == receiverPrincipal_);
     }
 
+    // Checks closeYieldStream updates receiver state properly
     function prove_integrity_of_closeYieldStream(address msg_sender, address _receiver) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
@@ -138,6 +147,7 @@ contract YieldStreaming_FV is Test {
         assert(receiverPrincipal_ == 0);
     }
 
+    // Symbolic test checking claimYield transfers correct asset amount and updates state
     function prove_integrity_of_claimYield(address msg_sender, address _sendTo, uint256 amount, address account) public {
         require(msg_sender != address(0));
         require(_sendTo != address(0));
@@ -176,6 +186,7 @@ contract YieldStreaming_FV is Test {
             || (_senderAllowance - yieldInShares == senderAllowance_)));
         }
 
+    // Checks claimYieldInShares transfers correct share amount and updates state
     function prove_integrity_of_claimYieldInShares(address msg_sender, address _sendTo, uint256 amount) public {
         require(msg_sender != address(0));
         require(_sendTo != address(0));
