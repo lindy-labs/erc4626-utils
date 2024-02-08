@@ -48,3 +48,9 @@ It has the following external/public functions that are view only and change not
 | 9 | [Integrity of `closeYieldStream`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L117) | Y | Y |
 | 10 | [Integrity of `claimYield`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L141) | Y | Y |
 | 11 | [Integrity of `claimYieldInShares`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L179) | Y | Y |
+
+## Revertable Properties
+
+| No. | Property  | Specified | Verified |
+| ---- | --------  | -------- | -------- |
+| 1 | [Checks that openYieldStream should revert when the msg.sender is the zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L218) | Y | Y |

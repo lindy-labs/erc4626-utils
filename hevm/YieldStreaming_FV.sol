@@ -184,7 +184,7 @@ contract YieldStreaming_FV is Test {
         assert((msg_sender == address(this)) || 
             ((_senderAllowance == 2**256 -1 && senderAllowance_ == 2**256 -1) 
             || (_senderAllowance - yieldInShares == senderAllowance_)));
-        }
+    }
 
     // Checks claimYieldInShares transfers correct share amount and updates state
     function prove_integrity_of_claimYieldInShares(address msg_sender, address _sendTo, uint256 amount) public {
@@ -210,6 +210,421 @@ contract YieldStreaming_FV is Test {
         assert(_receiverShares  == receiverShares_ + shares);
         assert(asset.balanceOf(msg_sender) <=  _balanceSender - shares);
         assert(asset.balanceOf(_sendTo) ==  _balanceRecipient + shares);
+    }
+
+    // ************************************ REVERTABLE PROPERTIES *************************************************
+
+    // Checks that openYieldStream should revert when the msg.sender is the zero address
+    function proveFail_openYieldStream_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+        require(msg_sender == address(0));
+        require(_receiver != address(0));
+        require(_shares != 0);
+        require(_receiver != msg_sender);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+        uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
+        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
+        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStream(_receiver, _shares);
+    }
+
+    // Checks that openYieldStream should revert when the _receiver address parameter is the zero address
+    function proveFail_openYieldStream_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+        require(msg_sender != address(0));
+        require(_receiver == address(0));
+        require(_shares != 0);
+        require(_receiver != msg_sender);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+        uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
+        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
+        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStream(_receiver, _shares);
+    }
+    // Checks that openYieldStream should revert when the _shares amount parameter is 0 
+    function proveFail_openYieldStream_When_Shares_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_shares == 0);
+        require(_receiver != msg_sender);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+        uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
+        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
+        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStream(_receiver, _shares);
+    }
+
+    // Checks that openYieldStream should revert when the _receiver address parameter is the same as the msg.sender
+    function proveFail_openYieldStream_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_shares != 0);
+        require(_receiver == msg_sender);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+        uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
+        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
+        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStream(_receiver, _shares);
+    }
+
+    // Checks that openYieldStream should revert when the receiver has no existing debt
+    function proveFail_openYieldStream_When_Debt_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_shares == 0);
+        require(_receiver != msg_sender);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+        uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
+        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
+        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStream(_receiver, _shares);
+    }
+
+    // Checks that openYieldStreamUsingPermit should revert when the msg.sender is the zero address
+    function proveFail_openYieldStreamUsingPermit_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        require(msg_sender == address(0));
+        require(_receiver != address(0));
+        require(_shares != 0);
+        require(_receiver != msg_sender);
+        require(deadline >= block.timestamp);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+    }
+
+    // Checks that openYieldStreamUsingPermit should revert when the _receiver address parameter is the zero address
+    function proveFail_openYieldStreamUsingPermit_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        require(msg_sender != address(0));
+        require(_receiver == address(0));
+        require(_shares != 0);
+        require(_receiver != msg_sender);
+        require(deadline >= block.timestamp);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+    }
+
+    // Checks that openYieldStreamUsingPermit should revert when the _shares amount parameter is 0
+    function proveFail_openYieldStreamUsingPermit_When_Shares_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_shares == 0);
+        require(_receiver != msg_sender);
+        require(deadline >= block.timestamp);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+    }
+
+    // Checks that openYieldStreamUsingPermit should revert when the _receiver address parameter is the same as the msg.sender
+    function proveFail_openYieldStreamUsingPermit_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_shares != 0);
+        require(_receiver != msg_sender);
+        require(deadline >= block.timestamp);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+    }
+
+    // Checks that openYieldStreamUsingPermit should revert when the deadline parameter is less than the current block timestamp
+    function proveFail_openYieldStreamUsingPermit_When_Deadline_Is_Less_Than_TimeStamp(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_shares != 0);
+        require(_receiver != msg_sender);
+        require(deadline < block.timestamp);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+    }
+
+    // Checks that openYieldStreamUsingPermit should revert when the vault allowance for the contract is less than the _shares amount
+    function proveFail_openYieldStreamUsingPermit_When_Allowance_Is_Less_Than_Shares(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_shares != 0);
+        require(_receiver != msg_sender);
+        require(deadline >= block.timestamp);
+        require(vault.allowance(msg_sender, address(this)) < _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+    }
+
+    // Checks that openYieldStreamUsingPermit should revert when the receiver has no existing debt
+    function proveFail_openYieldStreamUsingPermit_When_Debt_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_shares != 0);
+        require(_receiver != msg_sender);
+        require(deadline >= block.timestamp);
+        require(vault.allowance(msg_sender, address(this)) >= _shares);
+        uint256 debt = yieldStreaming.debtFor(_receiver);
+        require(debt == 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+    }
+
+    // Checks that closeYieldStream should revert when the msg.sender is the zero address
+    function proveFail_closeYieldStream_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver) public {
+        require(msg_sender == address(0));
+        require(_receiver != address(0));
+        require(_receiver != msg_sender);
+
+        uint256 principal;
+        vm.prank(msg_sender);
+        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        require(principal != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.closeYieldStream(_receiver);
+    }
+
+    // Checks that closeYieldStream should revert when the _receiver address parameter is the zero address
+    function proveFail_closeYieldStream_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver) public {
+        require(msg_sender != address(0));
+        require(_receiver == address(0));
+        require(_receiver != msg_sender);
+
+        uint256 principal;
+        vm.prank(msg_sender);
+        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        require(principal != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.closeYieldStream(_receiver);
+    }
+
+    // Checks that closeYieldStream should revert when the _receiver address parameter is the same as the msg.sender
+    function proveFail_closeYieldStream_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_receiver == msg_sender);
+
+        uint256 principal;
+        vm.prank(msg_sender);
+        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        require(principal != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.closeYieldStream(_receiver);
+    }
+
+    // Checks that closeYieldStream should revert when previewCloseYieldStream returns 0 principal
+    function proveFail_closeYieldStream_When_previewCloseYieldStream_Equals_Zero(address msg_sender, address _receiver) public {
+        require(msg_sender != address(0));
+        require(_receiver != address(0));
+        require(_receiver != msg_sender);
+
+        uint256 principal;
+        vm.prank(msg_sender);
+        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        require(principal == 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.closeYieldStream(_receiver);
+    }
+
+    // Checks that claimYield should revert when the msg.sender is the zero address
+    function proveFail_claimYield_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _sendTo, uint256 amount, address account) public {
+        require(msg_sender == address(0));
+        require(_sendTo != address(0));
+        require(_sendTo != msg_sender);
+
+        vm.prank(msg_sender);
+        uint256 yieldInShares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(yieldInShares != 0);
+
+        require(amount >= yieldInShares);
+
+        vm.prank(msg_sender);
+        vault.mint(amount, account);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYield(_sendTo);
+
+    }
+
+    // Checks that claimYield should revert when the _sendTo address parameter is the zero address
+    function proveFail_claimYield_When_sendTo_Equals_ZeroAddress(address msg_sender, address _sendTo, uint256 amount, address account) public {
+        require(msg_sender != address(0));
+        require(_sendTo == address(0));
+        require(_sendTo != msg_sender);
+
+        vm.prank(msg_sender);
+        uint256 yieldInShares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(yieldInShares != 0);
+
+        require(amount >= yieldInShares);
+
+        vm.prank(msg_sender);
+        vault.mint(amount, account);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYield(_sendTo);
+
+    }
+
+    // Checks that claimYield should revert when the _sendTo address parameter is the same as the msg.sender
+    function proveFail_claimYield_When_sendTo_Equals_MSGSender(address msg_sender, address _sendTo, uint256 amount, address account) public {
+        require(msg_sender != address(0));
+        require(_sendTo != address(0));
+        require(_sendTo == msg_sender);
+
+        vm.prank(msg_sender);
+        uint256 yieldInShares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(yieldInShares != 0);
+
+        require(amount >= yieldInShares);
+
+        vm.prank(msg_sender);
+        vault.mint(amount, account);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYield(_sendTo);
+
+    }
+
+    // Checks that claimYield should revert when previewClaimYieldInShares returns 0 shares
+    function proveFail_claimYield_When_previewClaimYieldInShares_Equals_Zero(address msg_sender, address _sendTo, uint256 amount, address account) public {
+        require(msg_sender != address(0));
+        require(_sendTo != address(0));
+        require(_sendTo != msg_sender);
+
+        vm.prank(msg_sender);
+        uint256 yieldInShares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(yieldInShares == 0);
+
+        require(amount >= yieldInShares);
+
+        vm.prank(msg_sender);
+        vault.mint(amount, account);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYield(_sendTo);
+
+    }
+
+    // Checks that claimYield should revert when the vault token balance is less than the yield share amount
+    function proveFail_claimYield_When_amount_Is_Less_Than_To_previewClaimYieldInShares(address msg_sender, address _sendTo, uint256 amount, address account) public {
+        require(msg_sender != address(0));
+        require(_sendTo != address(0));
+        require(_sendTo != msg_sender);
+
+        vm.prank(msg_sender);
+        uint256 yieldInShares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(yieldInShares != 0);
+
+        require(amount < yieldInShares);
+
+        vm.prank(msg_sender);
+        vault.mint(amount, account);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYield(_sendTo);
+
+    }
+
+    // Checks that claimYieldInShares should revert when the msg.sender is the zero address
+    function proveFail_claimYieldInShares_MSGSender_Equals_ZeroAddress(address msg_sender, address _sendTo, uint256 amount) public {
+        require(msg_sender == address(0));
+        require(_sendTo != address(0));
+        require(_sendTo != msg_sender);
+
+        asset.mint(msg_sender, amount);
+
+        vm.prank(msg_sender);
+        uint256 shares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(shares != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYieldInShares(_sendTo);
+    }
+
+    // Checks that claimYieldInShares should revert when the _sendTo address parameter is the zero address
+    function proveFail_claimYieldInShares_sendTo_Equals_ZeroAddress(address msg_sender, address _sendTo, uint256 amount) public {
+        require(msg_sender != address(0));
+        require(_sendTo == address(0));
+        require(_sendTo != msg_sender);
+
+        asset.mint(msg_sender, amount);
+
+        vm.prank(msg_sender);
+        uint256 shares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(shares != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYieldInShares(_sendTo);
+    }
+
+    // Checks that claimYieldInShares should revert when the _sendTo address parameter is the same as the msg.sender
+    function proveFail_claimYieldInShares_sendTo_Equals_MSGSender(address msg_sender, address _sendTo, uint256 amount) public {
+        require(msg_sender != address(0));
+        require(_sendTo != address(0));
+        require(_sendTo == msg_sender);
+
+        asset.mint(msg_sender, amount);
+
+        vm.prank(msg_sender);
+        uint256 shares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(shares != 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYieldInShares(_sendTo);
+    }
+
+    // Checks that claimYieldInShares should revert when previewClaimYieldInShares returns 0 shares
+    function proveFail_claimYieldInShares_previewClaimYieldInShares_Equals_Zero(address msg_sender, address _sendTo, uint256 amount) public {
+        require(msg_sender != address(0));
+        require(_sendTo != address(0));
+        require(_sendTo != msg_sender);
+
+        asset.mint(msg_sender, amount);
+
+        vm.prank(msg_sender);
+        uint256 shares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(shares == 0);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYieldInShares(_sendTo);
     }
 
 }
