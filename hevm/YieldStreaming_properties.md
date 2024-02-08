@@ -38,13 +38,13 @@ It has the following external/public functions that are view only and change not
 | No. | Property  | Specified | Verified |
 | ---- | --------  | -------- | -------- |
 | 1 | [`constructor` reverts if `vault == address(0)`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L31) | Y | Y |
-| 2 | `constructor` reverts if `owner == address(0)` | Y | Y |
-| 3 | `setLossTolerancePercent` reverts if `caller != owner` | Y | Y |
-| 4 | `setLossTolerancePercent` reverts if `newToleramce > maxLossTolerance` | Y | Y |
-| 5 | `setLossTolerancePercent` updates the `lossTolerancePercent` to `newToleramce`, if `newToleramce <= maxLossTolerance` | Y | Y |
-| 6 | `debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal) <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())` | Y | Y |
-| 7 | Integrity of `openYieldStream` | Y | Y |
-| 8 | Integrity of `openYieldStreamUsingPermit` | Y | Y |
-| 9 | Integrity of `closeYieldStream` | Y | Y |
-| 10 | Integrity of `claimYield` | Y | N |
-| 11 | Integrity of `claimYieldInShares` | Y | N |
+| 2 | [`constructor` reverts if `owner == address(0)`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L35) | Y | Y |
+| 3 | [`setLossTolerancePercent` reverts if `caller != owner`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L39) | Y | Y |
+| 4 | [`setLossTolerancePercent` reverts if `newToleramce > maxLossTolerance`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L45) | Y | Y |
+| 5 | [`setLossTolerancePercent` updates the `lossTolerancePercent` to `newToleramce`, if `newToleramce <= maxLossTolerance`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L50) | Y | Y |
+| 6 | [`debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal) <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L57) | Y | Y |
+| 7 | [Integrity of `openYieldStream`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L66) | Y | Y |
+| 8 | [Integrity of `openYieldStreamUsingPermit`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L92) | Y | Y |
+| 9 | [Integrity of `closeYieldStream`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L117) | Y | Y |
+| 10 | [Integrity of `claimYield`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L141) | Y | Y |
+| 11 | [Integrity of `claimYieldInShares`](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/YieldStreaming_FV.sol#L179) | Y | Y |

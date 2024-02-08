@@ -137,10 +137,68 @@ contract YieldStreaming_FV is Test {
         assert(_receiverTotalPrincipal == receiverTotalPrincipal_ + principal);
         assert(receiverPrincipal_ == 0);
     }
-/*
-    function prove_integrity_of_claimYield(address _sendTo) public { }
-    
-    function prove_integrity_of_claimYieldInShares(address _sendTo) public { }
 
-    */
+    function prove_integrity_of_claimYield(address msg_sender, address _sendTo, uint256 amount, address account) public {
+        require(msg_sender != address(0));
+        require(_sendTo != address(0));
+        require(_sendTo != msg_sender);
+
+        vm.prank(msg_sender);
+        uint256 yieldInShares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(yieldInShares != 0);
+
+        require(amount >= yieldInShares);
+
+        vm.prank(msg_sender);
+        vault.mint(amount, account);
+
+        uint256 _receiverShares = yieldStreaming.receiverShares(msg_sender);
+        uint256 _receiverAssets = asset.balanceOf(_sendTo);
+        uint256 _totalAssets = asset.balanceOf(address(this));
+        uint256 _ownerShares = vault.balanceOf(address(this));
+        uint256 _senderAllowance = vault.allowance(address(this), msg_sender);
+
+        vm.prank(msg_sender);
+        uint256 assets = yieldStreaming.claimYield(_sendTo);
+
+        uint256 receiverShares_ = yieldStreaming.receiverShares(msg_sender);
+        uint256 receiverAssets_ = asset.balanceOf(_sendTo);
+        uint256 totalAssets_ = asset.balanceOf(address(this));
+        uint256 ownerShares_ = vault.balanceOf(address(this));
+        uint256 senderAllowance_ = vault.allowance(address(this), msg_sender);
+
+        assert(_receiverShares  == receiverShares_ + yieldInShares);
+        assert(_receiverAssets + assets == receiverAssets_);
+        assert(_totalAssets - assets == totalAssets_);
+        assert(_ownerShares - yieldInShares == ownerShares_);
+        assert((msg_sender == address(this)) || 
+            ((_senderAllowance == 2**256 -1 && senderAllowance_ == 2**256 -1) 
+            || (_senderAllowance - yieldInShares == senderAllowance_)));
+        }
+
+    function prove_integrity_of_claimYieldInShares(address msg_sender, address _sendTo, uint256 amount) public {
+        require(msg_sender != address(0));
+        require(_sendTo != address(0));
+        require(_sendTo != msg_sender);
+
+        asset.mint(msg_sender, amount);
+
+        vm.prank(msg_sender);
+        uint256 shares = yieldStreaming.previewClaimYieldInShares(msg_sender);
+        require(shares != 0);
+
+        uint256 _receiverShares = yieldStreaming.receiverShares(msg_sender);
+        uint256 _balanceSender = asset.balanceOf(msg_sender);
+        uint256 _balanceRecipient = asset.balanceOf(_sendTo);
+
+        vm.prank(msg_sender);
+        yieldStreaming.claimYieldInShares(_sendTo);
+
+        uint256 receiverShares_ = yieldStreaming.receiverShares(msg_sender);
+
+        assert(_receiverShares  == receiverShares_ + shares);
+        assert(asset.balanceOf(msg_sender) <=  _balanceSender - shares);
+        assert(asset.balanceOf(_sendTo) ==  _balanceRecipient + shares);
+    }
+
 }
