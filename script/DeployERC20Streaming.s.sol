@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.19;
 
-import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
-
 import {DeployScriptBase} from "./base/DeployScriptBase.sol";
 import {ERC20Streaming} from "../src/ERC20Streaming.sol";
 
@@ -24,6 +22,8 @@ contract DeployERC20Streaming is DeployScriptBase {
                 abi.encodePacked(type(ERC20Streaming).creationCode, abi.encode(vault))
             )
         );
+
+        require(erc20Streaming.token() == vault, "incorrect vault set");
 
         vm.stopBroadcast();
     }
