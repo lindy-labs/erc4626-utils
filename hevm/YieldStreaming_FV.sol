@@ -70,7 +70,7 @@ contract YieldStreaming_FV is Test {
     }
 
     // Symbolic test checking that openYieldStream updates receiver state properly
-    function prove_integrity_of_openYieldStream(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+    function prove_integrity_of_openYieldStream(address msg_sender, address _receiver, uint256 _shares) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -81,11 +81,12 @@ contract YieldStreaming_FV is Test {
         uint256 _receiverPrincipal = yieldStreaming.receiverPrincipal(_receiver,msg_sender);
         uint256 debt = yieldStreaming.debtFor(_receiver);
         require(debt != 0);
-        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
-        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+        uint256 principal = vault.convertToAssets(_shares);
+        uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
+        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
 
         vm.prank(msg_sender);
-        uint256 principal = yieldStreaming.openYieldStream(_receiver, _shares);
+        yieldStreaming.openYieldStream(_receiver, _shares);
 
         uint256 receiverShares_ = yieldStreaming.receiverShares(_receiver);
         uint256 receiverTotalPrincipal_ = yieldStreaming.receiverTotalPrincipal(_receiver);
@@ -215,7 +216,7 @@ contract YieldStreaming_FV is Test {
     // ************************************ REVERTABLE PROPERTIES *************************************************
 
     // Checks that openYieldStream should revert when the msg.sender is the zero address
-    function proveFail_openYieldStream_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+    function proveFail_openYieldStream_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares) public {
         require(msg_sender == address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -224,15 +225,16 @@ contract YieldStreaming_FV is Test {
         uint256 debt = yieldStreaming.debtFor(_receiver);
         require(debt != 0);
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
-        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
-        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+        uint256 principal = vault.convertToAssets(_shares);
+        uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
+        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
 
         vm.prank(msg_sender);
         yieldStreaming.openYieldStream(_receiver, _shares);
     }
 
     // Checks that openYieldStream should revert when the _receiver address parameter is the zero address
-    function proveFail_openYieldStream_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+    function proveFail_openYieldStream_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares) public {
         require(msg_sender != address(0));
         require(_receiver == address(0));
         require(_shares != 0);
@@ -241,14 +243,15 @@ contract YieldStreaming_FV is Test {
         uint256 debt = yieldStreaming.debtFor(_receiver);
         require(debt != 0);
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
-        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
-        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+        uint256 principal = vault.convertToAssets(_shares);
+        uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
+        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
 
         vm.prank(msg_sender);
         yieldStreaming.openYieldStream(_receiver, _shares);
     }
     // Checks that openYieldStream should revert when the _shares amount parameter is 0 
-    function proveFail_openYieldStream_When_Shares_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+    function proveFail_openYieldStream_When_Shares_Equals_Zero(address msg_sender, address _receiver, uint256 _shares) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares == 0);
@@ -257,15 +260,16 @@ contract YieldStreaming_FV is Test {
         uint256 debt = yieldStreaming.debtFor(_receiver);
         require(debt != 0);
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
-        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
-        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+        uint256 principal = vault.convertToAssets(_shares);
+        uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
+        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
 
         vm.prank(msg_sender);
         yieldStreaming.openYieldStream(_receiver, _shares);
     }
 
     // Checks that openYieldStream should revert when the _receiver address parameter is the same as the msg.sender
-    function proveFail_openYieldStream_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+    function proveFail_openYieldStream_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver, uint256 _shares) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -274,15 +278,16 @@ contract YieldStreaming_FV is Test {
         uint256 debt = yieldStreaming.debtFor(_receiver);
         require(debt != 0);
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
-        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
-        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+        uint256 principal = vault.convertToAssets(_shares);
+        uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
+        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
 
         vm.prank(msg_sender);
         yieldStreaming.openYieldStream(_receiver, _shares);
     }
 
     // Checks that openYieldStream should revert when the receiver has no existing debt
-    function proveFail_openYieldStream_When_Debt_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 _principal) public {
+    function proveFail_openYieldStream_When_Debt_Equals_Zero(address msg_sender, address _receiver, uint256 _shares) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares == 0);
@@ -291,8 +296,9 @@ contract YieldStreaming_FV is Test {
         uint256 debt = yieldStreaming.debtFor(_receiver);
         require(debt != 0);
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
-        //uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
-        //require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent())); // This is too costly for Z3
+        uint256 principal = vault.convertToAssets(_shares);
+        uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
+        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
 
         vm.prank(msg_sender);
         yieldStreaming.openYieldStream(_receiver, _shares);
