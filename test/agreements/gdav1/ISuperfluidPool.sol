@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPLv3
 pragma solidity >=0.8.4;
 
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { ISuperfluidToken } from "../../superfluid/ISuperfluidToken.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ISuperfluidToken} from "../../superfluid/ISuperfluidToken.sol";
 
 /**
  * @dev The interface for any super token pool regardless of the distribution schemes.
  */
 interface ISuperfluidPool is IERC20 {
-
     // Structs
     struct PoolIndexData {
         uint128 totalUnits;
@@ -28,11 +27,11 @@ interface ISuperfluidPool is IERC20 {
 
     // Custom Errors
 
-    error SUPERFLUID_POOL_INVALID_TIME();               // 0x83c35016
-    error SUPERFLUID_POOL_NO_POOL_MEMBERS();            // 0xe10f405a
-    error SUPERFLUID_POOL_NO_ZERO_ADDRESS();            // 0x54eb6ee6
-    error SUPERFLUID_POOL_NOT_POOL_ADMIN_OR_GDA();      // 0x1c5fbdcb
-    error SUPERFLUID_POOL_NOT_GDA();                    // 0xfcbe3f9e
+    error SUPERFLUID_POOL_INVALID_TIME(); // 0x83c35016
+    error SUPERFLUID_POOL_NO_POOL_MEMBERS(); // 0xe10f405a
+    error SUPERFLUID_POOL_NO_ZERO_ADDRESS(); // 0x54eb6ee6
+    error SUPERFLUID_POOL_NOT_POOL_ADMIN_OR_GDA(); // 0x1c5fbdcb
+    error SUPERFLUID_POOL_NOT_GDA(); // 0xfcbe3f9e
     error SUPERFLUID_POOL_TRANSFER_UNITS_NOT_ALLOWED(); // 0x2285efba
 
     // Events

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPLv3
 pragma solidity >=0.8.4;
 
-import { ISuperAgreement } from "../../superfluid/ISuperAgreement.sol";
-import { ISuperfluidToken } from "../../superfluid/ISuperfluidToken.sol";
-import { ISuperfluidPool } from "../../agreements/gdav1/ISuperfluidPool.sol";
+import {ISuperAgreement} from "../../superfluid/ISuperAgreement.sol";
+import {ISuperfluidToken} from "../../superfluid/ISuperfluidToken.sol";
+import {ISuperfluidPool} from "../../agreements/gdav1/ISuperfluidPool.sol";
 
 struct PoolConfig {
     /// @dev if true, the pool members can transfer their owned units
@@ -48,19 +48,17 @@ abstract contract IGeneralDistributionAgreementV1 is ISuperAgreement {
         address liquidator;
     }
 
-
     // Custom Errors
-    error GDA_DISTRIBUTE_FOR_OTHERS_NOT_ALLOWED();          // 0xf67d263e
-    error GDA_DISTRIBUTE_FROM_ANY_ADDRESS_NOT_ALLOWED();    // 0x7761a5e5
-    error GDA_FLOW_DOES_NOT_EXIST();                        // 0x29f4697e
-    error GDA_NON_CRITICAL_SENDER();                        // 0x666f381d
-    error GDA_INSUFFICIENT_BALANCE();                       // 0x33115c3f
-    error GDA_NO_NEGATIVE_FLOW_RATE();                      // 0x15f25663
-    error GDA_ADMIN_CANNOT_BE_POOL();                       // 0x9ab88a26
-    error GDA_NOT_POOL_ADMIN();                             // 0x3a87e565
-    error GDA_NO_ZERO_ADDRESS_ADMIN();                      // 0x82c5d837
-    error GDA_ONLY_SUPER_TOKEN_POOL();                      // 0x90028c37
-
+    error GDA_DISTRIBUTE_FOR_OTHERS_NOT_ALLOWED(); // 0xf67d263e
+    error GDA_DISTRIBUTE_FROM_ANY_ADDRESS_NOT_ALLOWED(); // 0x7761a5e5
+    error GDA_FLOW_DOES_NOT_EXIST(); // 0x29f4697e
+    error GDA_NON_CRITICAL_SENDER(); // 0x666f381d
+    error GDA_INSUFFICIENT_BALANCE(); // 0x33115c3f
+    error GDA_NO_NEGATIVE_FLOW_RATE(); // 0x15f25663
+    error GDA_ADMIN_CANNOT_BE_POOL(); // 0x9ab88a26
+    error GDA_NOT_POOL_ADMIN(); // 0x3a87e565
+    error GDA_NO_ZERO_ADDRESS_ADMIN(); // 0x82c5d837
+    error GDA_ONLY_SUPER_TOKEN_POOL(); // 0x90028c37
 
     // Events
     event InstantDistributionUpdated(

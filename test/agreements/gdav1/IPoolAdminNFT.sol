@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.11;
 
-import { IPoolNFTBase } from "./IPoolNFTBase.sol";
+import {IPoolNFTBase} from "./IPoolNFTBase.sol";
 
 interface IPoolAdminNFT is IPoolNFTBase {
     // PoolAdminNFTData struct storage packing:

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >= 0.8.11;
 
-import { ISuperfluidToken } from "./ISuperfluidToken.sol";
+import {ISuperfluidToken} from "./ISuperfluidToken.sol";
 
 /**
  * @title Super agreement interface
  * @author Superfluid
  */
 interface ISuperAgreement {
-
     /**
      * @dev Get the type of the agreement class
      */
@@ -22,17 +21,8 @@ interface ISuperAgreement {
      * @return deposit Account deposit amount of this agreement
      * @return owedDeposit Account owed deposit amount of this agreement
      */
-    function realtimeBalanceOf(
-        ISuperfluidToken token,
-        address account,
-        uint256 time
-    )
+    function realtimeBalanceOf(ISuperfluidToken token, address account, uint256 time)
         external
         view
-        returns (
-            int256 dynamicBalance,
-            uint256 deposit,
-            uint256 owedDeposit
-        );
-
+        returns (int256 dynamicBalance, uint256 deposit, uint256 owedDeposit);
 }
