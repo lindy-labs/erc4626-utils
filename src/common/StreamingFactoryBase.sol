@@ -2,7 +2,6 @@
 pragma solidity ^0.8.19;
 
 import {CREATE3} from "solmate/utils/CREATE3.sol";
-import {Ownable} from "openzeppelin-contracts/access/Ownable.sol";
 import {IERC20} from "openzeppelin-contracts/token/ERC20/IERC20.sol";
 
 import {AddressZero, AlreadyDeployed} from "./Errors.sol";
@@ -11,42 +10,20 @@ import {AddressZero, AlreadyDeployed} from "./Errors.sol";
  * @title StreamingFactoryBase
  * @dev A base contract for creating and managing streaming contract instances.
  */
-abstract contract StreamingFactoryBase is Ownable {
+abstract contract StreamingFactoryBase {
     /// @dev The addresses of deployed instances.
     address[] public deployedAddresses;
     /// @dev The number of deployed instances.
     uint256 public deployedCount;
 
-    /// @dev The address of the owner of the deployed instances.
-    address public instanceOwner;
-
     event Deployed(address indexed vault, address indexed deployed);
-    event InstanceOwnerUpdated(address indexed sender, address oldOwner, address newOwner);
-
-    constructor(address _instanceOwner) Ownable(msg.sender) {
-        _checkZeroAddress(_instanceOwner);
-
-        instanceOwner = _instanceOwner;
-    }
-
-    /**
-     * @dev Sets the address of the owner of the deployed YieldStreaming instances.
-     * @param _newInstanceOwner The address of the new owner of the deployed YieldStreaming instances.
-     */
-    function setInstanceOwner(address _newInstanceOwner) public onlyOwner {
-        _checkZeroAddress(_newInstanceOwner);
-
-        emit InstanceOwnerUpdated(msg.sender, instanceOwner, _newInstanceOwner);
-
-        instanceOwner = _newInstanceOwner;
-    }
 
     /**
      * @dev Creates a new ERC4626StreamHub instance.
      * @param _vault The address of the vault contract.
      * @return deployed The address of the deployed ERC4626StreamHub instance.
      */
-    function create(address _vault) public virtual onlyOwner returns (address deployed) {
+    function create(address _vault) public virtual returns (address deployed) {
         _checkZeroAddress(_vault);
         if (isDeployed(_vault)) revert AlreadyDeployed();
 
@@ -90,7 +67,6 @@ abstract contract StreamingFactoryBase is Ownable {
      * @dev Returns the creation code for the CREATE3 deployment.
      * @param _vault The address of the vault contract.
      */
-    // TODO: user IERC20 instead of address
     function _getCreationCode(address _vault) internal view virtual returns (bytes memory);
 
     function _checkZeroAddress(address _address) internal pure {

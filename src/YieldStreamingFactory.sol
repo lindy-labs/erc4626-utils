@@ -9,9 +9,7 @@ import {YieldStreaming} from "./ERC4626StreamHub.sol";
  * @dev A contract for creating and managing YieldStreaming instances.
  */
 contract YieldStreamingFactory is StreamingFactoryBase {
-    constructor(address _instanceOwner) StreamingFactoryBase(_instanceOwner) {}
-
-    function _getCreationCode(address _vault) internal view override returns (bytes memory) {
-        return abi.encodePacked(type(YieldStreaming).creationCode, abi.encode(instanceOwner, _vault));
+    function _getCreationCode(address _vault) internal pure override returns (bytes memory) {
+        return abi.encodePacked(type(YieldStreaming).creationCode, abi.encode(_vault));
     }
 }

@@ -5,6 +5,10 @@ pragma solidity ^0.8.19;
 
 address constant MULTISIG = 0x6cF38285FdFAf8D67205ca444A899025b5B18e83;
 
+address constant scETH = 0x4c406C068106375724275Cbff028770C544a1333;
+
+address constant scUSDC = 0x096697720056886b905D0DEB0f06AfFB8e4665E5;
+
 // *** sepolia addresses *** //
 
 // erc20 mock

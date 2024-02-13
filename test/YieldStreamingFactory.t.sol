@@ -9,20 +9,18 @@ import {YieldStreamingFactory} from "../src/YieldStreamingFactory.sol";
 import {YieldStreaming} from "../src/YieldStreaming.sol";
 
 contract YieldStreamingFactoryTest is Test {
-    function test_create_deploysYieldStreaming() public {
+    function test_create_deploysYieldStreamingInstance() public {
         MockERC20 asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         MockERC4626 vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
 
-        address instanceOwner = address(0x01);
-        YieldStreamingFactory factory = new YieldStreamingFactory(instanceOwner);
+        YieldStreamingFactory factory = new YieldStreamingFactory();
 
         YieldStreaming deployed = YieldStreaming(factory.create(address(vault)));
 
         assertEq(factory.deployedCount(), 1);
         assertEq(factory.deployedAddresses(0), address(deployed));
 
-        // assert correct owner and vault
-        assertEq(deployed.owner(), instanceOwner, "owner");
+        // assert vault is set
         assertEq(deployed.token(), address(vault), "vault");
 
         // open yield stream to confirm correcntess
@@ -32,7 +30,7 @@ contract YieldStreamingFactoryTest is Test {
         vault.approve(address(deployed), shares);
         address receiver = address(0x02);
 
-        deployed.openYieldStream(receiver, shares);
+        deployed.openYieldStream(receiver, shares, 0);
 
         assertEq(vault.balanceOf(address(deployed)), shares, "stream shares");
     }

@@ -14,47 +14,13 @@ contract SttreamingFactoryBaseTest is Test {
     FactoryHarness public factory;
     MockERC4626 public vault;
 
-    address constant hubOwner = address(0x01);
-
     event Deployed(address indexed vault, address indexed deployed);
-    event InstanceOwnerUpdated(address indexed sender, address oldOwner, address newOwner);
 
     function setUp() public {
-        factory = new FactoryHarness(hubOwner);
+        factory = new FactoryHarness();
 
         MockERC20 asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
-    }
-
-    function test_constructor_setsHubInstanceOwner() public {
-        assertEq(factory.instanceOwner(), hubOwner);
-    }
-
-    function test_constructor_failsIfHubInstanceOwnerIsZero() public {
-        vm.expectRevert(AddressZero.selector);
-        new FactoryHarness(address(0));
-    }
-
-    function test_setHubInstanceOwner_updatesHubInstanceOwner() public {
-        address newHubInstanceOwner = address(0x02);
-
-        factory.setInstanceOwner(newHubInstanceOwner);
-
-        assertEq(factory.instanceOwner(), newHubInstanceOwner);
-    }
-
-    function test_setHubInstanceOwner_failsIfNewHubInstanceOwnerIsZero() public {
-        vm.expectRevert(AddressZero.selector);
-        factory.setInstanceOwner(address(0));
-    }
-
-    function test_setHubInstanceOwner_emitsEvent() public {
-        address newHubInstanceOwner = address(0x02);
-
-        vm.expectEmit(true, true, true, true);
-        emit InstanceOwnerUpdated(address(this), hubOwner, newHubInstanceOwner);
-
-        factory.setInstanceOwner(newHubInstanceOwner);
     }
 
     function test_create_failsIfVaultIsZero() public {
@@ -115,8 +81,6 @@ contract SttreamingFactoryBaseTest is Test {
 }
 
 contract FactoryHarness is StreamingFactoryBase {
-    constructor(address _instanceOwner) StreamingFactoryBase(_instanceOwner) {}
-
     function _getCreationCode(address) internal pure override returns (bytes memory) {
         return abi.encodePacked(type(DeployMock).creationCode);
     }

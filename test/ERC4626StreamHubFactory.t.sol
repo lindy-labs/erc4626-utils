@@ -9,20 +9,18 @@ import {ERC4626StreamHubFactory} from "../src/ERC4626StreamHubFactory.sol";
 import {ERC4626StreamHub} from "../src/ERC4626StreamHub.sol";
 
 contract ERC4626StreamHubFactoryTest is Test {
-    function test_create_deploysYieldStreaming() public {
+    function test_create_deploysStreamHubInstance() public {
         MockERC20 asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         MockERC4626 vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
 
-        address instanceOwner = address(0x01);
-        ERC4626StreamHubFactory factory = new ERC4626StreamHubFactory(instanceOwner);
+        ERC4626StreamHubFactory factory = new ERC4626StreamHubFactory();
 
         ERC4626StreamHub deployed = ERC4626StreamHub(factory.create(address(vault)));
 
         assertEq(factory.deployedCount(), 1);
         assertEq(factory.deployedAddresses(0), address(deployed));
 
-        // assert correct owner and vault
-        assertEq(deployed.owner(), instanceOwner, "owner");
+        // assert vault is set
         assertEq(deployed.token(), address(vault), "vault");
 
         asset.mint(address(this), 2 ether);
@@ -32,7 +30,7 @@ contract ERC4626StreamHubFactoryTest is Test {
         address receiver = address(0x02);
 
         // open yield stream
-        deployed.openYieldStream(receiver, shares / 2);
+        deployed.openYieldStream(receiver, shares / 2, 0);
 
         assertEq(vault.balanceOf(address(deployed)), shares / 2, "yield stream shares");
         assertEq(deployed.receiverShares(receiver), shares / 2, "yield receiver shares");
