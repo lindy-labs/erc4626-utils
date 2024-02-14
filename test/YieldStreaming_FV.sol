@@ -25,52 +25,16 @@ contract YieldStreaming_FV is Test {
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
-        yieldStreaming = new YieldStreaming(address(this), IERC4626(address(vault)));
+        yieldStreaming = new YieldStreaming(IERC4626(address(vault)));
     }
 
     // Checks that constructing YieldStreaming with a zero vault address reverts
     function proveFail_constructor_failsIfVaultIsAddress0() public {
-        new YieldStreaming(address(this), IERC4626(address(0)));
-    }
-
-    // Checks that constructing YieldStreaming with a zero owner address reverts
-    function proveFail_constructor_failsIfOwnerIsAddress0() public {
-        new YieldStreaming(address(0), IERC4626(address(vault)));
-    }
-
-    // Checks that setLossTolerancePercent fails if called by someone other than the owner
-    function proveFail_setLossTolerancePercent_failsIfCallerIsNotOwner(address caller) public {
-        require(caller != address(this));
-        vm.prank(caller);
-        yieldStreaming.setLossTolerancePercent(0);
-    }
-
-    // Checks that setLossTolerancePercent fails if trying to set above the maximum
-    function proveFail_setlossTolerancePercent_failsIfLossToleraceIsAboveMax(uint256 newLossTolerance) public {
-        require(newLossTolerance > yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT());
-        yieldStreaming.setLossTolerancePercent(newLossTolerance);
-    }
-
-    // Checks that setLossTolerancePercent updates lossTolerancePercent
-    function prove_setLossTolerancePercent_updatesLossTolerancePercentValue(uint256 newLossTolerance) public {
-        require(newLossTolerance <= yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT());
-        yieldStreaming.setLossTolerancePercent(newLossTolerance);
-
-        assertEq(yieldStreaming.lossTolerancePercent(), newLossTolerance);
-    }
-
-    // Auxiliary function for the symbolic test prove_integrity_of_openYieldStream below. Checks loss on open is within tolerance
-    function prove_auxiliary_integrity_of_openYieldStream(address _receiver, uint256 _principal) public { // This is needed by the next symbolic test
-        require(_receiver != address(0));
-        uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
-        uint256 debt = yieldStreaming.debtFor(_receiver);
-        require(debt != 0);
-        uint256 lossOnOpen = debt.mulDivUp(_principal, _receiverTotalPrincipal + _principal);
-        require(lossOnOpen <= _principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
+        new YieldStreaming(IERC4626(address(0)));
     }
 
     // Symbolic test checking that openYieldStream updates receiver state properly
-    function prove_integrity_of_openYieldStream(address msg_sender, address _receiver, uint256 _shares) public {
+    function prove_integrity_of_openYieldStream(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -83,10 +47,10 @@ contract YieldStreaming_FV is Test {
         require(debt != 0);
         uint256 principal = vault.convertToAssets(_shares);
         uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
-        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
+        require(lossOnOpen <= principal.mulWadUp(_maxLossOnOpenTolerancePercent));
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStream(_receiver, _shares);
+        yieldStreaming.openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
 
         uint256 receiverShares_ = yieldStreaming.receiverShares(_receiver);
         uint256 receiverTotalPrincipal_ = yieldStreaming.receiverTotalPrincipal(_receiver);
@@ -98,7 +62,7 @@ contract YieldStreaming_FV is Test {
     }
 
     // Symbolic test checking openYieldStreamUsingPermit updates receiver state properly
-    function prove_integrity_of_openYieldStreamUsingPermit(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+    function prove_integrity_of_openYieldStreamUsingPermit(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -112,7 +76,7 @@ contract YieldStreaming_FV is Test {
         require(debt != 0);
 
         vm.prank(msg_sender);
-        uint256 principal = yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+        uint256 principal = yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, _maxLossOnOpenTolerancePercent, deadline, v, r, s);
 
         uint256 receiverShares_ = yieldStreaming.receiverShares(_receiver);
         uint256 receiverTotalPrincipal_ = yieldStreaming.receiverTotalPrincipal(_receiver);
@@ -131,7 +95,7 @@ contract YieldStreaming_FV is Test {
 
         uint256 principal;
         vm.prank(msg_sender);
-        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        principal = yieldStreaming.receiverPrincipal(_receiver, msg_sender);
         require(principal != 0);
         uint256 _receiverShares = yieldStreaming.receiverShares(_receiver);
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
@@ -216,7 +180,7 @@ contract YieldStreaming_FV is Test {
     // ************************************ REVERTABLE PROPERTIES *************************************************
 
     // Checks that openYieldStream should revert when the msg.sender is the zero address
-    function proveFail_openYieldStream_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares) public {
+    function proveFail_openYieldStream_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent) public {
         require(msg_sender == address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -227,14 +191,14 @@ contract YieldStreaming_FV is Test {
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
         uint256 principal = vault.convertToAssets(_shares);
         uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
-        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
+        require(lossOnOpen <= principal.mulWadUp(_maxLossOnOpenTolerancePercent));
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStream(_receiver, _shares);
+        yieldStreaming.openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
     }
 
     // Checks that openYieldStream should revert when the _receiver address parameter is the zero address
-    function proveFail_openYieldStream_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares) public {
+    function proveFail_openYieldStream_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent) public {
         require(msg_sender != address(0));
         require(_receiver == address(0));
         require(_shares != 0);
@@ -245,13 +209,13 @@ contract YieldStreaming_FV is Test {
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
         uint256 principal = vault.convertToAssets(_shares);
         uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
-        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
+        require(lossOnOpen <= principal.mulWadUp(_maxLossOnOpenTolerancePercent));
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStream(_receiver, _shares);
+        yieldStreaming.openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
     }
     // Checks that openYieldStream should revert when the _shares amount parameter is 0 
-    function proveFail_openYieldStream_When_Shares_Equals_Zero(address msg_sender, address _receiver, uint256 _shares) public {
+    function proveFail_openYieldStream_When_Shares_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares == 0);
@@ -262,14 +226,14 @@ contract YieldStreaming_FV is Test {
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
         uint256 principal = vault.convertToAssets(_shares);
         uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
-        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
+        require(lossOnOpen <= principal.mulWadUp(_maxLossOnOpenTolerancePercent));
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStream(_receiver, _shares);
+        yieldStreaming.openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
     }
 
     // Checks that openYieldStream should revert when the _receiver address parameter is the same as the msg.sender
-    function proveFail_openYieldStream_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver, uint256 _shares) public {
+    function proveFail_openYieldStream_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -280,14 +244,14 @@ contract YieldStreaming_FV is Test {
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
         uint256 principal = vault.convertToAssets(_shares);
         uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
-        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
+        require(lossOnOpen <= principal.mulWadUp(_maxLossOnOpenTolerancePercent));
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStream(_receiver, _shares);
+        yieldStreaming.openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
     }
 
     // Checks that openYieldStream should revert when the receiver has no existing debt
-    function proveFail_openYieldStream_When_Debt_Equals_Zero(address msg_sender, address _receiver, uint256 _shares) public {
+    function proveFail_openYieldStream_When_Debt_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares == 0);
@@ -298,14 +262,14 @@ contract YieldStreaming_FV is Test {
         uint256 _receiverTotalPrincipal = yieldStreaming.receiverTotalPrincipal(_receiver);
         uint256 principal = vault.convertToAssets(_shares);
         uint256 lossOnOpen = debt.mulDivUp(principal, _receiverTotalPrincipal + principal);
-        require(lossOnOpen <= principal.mulWadUp(yieldStreaming.lossTolerancePercent()));
+        require(lossOnOpen <= principal.mulWadUp(_maxLossOnOpenTolerancePercent));
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStream(_receiver, _shares);
+        yieldStreaming.openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
     }
 
     // Checks that openYieldStreamUsingPermit should revert when the msg.sender is the zero address
-    function proveFail_openYieldStreamUsingPermit_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+    function proveFail_openYieldStreamUsingPermit_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender == address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -316,11 +280,11 @@ contract YieldStreaming_FV is Test {
         require(debt != 0);
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, _maxLossOnOpenTolerancePercent, deadline, v, r, s);
     }
 
     // Checks that openYieldStreamUsingPermit should revert when the _receiver address parameter is the zero address
-    function proveFail_openYieldStreamUsingPermit_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+    function proveFail_openYieldStreamUsingPermit_When_Receiver_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender != address(0));
         require(_receiver == address(0));
         require(_shares != 0);
@@ -331,11 +295,11 @@ contract YieldStreaming_FV is Test {
         require(debt != 0);
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, _maxLossOnOpenTolerancePercent, deadline, v, r, s);
     }
 
     // Checks that openYieldStreamUsingPermit should revert when the _shares amount parameter is 0
-    function proveFail_openYieldStreamUsingPermit_When_Shares_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+    function proveFail_openYieldStreamUsingPermit_When_Shares_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares == 0);
@@ -346,11 +310,11 @@ contract YieldStreaming_FV is Test {
         require(debt != 0);
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, _maxLossOnOpenTolerancePercent, deadline, v, r, s);
     }
 
     // Checks that openYieldStreamUsingPermit should revert when the _receiver address parameter is the same as the msg.sender
-    function proveFail_openYieldStreamUsingPermit_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+    function proveFail_openYieldStreamUsingPermit_When_Receiver_Equals_MSGSender(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -361,11 +325,11 @@ contract YieldStreaming_FV is Test {
         require(debt != 0);
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, _maxLossOnOpenTolerancePercent, deadline, v, r, s);
     }
 
     // Checks that openYieldStreamUsingPermit should revert when the deadline parameter is less than the current block timestamp
-    function proveFail_openYieldStreamUsingPermit_When_Deadline_Is_Less_Than_TimeStamp(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+    function proveFail_openYieldStreamUsingPermit_When_Deadline_Is_Less_Than_TimeStamp(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -376,11 +340,11 @@ contract YieldStreaming_FV is Test {
         require(debt != 0);
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, _maxLossOnOpenTolerancePercent, deadline, v, r, s);
     }
 
     // Checks that openYieldStreamUsingPermit should revert when the vault allowance for the contract is less than the _shares amount
-    function proveFail_openYieldStreamUsingPermit_When_Allowance_Is_Less_Than_Shares(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+    function proveFail_openYieldStreamUsingPermit_When_Allowance_Is_Less_Than_Shares(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -391,11 +355,11 @@ contract YieldStreaming_FV is Test {
         require(debt != 0);
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, _maxLossOnOpenTolerancePercent, deadline, v, r, s);
     }
 
     // Checks that openYieldStreamUsingPermit should revert when the receiver has no existing debt
-    function proveFail_openYieldStreamUsingPermit_When_Debt_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+    function proveFail_openYieldStreamUsingPermit_When_Debt_Equals_Zero(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         require(msg_sender != address(0));
         require(_receiver != address(0));
         require(_shares != 0);
@@ -406,7 +370,7 @@ contract YieldStreaming_FV is Test {
         require(debt == 0);
 
         vm.prank(msg_sender);
-        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, deadline, v, r, s);
+        yieldStreaming.openYieldStreamUsingPermit(_receiver, _shares, _maxLossOnOpenTolerancePercent, deadline, v, r, s);
     }
 
     // Checks that closeYieldStream should revert when the msg.sender is the zero address
@@ -417,7 +381,7 @@ contract YieldStreaming_FV is Test {
 
         uint256 principal;
         vm.prank(msg_sender);
-        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        principal = yieldStreaming.receiverPrincipal(_receiver,msg_sender);
         require(principal != 0);
 
         vm.prank(msg_sender);
@@ -432,7 +396,7 @@ contract YieldStreaming_FV is Test {
 
         uint256 principal;
         vm.prank(msg_sender);
-        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        principal = yieldStreaming.receiverPrincipal(_receiver,msg_sender);
         require(principal != 0);
 
         vm.prank(msg_sender);
@@ -447,7 +411,7 @@ contract YieldStreaming_FV is Test {
 
         uint256 principal;
         vm.prank(msg_sender);
-        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        principal = yieldStreaming.receiverPrincipal(_receiver,msg_sender);
         require(principal != 0);
 
         vm.prank(msg_sender);
@@ -462,7 +426,7 @@ contract YieldStreaming_FV is Test {
 
         uint256 principal;
         vm.prank(msg_sender);
-        (, principal) = yieldStreaming._previewCloseYieldStream(_receiver, msg_sender);
+        principal = yieldStreaming.receiverPrincipal(_receiver,msg_sender);
         require(principal == 0);
 
         vm.prank(msg_sender);
