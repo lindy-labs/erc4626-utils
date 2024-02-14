@@ -28,11 +28,6 @@ contract YieldStreaming_FV is Test {
         yieldStreaming = new YieldStreaming(IERC4626(address(vault)));
     }
 
-    // Checks that constructing YieldStreaming with a zero vault address reverts
-    function proveFail_constructor_failsIfVaultIsAddress0() public {
-        new YieldStreaming(IERC4626(address(0)));
-    }
-
     // Symbolic test checking that openYieldStream updates receiver state properly
     function prove_integrity_of_openYieldStream(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent) public {
         require(msg_sender != address(0));
@@ -178,6 +173,11 @@ contract YieldStreaming_FV is Test {
     }
 
     // ************************************ REVERTABLE PROPERTIES *************************************************
+
+    // Checks that constructing YieldStreaming with a zero vault address reverts
+    function proveFail_constructor_failsIfVaultIsAddress0() public {
+        new YieldStreaming(IERC4626(address(0)));
+    }
 
     // Checks that openYieldStream should revert when the msg.sender is the zero address
     function proveFail_openYieldStream_When_MSGSender_Equals_ZeroAddress(address msg_sender, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent) public {
