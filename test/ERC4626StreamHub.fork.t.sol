@@ -25,8 +25,6 @@ contract ERC4626StreamHubForkTests is Test {
     IERC4626 public scUsdc;
     IERC20 public usdc;
 
-    address constant hubOwner = address(0x01);
-
     address constant alice = address(0x06);
     address constant bob = address(0x07);
     address constant carol = address(0x08);
@@ -41,20 +39,13 @@ contract ERC4626StreamHubForkTests is Test {
         scUsdc = IERC4626(0x096697720056886b905D0DEB0f06AfFB8e4665E5); // scUSDC mainnet address
         usdc = IERC20(scUsdc.asset());
 
-        factory = new ERC4626StreamHubFactory(hubOwner);
+        factory = new ERC4626StreamHubFactory();
 
         wethStreamHub = ERC4626StreamHub(factory.predictDeploy(address(scEth)));
         factory.create(address(scEth));
         usdcStreamHub = ERC4626StreamHub(factory.predictDeploy(address(scUsdc)));
         factory.create(address(scUsdc));
     }
-
-    /// *** #constructor *** ///
-
-    function test_constructor_setsHubInstanceOwner() public {
-        assertEq(wethStreamHub.owner(), factory.hubInstanceOwner(), "wethStreamHub - isOwner");
-    }
-
     /// *** yield streaming tests *** ///
 
     function test_openYieldStream() public {
@@ -63,7 +54,7 @@ contract ERC4626StreamHubForkTests is Test {
         _approve(alice, shares, scEth, wethStreamHub);
 
         vm.prank(alice);
-        wethStreamHub.openYieldStream(bob, shares);
+        wethStreamHub.openYieldStream(bob, shares, 0);
 
         assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
         assertEq(wethStreamHub.receiverShares(bob), shares, "receiverShares");
@@ -92,8 +83,8 @@ contract ERC4626StreamHubForkTests is Test {
         uint256 carolsShares = shares - bobsShares;
 
         vm.startPrank(alice);
-        usdcStreamHub.openYieldStream(bob, bobsShares);
-        usdcStreamHub.openYieldStream(carol, carolsShares);
+        usdcStreamHub.openYieldStream(bob, bobsShares, 0);
+        usdcStreamHub.openYieldStream(carol, carolsShares, 0);
         vm.stopPrank();
 
         assertEq(scUsdc.balanceOf(address(usdcStreamHub)), shares, "totalShares");
@@ -144,7 +135,7 @@ contract ERC4626StreamHubForkTests is Test {
         _approve(alice, shares, scEth, wethStreamHub);
 
         vm.prank(alice);
-        wethStreamHub.openYieldStream(bob, shares);
+        wethStreamHub.openYieldStream(bob, shares, 0);
 
         _createProfitForVault(0.05e18, scEth); // 5%
 
@@ -163,7 +154,7 @@ contract ERC4626StreamHubForkTests is Test {
         _approve(alice, topUpShares, scEth, wethStreamHub);
 
         vm.prank(alice);
-        wethStreamHub.openYieldStream(bob, topUpShares);
+        wethStreamHub.openYieldStream(bob, topUpShares, 0);
 
         assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
         assertEq(wethStreamHub.receiverShares(bob), sharesBeforeTopUp + topUpShares, "receiverShares");
@@ -182,13 +173,13 @@ contract ERC4626StreamHubForkTests is Test {
         uint256 alicesShares = _deposit(scEth, alice, alicesDepositAmount);
         _approve(alice, alicesShares, scEth, wethStreamHub);
         vm.prank(alice);
-        wethStreamHub.openYieldStream(carol, alicesShares);
+        wethStreamHub.openYieldStream(carol, alicesShares, 0);
 
         uint256 bobsDepositAmount = 2 ether;
         uint256 bobsShares = _deposit(scEth, bob, bobsDepositAmount);
         _approve(bob, bobsShares, scEth, wethStreamHub);
         vm.prank(bob);
-        wethStreamHub.openYieldStream(carol, bobsShares);
+        wethStreamHub.openYieldStream(carol, bobsShares, 0);
 
         assertEq(scEth.balanceOf(address(wethStreamHub)), alicesShares + bobsShares, "totalShares");
         assertEq(wethStreamHub.receiverShares(carol), alicesShares + bobsShares, "receiverShares");
@@ -219,7 +210,7 @@ contract ERC4626StreamHubForkTests is Test {
         _approve(alice, shares, scEth, wethStreamHub);
 
         vm.prank(alice);
-        wethStreamHub.openYieldStream(bob, shares);
+        wethStreamHub.openYieldStream(bob, shares, 0);
 
         assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
         assertEq(wethStreamHub.receiverShares(bob), shares, "receiverShares");
@@ -255,13 +246,13 @@ contract ERC4626StreamHubForkTests is Test {
         uint256 alicesShares = _deposit(scEth, alice, alicesDepositAmount);
         _approve(alice, alicesShares, scEth, wethStreamHub);
         vm.prank(alice);
-        wethStreamHub.openYieldStream(carol, alicesShares);
+        wethStreamHub.openYieldStream(carol, alicesShares, 0);
 
         uint256 bobsDepositAmount = 2 ether;
         uint256 bobsShares = _deposit(scEth, bob, bobsDepositAmount);
         _approve(bob, bobsShares, scEth, wethStreamHub);
         vm.prank(bob);
-        wethStreamHub.openYieldStream(carol, bobsShares);
+        wethStreamHub.openYieldStream(carol, bobsShares, 0);
 
         uint256 profitPct = 0.05e18; // 5%
         uint256 expectedYield = (alicesDepositAmount + bobsDepositAmount).mulWadDown(profitPct);
@@ -403,7 +394,7 @@ contract ERC4626StreamHubForkTests is Test {
         uint256 sharesStreamShares = shares - yieldStreamShares;
 
         vm.startPrank(alice);
-        wethStreamHub.openYieldStream(bob, yieldStreamShares);
+        wethStreamHub.openYieldStream(bob, yieldStreamShares, 0);
         wethStreamHub.openStream(bob, sharesStreamShares, duration);
         vm.stopPrank();
 

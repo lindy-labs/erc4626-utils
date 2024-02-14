@@ -35,7 +35,7 @@ contract YieldStreamingTests is Test {
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
-        yieldStreaming = new YieldStreaming(address(this), IERC4626(address(vault)));
+        yieldStreaming = new YieldStreaming(IERC4626(address(vault)));
 
         // make initial deposit to vault
         _depositToVault(address(this), 1e18);
@@ -47,43 +47,7 @@ contract YieldStreamingTests is Test {
 
     function test_constructor_failsIfVaultIsAddress0() public {
         vm.expectRevert(AddressZero.selector);
-        new YieldStreaming(address(this), IERC4626(address(0)));
-    }
-
-    function test_constructor_failsIfOwnerIsAddress0() public {
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new YieldStreaming(address(0), IERC4626(address(vault)));
-    }
-
-    /// *** setLossTolerancePercent ***
-
-    function test_setLossTolerancePercent_failsIfCallerIsNotOwner() public {
-        vm.prank(alice);
-
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
-        yieldStreaming.setLossTolerancePercent(0);
-    }
-
-    function test_setlossTolerancePercent_failsIfLossToleraceIsAboveMax() public {
-        uint256 maxLossTolerance = yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT();
-
-        vm.expectRevert(YieldStreaming.LossTolerancePercentTooHigh.selector);
-        yieldStreaming.setLossTolerancePercent(maxLossTolerance + 1);
-    }
-
-    function test_setLossTolerancePercent_updatesLossTolerancePercentValue() public {
-        uint256 maxLossTolerance = yieldStreaming.MAX_LOSS_TOLERANCE_PERCENT();
-
-        yieldStreaming.setLossTolerancePercent(maxLossTolerance);
-
-        assertEq(yieldStreaming.lossTolerancePercent(), maxLossTolerance);
-    }
-
-    function test_setLossTolerancePercent_emitsEvent() public {
-        vm.expectEmit(true, true, true, true);
-        emit LossTolerancePercentUpdated(address(this), yieldStreaming.lossTolerancePercent(), 1);
-
-        yieldStreaming.setLossTolerancePercent(1);
+        new YieldStreaming(IERC4626(address(0)));
     }
 
     // *** #openYieldStream ***
@@ -95,7 +59,7 @@ contract YieldStreamingTests is Test {
 
         vm.startPrank(alice);
         vm.expectRevert(CannotOpenStreamToSelf.selector);
-        yieldStreaming.openYieldStream(alice, shares);
+        yieldStreaming.openYieldStream(alice, shares, 0);
     }
 
     function test_openYieldStream_failsIfTransferExceedsAllowance() public {
@@ -104,7 +68,7 @@ contract YieldStreamingTests is Test {
 
         vm.startPrank(alice);
         vm.expectRevert(TransferExceedsAllowance.selector);
-        yieldStreaming.openYieldStream(bob, shares + 1);
+        yieldStreaming.openYieldStream(bob, shares + 1, 0);
     }
 
     function test_openYieldStream_failsFor0Shares() public {
@@ -113,7 +77,7 @@ contract YieldStreamingTests is Test {
 
         vm.startPrank(alice);
         vm.expectRevert(AmountZero.selector);
-        yieldStreaming.openYieldStream(bob, 0);
+        yieldStreaming.openYieldStream(bob, 0, 0);
     }
 
     function test_openYieldStream_failsIfReceiverIsAddress0() public {
@@ -122,7 +86,7 @@ contract YieldStreamingTests is Test {
 
         vm.startPrank(alice);
         vm.expectRevert(AddressZero.selector);
-        yieldStreaming.openYieldStream(address(0), shares);
+        yieldStreaming.openYieldStream(address(0), shares, 0);
     }
 
     function test_openYieldStream_transfersSharesToStreamHub() public {
@@ -132,7 +96,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        uint256 assets = yieldStreaming.openYieldStream(bob, shares);
+        uint256 assets = yieldStreaming.openYieldStream(bob, shares, 0);
 
         assertEq(assets, amount, "assets");
         assertEq(vault.balanceOf(address(yieldStreaming)), streamHubShares + shares, "streamHub shares");
@@ -151,7 +115,7 @@ contract YieldStreamingTests is Test {
         vm.expectEmit(true, true, true, true);
         emit OpenYieldStream(alice, bob, shares, amount);
 
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
     }
 
     function test_openYieldStream_toTwoAccountsAtTheSameTime() public {
@@ -160,8 +124,8 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares / 2);
-        yieldStreaming.openYieldStream(carol, shares / 4);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
+        yieldStreaming.openYieldStream(carol, shares / 4, 0);
 
         assertEq(vault.balanceOf(alice), shares / 4, "alice's shares");
 
@@ -180,14 +144,14 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         assertEq(yieldStreaming.receiverShares(bob), shares / 2, "receiver shares bob");
         assertEq(yieldStreaming.receiverTotalPrincipal(bob), amount / 2, "principal bob");
         assertEq(yieldStreaming.receiverPrincipal(bob, alice), amount / 2, "receiver principal  bob");
 
         // top up stream
-        yieldStreaming.openYieldStream(bob, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares bob");
         assertEq(yieldStreaming.receiverTotalPrincipal(bob), amount, "principal bob");
@@ -199,7 +163,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         _createProfitForVault(0.2e18);
         uint256 yield = yieldStreaming.previewClaimYield(bob);
@@ -207,7 +171,7 @@ contract YieldStreamingTests is Test {
         assertEq(yieldStreaming.previewClaimYield(bob), yield, "yield before top up");
 
         // top up stream
-        yieldStreaming.openYieldStream(bob, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         assertEq(yieldStreaming.previewClaimYield(bob), yield, "yield after top up");
     }
@@ -218,13 +182,13 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         // double the share price
         _createProfitForVault(1e18);
 
         // top up stream with the remaining shares
-        yieldStreaming.openYieldStream(bob, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         _createProfitForVault(0.5e18);
 
@@ -239,14 +203,14 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         _createProfitForVault(-0.5e18);
 
         uint256 claimerDebt = yieldStreaming.debtFor(bob);
 
         // top up stream with the remaining shares
-        yieldStreaming.openYieldStream(bob, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         assertEq(yieldStreaming.debtFor(bob), claimerDebt, "claimer debt");
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
@@ -259,19 +223,28 @@ contract YieldStreamingTests is Test {
 
         // alice opens a stream to carol
         vm.prank(alice);
-        yieldStreaming.openYieldStream(carol, alicesShares);
+        yieldStreaming.openYieldStream(carol, alicesShares, 0);
 
         // create 10% loss
         _createProfitForVault(-0.1e18);
+        assertEq(yieldStreaming.debtFor(carol), 0.1e18, "debt for carol");
 
         uint256 bobsDeposit = 2e18;
         uint256 bobsShares = _depositToVault(bob, bobsDeposit);
         _approveStreamHub(bob, bobsShares);
 
+        // debt for carol = 0.1e18
+        // alice's principal = 1e18
+        // bob's principal = 2e18
+        // bob's share of loss = 0.1e18 * 2e18 / (1e18 + 2e18) = 0.066e18
+        // bob's loss on open = 2e18 - 0.066e18 = 1.933e18
+        // bbo's loss in pct = 1 - 1.933e18 / 2e18 = 1 - 0.9665 = 0.0335 = 3.35%
+
         // bob opens a stream to carol
+        uint256 toleratedLossOnOpenPct = 0.033e18; // 3.3%
         vm.prank(bob);
         vm.expectRevert(YieldStreaming.LossToleranceExceeded.selector);
-        yieldStreaming.openYieldStream(carol, bobsShares);
+        yieldStreaming.openYieldStream(carol, bobsShares, toleratedLossOnOpenPct);
     }
 
     function test_openYieldStream_worksIfClaimerIsInDebtAndLossIsBelowLossTolerancePercent() public {
@@ -281,23 +254,40 @@ contract YieldStreamingTests is Test {
 
         // alice opens a stream to carol
         vm.prank(alice);
-        yieldStreaming.openYieldStream(carol, alicesShares);
+        yieldStreaming.openYieldStream(carol, alicesShares, 0);
 
-        // create 2% loss
-        _createProfitForVault(-0.02e18);
+        // create 10% loss
+        _createProfitForVault(-0.1e18);
+        assertEq(yieldStreaming.debtFor(carol), 0.1e18, "debt for carol");
 
-        uint256 bobsDeposit = 2e18;
-        uint256 bobsShares = _depositToVault(bob, bobsDeposit);
+        uint256 bobsPrincipal = 2e18;
+        uint256 bobsShares = _depositToVault(bob, bobsPrincipal);
         _approveStreamHub(bob, bobsShares);
 
+        // debt for carol = 0.1e18
+        // alice's principal = 1e18
+        // bob's principal = 2e18
+        // bob's share of loss = 0.1e18 * 2e18 / (1e18 + 2e18) = 0.066e18
+        // bob's loss on open = 2e18 - 0.066e18 = 1.933e18
+        // bbo's loss in pct = 1 - 1.933e18 / 2e18 = 1 - 0.9665 = 0.0335 = 3.35%
+
         // bob opens a stream to carol
+        uint256 toleratedLossOnOpenPct = 0.034e18; // 3.4%
         vm.prank(bob);
-        yieldStreaming.openYieldStream(carol, bobsShares);
+        yieldStreaming.openYieldStream(carol, bobsShares, toleratedLossOnOpenPct);
 
         uint256 principalWithLoss = vault.convertToAssets(yieldStreaming.previewCloseYieldStream(carol, bob));
+        uint256 bobsLossOnOpen = bobsPrincipal - principalWithLoss;
 
-        assertTrue(principalWithLoss < bobsDeposit, "principal with loss > bobs deposit");
-        assertApproxEqRel(bobsDeposit, principalWithLoss, yieldStreaming.lossTolerancePercent(), "principal with loss");
+        assertTrue(principalWithLoss < bobsPrincipal, "principal with loss > bobs deposit");
+        assertApproxEqRel(principalWithLoss, bobsPrincipal, toleratedLossOnOpenPct, "principal with loss");
+        assertTrue(bobsLossOnOpen < bobsPrincipal.mulWadDown(toleratedLossOnOpenPct), "loss tolerance exceeded");
+
+        vm.prank(bob);
+        yieldStreaming.closeYieldStream(carol);
+
+        uint256 bobsPrincipalAfterClose = vault.convertToAssets(vault.balanceOf(bob));
+        assertApproxEqAbs(bobsPrincipalAfterClose, bobsPrincipal - bobsLossOnOpen, 1, "bobs principal after close");
     }
 
     function test_openYieldStreamUsingPermit() public {
@@ -325,7 +315,7 @@ contract YieldStreamingTests is Test {
         );
 
         vm.prank(dave);
-        yieldStreaming.openYieldStreamUsingPermit(bob, shares, deadline, v, r, s);
+        yieldStreaming.openYieldStreamUsingPermit(bob, shares, 0, deadline, v, r, s);
 
         assertEq(vault.balanceOf(address(yieldStreaming)), shares, "streamHub shares");
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
@@ -340,7 +330,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // no share price increase => no yield
         assertEq(yieldStreaming.previewClaimYield(bob), 0, "yield");
@@ -351,7 +341,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // create a 20% loss
         _createProfitForVault(-0.2e18);
@@ -366,7 +356,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -383,7 +373,7 @@ contract YieldStreamingTests is Test {
 
         vm.startPrank(alice);
         // depositor opens a stream to himself
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -407,7 +397,7 @@ contract YieldStreamingTests is Test {
 
         vm.startPrank(alice);
         // depositor opens a stream to himself
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -444,7 +434,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -462,7 +452,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -479,7 +469,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -499,7 +489,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -514,7 +504,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield != 0");
 
@@ -528,7 +518,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // create a 20% loss
         _createProfitForVault(-0.2e18);
@@ -547,9 +537,9 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(bob, bobsShares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(carol, alicesShares);
+        yieldStreaming.openYieldStream(carol, alicesShares, 0);
         vm.prank(bob);
-        yieldStreaming.openYieldStream(carol, bobsShares);
+        yieldStreaming.openYieldStream(carol, bobsShares, 0);
 
         // add 100% profit to vault
         _createProfitForVault(1e18);
@@ -571,7 +561,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 100% profit to vault
         _createProfitForVault(1e18);
@@ -591,7 +581,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -612,7 +602,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -631,7 +621,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -646,7 +636,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield != 0");
 
@@ -660,7 +650,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // create a 20% loss
         _createProfitForVault(-0.2e18);
@@ -679,9 +669,9 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(bob, bobsShares);
 
         vm.prank(alice);
-        yieldStreaming.openYieldStream(carol, alicesShares);
+        yieldStreaming.openYieldStream(carol, alicesShares, 0);
         vm.prank(bob);
-        yieldStreaming.openYieldStream(carol, bobsShares);
+        yieldStreaming.openYieldStream(carol, bobsShares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -707,7 +697,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -729,7 +719,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 100% profit to vault
         _createProfitForVault(1e18);
@@ -748,7 +738,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 50% profit to vault
         _createProfitForVault(0.5e18);
@@ -775,7 +765,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // create a 20% loss
         _createProfitForVault(-0.2e18);
@@ -794,7 +784,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares);
+        yieldStreaming.openYieldStream(bob, shares, 0);
 
         // works
         yieldStreaming.closeYieldStream(bob);
@@ -810,8 +800,8 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares / 2);
-        yieldStreaming.openYieldStream(carol, shares / 2);
+        yieldStreaming.openYieldStream(bob, shares / 2, 0);
+        yieldStreaming.openYieldStream(carol, shares / 2, 0);
 
         // create a 20% profit
         _createProfitForVault(0.2e18);
@@ -843,11 +833,11 @@ contract YieldStreamingTests is Test {
 
         // alice opens a stream to carol
         vm.prank(alice);
-        yieldStreaming.openYieldStream(carol, alicesShares);
+        yieldStreaming.openYieldStream(carol, alicesShares, 0);
 
         // bob opens a stream to carol
         vm.prank(bob);
-        yieldStreaming.openYieldStream(carol, bobsShares);
+        yieldStreaming.openYieldStream(carol, bobsShares, 0);
 
         // create a 20% profit
         _createProfitForVault(0.2e18);
@@ -872,8 +862,8 @@ contract YieldStreamingTests is Test {
         uint256 shares = _depositToVault(alice, 1e18);
 
         bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeWithSelector(YieldStreaming.openYieldStream.selector, bob, (shares * 3) / 4);
-        data[1] = abi.encodeWithSelector(YieldStreaming.openYieldStream.selector, carol, shares / 4);
+        data[0] = abi.encodeWithSelector(YieldStreaming.openYieldStream.selector, bob, (shares * 3) / 4, 0);
+        data[1] = abi.encodeWithSelector(YieldStreaming.openYieldStream.selector, carol, shares / 4, 0);
 
         vm.startPrank(alice);
         vault.approve(address(yieldStreaming), shares);
@@ -899,7 +889,7 @@ contract YieldStreamingTests is Test {
         for (uint256 i = 0; i < 10; i++) {
             // generate random receiver address
             receivers[i] = address(uint160(uint256(keccak256(abi.encodePacked(block.timestamp + i, block.prevrandao)))));
-            yieldStreaming.openYieldStream(receivers[i], sharesToOpen);
+            yieldStreaming.openYieldStream(receivers[i], sharesToOpen, 0);
         }
 
         vm.stopPrank();
