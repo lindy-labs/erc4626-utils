@@ -28,12 +28,12 @@ It has the following external/public functions that are view only and change not
 
 | No. | Property  | Specified | Verified |
 | ---- | --------  | -------- | -------- |
-| 1 | [Symbolic test checking that openStream updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L31) | Y | Y |
-| 2 | [Symbolic test checking that openStreamUsingPermit updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L54) | Y | Y |
-| 3 | [Symbolic test checking that topUpStream updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L77) | Y | Y |  
-| 4 | [Symbolic test checking that topUpStreamUsingPermit updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L98) | Y | Y |
-| 5 | [Symbolic test checking that claim updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L125) | Y | Y |
-| 6 | [Symbolic test checking that closeStream deletes stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L149) | Y | Y |
+| 1 | [Symbolic test checking that openStream updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L31) | Y | Y |
+| 2 | [Symbolic test checking that openStreamUsingPermit updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L54) | Y | Y |
+| 3 | [Symbolic test checking that topUpStream updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L77) | Y | Y |  
+| 4 | [Symbolic test checking that topUpStreamUsingPermit updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L98) | Y | Y |
+| 5 | [Symbolic test checking that claim updates stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L125) | Y | Y |
+| 6 | [Symbolic test checking that closeStream deletes stream state properly](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L149) | Y | Y |
 
 ## Revertable Properties
 
@@ -43,40 +43,40 @@ Here are the markdown table entries for the negative tests, with links pointing 
 
 | S. No. | Description | Spec | Impl |
 |-|-|-|-|
-| 7 | [openStream reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L163) | Y | Y |
-| 8 | [openStream reverts when receiver is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L179) | Y | Y |  
-| 9 | [openStream reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L195) | Y | Y |
-| 10 | [openStream reverts when amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L211) | Y | Y |  
-| 11 | [openStream reverts when allowance less than amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L227) | Y | Y |
-| 12 | [openStream reverts when duration is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L243) | Y | Y |
-| 13 | [openStream reverts when stream exists but time passed](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L259) | Y | Y |
-| 14 | [openStreamUsingPermit reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L275) | Y | Y |
-| 15 | [openStreamUsingPermit reverts when receiver is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L291) | Y | Y |
-| 16 | [openStreamUsingPermit reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L307) | Y | Y |
-| 17 | [openStreamUsingPermit reverts when amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L323) | Y | Y |
-| 18 | [openStreamUsingPermit reverts when allowance less than amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L339) | Y | Y |
-| 19 | [openStreamUsingPermit reverts when duration is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L355) | Y | Y |
-| 20 | [openStreamUsingPermit reverts when stream exists but time passed](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L371) | Y | Y |
-| 21 | [topUpStream reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L387) | Y | Y |
-| 22 | [topUpStream reverts when receiver is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L404) | Y | Y |
-| 23 | [topUpStream reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L421) | Y | Y |
-| 24 | [topUpStream reverts when additional amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L438) | Y | Y |
-| 25 | [topUpStream reverts when allowance less than additional amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L455) | Y | Y | 
-| 26 | [topUpStream reverts when receiver stream amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L472) | Y | Y |
-| 27 | [topUpStream reverts when last claim time passed](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L489 | Y | Y |
-| 28 | [topUpStream reverts when new rate per second less](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L506) | Y | Y |
-| 29 | [topUpStreamUsingPermit reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L523) | Y | Y |
-| 30 | [topUpStreamUsingPermit reverts when receiver is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L540) | Y | Y |
-| 31 | [topUpStreamUsingPermit reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L557) | Y | Y |
-| 32 | [topUpStreamUsingPermit reverts when additional amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L574) | Y | Y |
-| 33 | [topUpStreamUsingPermit reverts when allowance less than additional amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L591) | Y | Y |
-| 34 | [topUpStreamUsingPermit reverts when receiver stream amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L608) | Y | Y | 
-| 35 | [topUpStreamUsingPermit reverts when last claim time passed](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L625) | Y | Y |
-| 36 | [topUpStreamUsingPermit reverts when new rate per second less](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L642) | Y | Y |
-| 37 | [claim reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L660) | Y | Y |
-| 38 | [claim reverts when sendTo is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L677) | Y | Y |
-| 39 | [claim reverts when sender equals sendTo](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L694)  | Y | Y |
-| 40 | [claim reverts when stream amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L711) | Y | Y |
-| 41 | [claim reverts when claimable is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L728) | Y | Y |
-| 42 | [closeStream reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L745) | Y | Y |
-| 43 | [closeStream reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming_FV.sol#L754) | Y | Y |
+| 7 | [openStream reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L163) | Y | Y |
+| 8 | [openStream reverts when receiver is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L179) | Y | Y |  
+| 9 | [openStream reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L195) | Y | Y |
+| 10 | [openStream reverts when amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L211) | Y | Y |  
+| 11 | [openStream reverts when allowance less than amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L227) | Y | Y |
+| 12 | [openStream reverts when duration is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L243) | Y | Y |
+| 13 | [openStream reverts when stream exists but time passed](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L259) | Y | Y |
+| 14 | [openStreamUsingPermit reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L275) | Y | Y |
+| 15 | [openStreamUsingPermit reverts when receiver is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L291) | Y | Y |
+| 16 | [openStreamUsingPermit reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L307) | Y | Y |
+| 17 | [openStreamUsingPermit reverts when amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L323) | Y | Y |
+| 18 | [openStreamUsingPermit reverts when allowance less than amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L339) | Y | Y |
+| 19 | [openStreamUsingPermit reverts when duration is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L355) | Y | Y |
+| 20 | [openStreamUsingPermit reverts when stream exists but time passed](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L371) | Y | Y |
+| 21 | [topUpStream reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L387) | Y | Y |
+| 22 | [topUpStream reverts when receiver is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L404) | Y | Y |
+| 23 | [topUpStream reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L421) | Y | Y |
+| 24 | [topUpStream reverts when additional amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L438) | Y | Y |
+| 25 | [topUpStream reverts when allowance less than additional amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L455) | Y | Y | 
+| 26 | [topUpStream reverts when receiver stream amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L472) | Y | Y |
+| 27 | [topUpStream reverts when last claim time passed](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L489 | Y | Y |
+| 28 | [topUpStream reverts when new rate per second less](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L506) | Y | Y |
+| 29 | [topUpStreamUsingPermit reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L523) | Y | Y |
+| 30 | [topUpStreamUsingPermit reverts when receiver is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L540) | Y | Y |
+| 31 | [topUpStreamUsingPermit reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L557) | Y | Y |
+| 32 | [topUpStreamUsingPermit reverts when additional amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L574) | Y | Y |
+| 33 | [topUpStreamUsingPermit reverts when allowance less than additional amount](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L591) | Y | Y |
+| 34 | [topUpStreamUsingPermit reverts when receiver stream amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L608) | Y | Y | 
+| 35 | [topUpStreamUsingPermit reverts when last claim time passed](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L625) | Y | Y |
+| 36 | [topUpStreamUsingPermit reverts when new rate per second less](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L642) | Y | Y |
+| 37 | [claim reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L660) | Y | Y |
+| 38 | [claim reverts when sendTo is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L677) | Y | Y |
+| 39 | [claim reverts when sender equals sendTo](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L694)  | Y | Y |
+| 40 | [claim reverts when stream amount is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L711) | Y | Y |
+| 41 | [claim reverts when claimable is zero](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L728) | Y | Y |
+| 42 | [closeStream reverts when sender is zero address](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L745) | Y | Y |
+| 43 | [closeStream reverts when sender equals receiver](https://github.com/lindy-labs/erc4626-utils/blob/FormalVerification/hevm/ERC20Streaming/ERC20Streaming_FV.sol#L754) | Y | Y |
