@@ -62,7 +62,7 @@ contract YieldStreaming is StreamingBase {
     {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
-        _checkBalance(IERC20(token), msg.sender, _shares);
+        _checkAmount(_shares);
 
         principal = _convertToAssets(_shares);
 
@@ -111,9 +111,9 @@ contract YieldStreaming is StreamingBase {
     {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
+        _checkAmount(_amount);
 
         IERC20 underlying = IERC20(IERC4626(token).asset());
-        _checkBalance(underlying, msg.sender, _amount);
 
         underlying.safeTransferFrom(msg.sender, address(this), _amount);
 
