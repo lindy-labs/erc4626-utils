@@ -35,7 +35,7 @@ contract YieldDCA {
 
     uint256 public currentEpoch = 1; // starts from 1
     uint256 public currentEpochTimestamp = block.timestamp;
-    uint256 public totalAssetsDeposted;
+    uint256 public totalPrincipalDeposted;
     mapping(address => Deposit) public deposits;
     mapping(uint256 => EpochInfo) public epochDetails;
 
@@ -52,17 +52,23 @@ contract YieldDCA {
         uint256 principal = vault.convertToAssets(_amount);
         vault.safeTransferFrom(msg.sender, address(this), _amount);
 
-        totalAssetsDeposted += principal;
+        Deposit storage position = deposits[msg.sender];
 
-        Deposit storage postion = deposits[msg.sender];
+        // check if user has already deposited in the past
+        if (position.epoch != 0 && position.epoch < currentEpoch) {
+            (uint256 shares, uint256 dcaTokens) = _calculateBalances(position);
+            position.shares = shares;
 
-        postion.shares += _amount;
-        postion.principal += principal;
-        postion.epoch = currentEpoch;
+            if (dcaTokens != 0) {
+                dcaToken.safeTransfer(msg.sender, dcaTokens);
+            }
+        }
 
-        // TODO: should also transfer dca tokens for user if any?
+        position.shares += _amount;
+        position.principal += principal;
+        position.epoch = currentEpoch;
 
-        // TODO: how to handle several deposits in the same/later epoch?
+        totalPrincipalDeposted += principal;
     }
 
     function executeDCA() external {
@@ -89,7 +95,7 @@ contract YieldDCA {
 
     function calculateCurrentYieldInShares() public view returns (uint256) {
         uint256 balance = vault.balanceOf(address(this));
-        uint256 totalPrincipalInShares = vault.convertToShares(totalAssetsDeposted);
+        uint256 totalPrincipalInShares = vault.convertToShares(totalPrincipalDeposted);
 
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
@@ -116,7 +122,7 @@ contract YieldDCA {
         dcaToken.safeTransfer(msg.sender, totalDcaTokensForUser);
 
         // update
-        totalAssetsDeposted -= user.principal;
+        totalPrincipalDeposted -= user.principal;
 
         // update user position
         delete deposits[msg.sender];
@@ -135,7 +141,6 @@ contract YieldDCA {
     }
 
     function balanceOf(address _user) public view returns (uint256 shares, uint256 dcaTokens) {
-        // TODO: calculate the total amount of DCA tokens for the user
         return _calculateBalances(deposits[_user]);
     }
 
@@ -149,7 +154,11 @@ contract YieldDCA {
 
             if (epoch.yieldSpent == 0) continue;
 
-            uint256 usersYield = shares.mulWadDown(epoch.pricePerShare) - _deposit.principal;
+            uint256 sharesValue = shares.mulWadDown(epoch.pricePerShare);
+
+            if (sharesValue <= _deposit.principal) continue;
+
+            uint256 usersYield = sharesValue - _deposit.principal;
             uint256 sharesSpent = usersYield.divWadDown(epoch.pricePerShare);
 
             shares -= sharesSpent;
@@ -262,8 +271,8 @@ contract YieldDCATest is Test {
          * scenario:
          * 1. alice deposits 1 ether
          * 2. yield generated is 5% over 200 dca cycles (epochs)
-         * 3. execute DCA at constant 3:1 exchange in each cycle, 3 DCA tokens = 1 ether
-         * 4. alice withdraws and gets 1 ether in shares and gets 0.05 * 200 * 3 = 30 DCA toekns
+         * 3. execute DCA at 3:1 exchange in each cycle, 3 DCA tokens = 1 ether
+         * 4. alice withdraws and gets 1 ether in shares and gets 0.05 * 200 * 3 = 30 DCA tokens
          */
         uint256 depositAmount = 1 ether;
         asset.mint(alice, depositAmount);
@@ -305,12 +314,12 @@ contract YieldDCATest is Test {
          * scenario:
          * 1. alice deposits 1 ether
          * 2. yield generated is 100% in the first epoch, ie 1 ether
-         * 3. execute DCA at constant 3:1 exchange in each cycle, 3 DCA tokens = 1 ether (alice gets 3 DCA tokens)
+         * 3. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether (alice gets 3 DCA tokens)
          * 4. bob deposits 1 ether
          * 5. yield generated is 100% in the second epoch, ie 2 ether (from 2 deposits)
-         * 6. execute DCA at constant 2:1 exchange in each cycle, (bob gets 2 DCA tokens and alice gets 2 DCA tokens)
-         * 7. alice withdraws and gets 1 ether in shares and 5 DCA toekns
-         * 8. bob withdraws and gets 1 ether in shares and 2 DCA toekns
+         * 6. execute DCA at 2:1 exchange, (bob gets 2 DCA tokens and alice gets 2 DCA tokens)
+         * 7. alice withdraws and gets 1 ether in shares and 5 DCA tokens
+         * 8. bob withdraws and gets 1 ether in shares and 2 DCA tokens
          */
 
         // step 1 - alice deposits
@@ -370,19 +379,19 @@ contract YieldDCATest is Test {
         console2.log("shares balance", vault.balanceOf(bob));
     }
 
-    function test_123() public {
+    function test_dca_separatesBalancesOverTwoEpochsCorrectlyForMultipleUsers() public {
         /**
          * scenario:
          * 1. alice deposits 1 ether
          * 2. yield generated is 100% in the first epoch, ie 1 ether
-         * 3. execute DCA at constant 3:1 exchange in each cycle, 3 DCA tokens = 1 ether (alice gets 3 DCA tokens)
+         * 3. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether (alice gets 3 DCA tokens)
          * 4. bob deposits 2 ether
          * 5. carol deposits 1 ether
          * 6. yield generated is 100% in the second epoch, ie 4 ether (from 3 deposits of 4 ether in total)
-         * 7. execute DCA at constant 2:1 exchange in each cycle, (bob gets 4 DCA tokens and alice & carol get 2 DCA tokens each)
-         * 8. alice withdraws and gets 1 ether in shares and 5 DCA toekns
-         * 9. bob withdraws and gets 2 ether in shares and 4 DCA toekns
-         * 10. carol withdraws and gets 1 ether in shares and 2 DCA toekns
+         * 7. execute DCA at 2:1 exchange, (bob gets 4 DCA tokens and alice & carol get 2 DCA tokens each)
+         * 8. alice withdraws and gets 1 ether in shares and 5 DCA tokens
+         * 9. bob withdraws and gets 2 ether in shares and 4 DCA tokens
+         * 10. carol withdraws and gets 1 ether in shares and 2 DCA tokens
          */
 
         // step 1 - alice deposits
@@ -450,5 +459,109 @@ contract YieldDCATest is Test {
 
         assertApproxEqRel(dcaToken.balanceOf(carol), 2e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(carol)), 1e18, 1, "principal");
+    }
+
+    function test_deposit_twoTimesInSameEpoch() public {
+        /**
+         * scenario:
+         * 1. alice deposits 1 ether
+         * 2. yield generated is 100% in the first epoch, ie 1 ether
+         * 3. alice deposits 1 ether again
+         * 4. execute DCA at 2:1 exchange, (alice gets 2 DCA tokens)
+         * 5. alice withdraws and gets 2 ether in shares and 2 DCA tokens
+         */
+
+        // step 1 - alice deposits
+        asset.mint(alice, 1 ether);
+        vm.startPrank(alice);
+        asset.approve(address(vault), 1 ether);
+        uint256 alicesShares = vault.deposit(1 ether, alice);
+        vault.approve(address(yieldDca), alicesShares);
+        yieldDca.deposit(alicesShares);
+        vm.stopPrank();
+
+        // step 2 - generate 100% yield
+        asset.mint(address(vault), asset.balanceOf(address(vault)));
+
+        // step 3 - alice deposits again
+        asset.mint(alice, 1 ether);
+        vm.startPrank(alice);
+        asset.approve(address(vault), 1 ether);
+        alicesShares = vault.deposit(1 ether, alice);
+        vault.approve(address(yieldDca), alicesShares);
+        yieldDca.deposit(alicesShares);
+        vm.stopPrank();
+
+        assertEq(vault.balanceOf(alice), 0, "shares balance");
+        assertEq(dcaToken.balanceOf(alice), 0, "dca token balance");
+
+        // step 4 - dca
+        vm.warp(block.timestamp + yieldDca.DCA_PERIOD());
+        swapper.setExchangeRate(2e18);
+        yieldDca.executeDCA();
+
+        // step 5 - alice withdraws
+        vm.prank(alice);
+        yieldDca.withdraw();
+
+        assertApproxEqRel(dcaToken.balanceOf(alice), 2e18, 0.00001e18, "dca token balance");
+        assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(alice)), 2e18, 1, "principal");
+    }
+
+    function test_deposit_twoTimesInDifferentEpochs() public {
+        /**
+         * scenario:
+         * 1. alice deposits 1 ether
+         * 2. yield generated is 100% in the first epoch, ie 1 ether
+         * 3. execute DCA at 3:1 exchange, (alice gets 3 DCA tokens)
+         * 4. alice deposits 1 ether again (receives 3 DCA tokens)
+         * 5. generate 100% yield in the second epoch, ie 2 ether
+         * 6. execute DCA at 2:1 exchange, (alice gets 4 DCA tokens)
+         * 7. alice withdraws and gets 2 ether in shares and 4 DCA tokens (7 in total)
+         */
+
+        // step 1 - alice deposits
+        asset.mint(alice, 1 ether);
+        vm.startPrank(alice);
+        asset.approve(address(vault), 1 ether);
+        uint256 alicesShares = vault.deposit(1 ether, alice);
+        vault.approve(address(yieldDca), alicesShares);
+        yieldDca.deposit(alicesShares);
+        vm.stopPrank();
+
+        // step 2 - generate 100% yield
+        asset.mint(address(vault), asset.balanceOf(address(vault)));
+
+        // step 3 - dca
+        vm.warp(block.timestamp + yieldDca.DCA_PERIOD());
+        swapper.setExchangeRate(3e18);
+        yieldDca.executeDCA();
+
+        // step 4 - alice deposits again
+        asset.mint(alice, 1 ether);
+        vm.startPrank(alice);
+        asset.approve(address(vault), 1 ether);
+        alicesShares = vault.deposit(1 ether, alice);
+        vault.approve(address(yieldDca), alicesShares);
+        yieldDca.deposit(alicesShares);
+        vm.stopPrank();
+
+        assertEq(vault.balanceOf(alice), 0, "shares balance");
+        assertApproxEqRel(dcaToken.balanceOf(alice), 3e18, 0.00001e18, "dca token balance");
+
+        // step 5 - generate 100% yield
+        asset.mint(address(vault), asset.balanceOf(address(vault)));
+
+        // step 6 - dca
+        vm.warp(block.timestamp + yieldDca.DCA_PERIOD());
+        swapper.setExchangeRate(2e18);
+        yieldDca.executeDCA();
+
+        // step 7 - alice withdraws
+        vm.prank(alice);
+        yieldDca.withdraw();
+
+        assertApproxEqRel(dcaToken.balanceOf(alice), 7e18, 0.00001e18, "dca token balance");
+        assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(alice)), 2e18, 1, "principal");
     }
 }
