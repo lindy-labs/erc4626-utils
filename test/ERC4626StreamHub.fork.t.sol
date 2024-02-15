@@ -74,6 +74,36 @@ contract ERC4626StreamHubForkTests is Test {
         assertEq(weth.balanceOf(bob), expectedYield, "bob's balance");
     }
 
+    function test_depositAndOpenYieldStream() public {
+        uint256 depositAmount = 1 ether;
+        deal(address(weth), alice, depositAmount);
+
+        vm.prank(alice);
+        weth.approve(address(wethStreamHub), depositAmount);
+
+        vm.prank(alice);
+        uint256 shares = wethStreamHub.depositAndOpenYieldStream(bob, depositAmount, 0);
+
+        assertEq(scEth.balanceOf(address(wethStreamHub)), shares, "totalShares");
+        assertEq(wethStreamHub.receiverShares(bob), shares, "receiverShares");
+        assertApproxEqAbs(
+            wethStreamHub.receiverPrincipal(bob, alice), scEth.convertToAssets(shares), 1, "receiverPrincipal"
+        );
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
+
+        _createProfitForVault(0.05e18, scEth); // 5%
+
+        uint256 expectedYield = 0.05 ether;
+
+        assertApproxEqAbs(wethStreamHub.previewClaimYield(bob), expectedYield, 1, "yieldFor bob");
+
+        vm.prank(bob);
+        wethStreamHub.claimYield(bob);
+
+        assertEq(wethStreamHub.previewClaimYield(bob), 0, "yieldFor bob");
+        assertApproxEqAbs(weth.balanceOf(bob), expectedYield, 1, "bob's balance");
+    }
+
     function test_openYieldStream_toMultipleReceivers() public {
         uint256 depositAmount = 3000e6; // 1000 USDC
         uint256 shares = _deposit(scUsdc, alice, depositAmount);

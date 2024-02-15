@@ -43,6 +43,7 @@ contract YieldStreaming is StreamingBase {
         _checkZeroAddress(address(_vault));
 
         token = address(_vault);
+        IERC20(IERC4626(token).asset()).approve(address(_vault), type(uint256).max);
     }
 
     /**
@@ -61,17 +62,11 @@ contract YieldStreaming is StreamingBase {
     {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
-        _checkBalance(msg.sender, _shares);
+        _checkBalance(IERC20(token), msg.sender, _shares);
 
         principal = _convertToAssets(_shares);
 
-        _checkImmediateLossOnOpen(_receiver, msg.sender, principal, _maxLossOnOpenTolerancePercent);
-
-        receiverShares[_receiver] += _shares;
-        receiverTotalPrincipal[_receiver] += principal;
-        receiverPrincipal[_receiver][msg.sender] += principal;
-
-        emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
+        _openYieldStream(_receiver, _shares, principal, _maxLossOnOpenTolerancePercent);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
     }
@@ -98,10 +93,73 @@ contract YieldStreaming is StreamingBase {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public returns (uint256 principal) {
+    ) external returns (uint256 principal) {
         IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         principal = openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
+    }
+
+    /**
+     * @dev Deposits assets (principal) into the underlying vault and opens or tops up a yield stream for a specific receiver.
+     * @param _receiver The address of the receiver.
+     * @param _amount The amount of assets (principal) to deposit and allocate to the yield stream.
+     * @param _maxLossOnOpenTolerancePercent The maximum loss tolerance percentage when opening a stream to a receiver which is in debt.
+     */
+    function depositAndOpenYieldStream(address _receiver, uint256 _amount, uint256 _maxLossOnOpenTolerancePercent)
+        public
+        returns (uint256 shares)
+    {
+        _checkZeroAddress(_receiver);
+        _checkOpenStreamToSelf(_receiver);
+
+        IERC20 underlying = IERC20(IERC4626(token).asset());
+        _checkBalance(underlying, msg.sender, _amount);
+
+        underlying.safeTransferFrom(msg.sender, address(this), _amount);
+
+        shares = IERC4626(token).deposit(_amount, address(this));
+
+        _openYieldStream(_receiver, shares, _amount, _maxLossOnOpenTolerancePercent);
+    }
+
+    /**
+     * @dev Deposits assets (principal) into the underlying vault and opens or tops up a yield stream for a specific receiver using the ERC20 permit functionality to obtain the necessary allowance..
+     * @param _receiver The address of the receiver.
+     * @param _amount The amount of assets (principal) to deposit and allocate to the yield stream.
+     * @param _maxLossOnOpenTolerancePercent The maximum loss tolerance percentage when opening a stream to a receiver which is in debt.
+     * @param deadline The deadline timestamp for the permit signature.
+     * @param v The recovery byte of the permit signature.
+     * @param r The first 32 bytes of the permit signature.
+     * @param s The second 32 bytes of the permit signature.
+     * @return shares The amount of underlying vault shares allocated to the stream.
+     */
+    function depositAndOpenYieldStreamUsingPermit(
+        address _receiver,
+        uint256 _amount,
+        uint256 _maxLossOnOpenTolerancePercent,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256 shares) {
+        IERC2612(address(IERC4626(token).asset())).permit(msg.sender, address(this), _amount, deadline, v, r, s);
+
+        shares = depositAndOpenYieldStream(_receiver, _amount, _maxLossOnOpenTolerancePercent);
+    }
+
+    function _openYieldStream(
+        address _receiver,
+        uint256 _shares,
+        uint256 _principal,
+        uint256 _maxLossOnOpenTolerancePercent
+    ) internal {
+        _checkImmediateLossOnOpen(_receiver, msg.sender, _principal, _maxLossOnOpenTolerancePercent);
+
+        receiverShares[_receiver] += _shares;
+        receiverTotalPrincipal[_receiver] += _principal;
+        receiverPrincipal[_receiver][msg.sender] += _principal;
+
+        emit OpenYieldStream(msg.sender, _receiver, _shares, _principal);
     }
 
     /**
@@ -112,7 +170,25 @@ contract YieldStreaming is StreamingBase {
      */
     function closeYieldStream(address _receiver) public returns (uint256 shares) {
         uint256 principal;
-        (shares, principal) = _previewCloseYieldStream(_receiver, msg.sender);
+        (shares, principal) = _closeYieldStream(_receiver);
+
+        IERC20(token).safeTransfer(msg.sender, shares);
+    }
+
+    /**
+     * @dev Closes a yield stream for a specific receiver and withdraws the principal amount.
+     * @param _receiver The address of the receiver.
+     * @return principal The amount of assets (tokens) recovered by closing the stream.
+     */
+    function closeYieldStreamAndWithdraw(address _receiver) external returns (uint256 principal) {
+        uint256 shares;
+        (shares, principal) = _closeYieldStream(_receiver);
+
+        return IERC4626(token).redeem(shares, msg.sender, address(this));
+    }
+
+    function _closeYieldStream(address _receiver) internal returns (uint256 shares, uint256 principal) {
+        (shares, principal) = previewCloseYieldStream(_receiver, msg.sender);
 
         if (principal == 0) revert StreamDoesNotExist();
 
@@ -122,8 +198,6 @@ contract YieldStreaming is StreamingBase {
         receiverShares[_receiver] -= shares;
 
         emit CloseYieldStream(msg.sender, _receiver, shares, principal);
-
-        IERC20(token).safeTransfer(msg.sender, shares);
     }
 
     /**
@@ -131,13 +205,10 @@ contract YieldStreaming is StreamingBase {
      * @param _receiver The address of the receiver.
      * @param _streamer The address of the streamer attempting to close the yield stream.
      * @return shares The number of shares that would be recovered by closing the stream.
+     * @return principal The amount of assets that would be recovered by closing the stream.
      */
-    function previewCloseYieldStream(address _receiver, address _streamer) public view returns (uint256 shares) {
-        (shares,) = _previewCloseYieldStream(_receiver, _streamer);
-    }
-
-    function _previewCloseYieldStream(address _receiver, address _streamer)
-        internal
+    function previewCloseYieldStream(address _receiver, address _streamer)
+        public
         view
         returns (uint256 shares, uint256 principal)
     {
@@ -153,7 +224,12 @@ contract YieldStreaming is StreamingBase {
 
         // if there was a loss, return amount of shares as the percentage of the
         // equivalent to the sender share of the total principal
-        shares = ask > have ? have : ask;
+        if (ask > have) {
+            shares = have;
+            principal = principal.mulDivDown(shares, ask);
+        } else {
+            shares = ask;
+        }
     }
 
     /**

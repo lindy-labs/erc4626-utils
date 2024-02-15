@@ -10,7 +10,7 @@ import "../src/common/Errors.sol";
 
 import {StreamingFactoryBase} from "../src/common/StreamingFactoryBase.sol";
 
-contract SttreamingFactoryBaseTest is Test {
+contract StreamingFactoryBaseTest is Test {
     FactoryHarness public factory;
     MockERC4626 public vault;
 

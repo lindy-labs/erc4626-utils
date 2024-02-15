@@ -17,10 +17,10 @@ abstract contract StreamingBase is Multicall {
         if (_receiver == address(0)) revert AddressZero();
     }
 
-    function _checkBalance(address _streamer, uint256 _amount) internal view {
+    function _checkBalance(IERC20 _token, address _streamer, uint256 _amount) internal view {
         if (_amount == 0) revert AmountZero();
 
-        if (IERC20(token).allowance(_streamer, address(this)) < _amount) revert TransferExceedsAllowance();
+        if (_token.allowance(_streamer, address(this)) < _amount) revert TransferExceedsAllowance();
     }
 
     function _checkOpenStreamToSelf(address _receiver) internal view {
