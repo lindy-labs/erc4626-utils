@@ -27,4 +27,4 @@ We made the following assumptions during the verification process:
 
 - We unroll loops by max 3 times. Violations that require a loop to execute more than 3 times will not be detected;
 - When verifying contracts that make external calls, we assume that those calls can have arbitrary side effects outside of the contracts, but that they do not affect the state of the contract being verified. This means that some reentrancy bugs may not be caught. However, the previous audits should have already covered all the possible reentrancy attacks;
-- Concerning `openYieldStreamUsingPermit`, the use of the `permit` function of `ERC20` was simplified to provide the expected value (`owner`). This is not worrying because otherwise the operation reverted.
+- Concerning `openStreamUsingPermit` and `topUpStreamUsingPermit`, the use of the `permit` function of `ERC20` was simplified to provide the expected value (`owner`). This is not worrying because otherwise the operation reverted.
