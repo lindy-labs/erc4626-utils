@@ -7,6 +7,8 @@ import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 
+import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
+
 import {ISwapper} from "./ISwapper.sol";
 
 /**
@@ -44,7 +46,10 @@ contract YieldDCA {
         uint256 pricePerShare;
     }
 
-    uint256 public constant DCA_PERIOD = 2 weeks;
+    error DcaIntervalNotPassed();
+    error DcaZeroYield();
+
+    uint256 public constant DCA_INTERVAL = 2 weeks;
 
     IERC20 public dcaToken;
     IERC4626 public vault;
@@ -65,9 +70,8 @@ contract YieldDCA {
         IERC20(vault.asset()).approve(address(swapper), type(uint256).max);
     }
 
-    function deposit(uint256 _amount) external {
-        uint256 principal = vault.convertToAssets(_amount);
-        vault.safeTransferFrom(msg.sender, address(this), _amount);
+    function deposit(uint256 _shares) external {
+        uint256 principal = vault.convertToAssets(_shares);
 
         Deposit storage position = deposits[msg.sender];
 
@@ -76,38 +80,45 @@ contract YieldDCA {
             (uint256 shares, uint256 dcaTokens) = _calculateBalances(position);
             position.shares = shares;
 
+            // TODO: this could be unnecessary
             if (dcaTokens != 0) {
                 dcaToken.safeTransfer(msg.sender, dcaTokens);
             }
         }
 
-        position.shares += _amount;
+        position.shares += _shares;
         position.principal += principal;
         position.epoch = currentEpoch;
 
         totalPrincipalDeposited += principal;
+
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
+
+        // TODO: emit event
     }
 
     function executeDCA() external {
-        if (block.timestamp < currentEpochTimestamp + DCA_PERIOD) return;
+        if (block.timestamp < currentEpochTimestamp + DCA_INTERVAL) revert DcaIntervalNotPassed();
 
         uint256 yieldInShares = calculateCurrentYieldInShares();
 
-        // TODO: or revert if yield is 0?
-        if (yieldInShares == 0) return;
+        if (yieldInShares == 0) revert DcaZeroYield();
 
         uint256 yield = vault.redeem(yieldInShares, address(this), address(this));
         // TODO: use asset.balanceOf here instead of yield?
 
-        uint256 realizedPricePerShare = yield.divWadDown(yieldInShares);
         uint256 tokensBought = _buyDcaToken(yield);
+
         uint256 tokenPrice = tokensBought.divWadDown(yield);
+        uint256 realizedPricePerShare = yield.divWadDown(yieldInShares);
 
         epochDetails[currentEpoch] =
             EpochInfo({yieldSpent: yield, dcaPrice: tokenPrice, pricePerShare: realizedPricePerShare});
 
         currentEpoch++;
         currentEpochTimestamp = block.timestamp;
+
+        // TODO: emit event
     }
 
     function calculateCurrentYieldInShares() public view returns (uint256) {
@@ -123,7 +134,7 @@ contract YieldDCA {
         // TODO: reconsider this to allow withdrawing in the same epoch as deposit
         require(user.epoch < currentEpoch, "Cannot withdraw in the same epoch");
 
-        (uint256 sharesRemaining, uint256 totalDcaTokensForUser) = _calculateBalances(user);
+        (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(user);
 
         // withdraw remaining shares
         if (sharesRemaining > vault.balanceOf(address(this))) {
@@ -132,17 +143,19 @@ contract YieldDCA {
 
         vault.safeTransfer(msg.sender, sharesRemaining);
 
-        if (totalDcaTokensForUser > dcaToken.balanceOf(address(this))) {
-            totalDcaTokensForUser = dcaToken.balanceOf(address(this));
+        if (dcaAmount > dcaToken.balanceOf(address(this))) {
+            dcaAmount = dcaToken.balanceOf(address(this));
         }
 
-        dcaToken.safeTransfer(msg.sender, totalDcaTokensForUser);
+        dcaToken.safeTransfer(msg.sender, dcaAmount);
 
         // update
         totalPrincipalDeposited -= user.principal;
 
         // update user position
         delete deposits[msg.sender];
+
+        // TODO: emit event
     }
 
     function _buyDcaToken(uint256 _amountIn) private returns (uint256 amountOut) {

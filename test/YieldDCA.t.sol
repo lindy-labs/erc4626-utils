@@ -80,6 +80,24 @@ contract YieldDCATest is Test {
 
     // *** #executeDCA *** //
 
+    function test_executeDCA_failsIfNotEnoughTimePassed() public {
+        _depositIntoDca(alice, 1 ether);
+
+        _shiftTime(yieldDca.DCA_INTERVAL() - 1);
+
+        vm.expectRevert(YieldDCA.DcaIntervalNotPassed.selector);
+        yieldDca.executeDCA();
+    }
+
+    function test_executeDCA_failsIfYieldIsZero() public {
+        _depositIntoDca(alice, 1 ether);
+
+        _shiftTime(yieldDca.DCA_INTERVAL());
+
+        vm.expectRevert(YieldDCA.DcaZeroYield.selector);
+        yieldDca.executeDCA();
+    }
+
     function test_executeDCA_oneDepositOneEpoch() public {
         /**
          * scenario:
@@ -103,7 +121,7 @@ contract YieldDCATest is Test {
         uint256 currentEpoch = yieldDca.currentEpoch();
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
-        _shiftTime(yieldDca.DCA_PERIOD());
+        _shiftTime(yieldDca.DCA_INTERVAL());
 
         yieldDca.executeDCA();
 
@@ -155,7 +173,7 @@ contract YieldDCATest is Test {
 
         // step 4 - dca - buy 2 DCA tokens for 1 ether
         swapper.setExchangeRate(2e18);
-        _shiftTime(yieldDca.DCA_PERIOD());
+        _shiftTime(yieldDca.DCA_INTERVAL());
 
         yieldDca.executeDCA();
 
@@ -192,7 +210,7 @@ contract YieldDCATest is Test {
         asset.mint(address(vault), asset.balanceOf(address(vault)));
 
         // step 3 - dca
-        vm.warp(block.timestamp + yieldDca.DCA_PERIOD());
+        vm.warp(block.timestamp + yieldDca.DCA_INTERVAL());
         swapper.setExchangeRate(3e18);
         yieldDca.executeDCA();
 
@@ -212,7 +230,7 @@ contract YieldDCATest is Test {
         asset.mint(address(vault), asset.balanceOf(address(vault)));
 
         // step 6 - dca
-        vm.warp(block.timestamp + yieldDca.DCA_PERIOD());
+        vm.warp(block.timestamp + yieldDca.DCA_INTERVAL());
         swapper.setExchangeRate(2e18);
         yieldDca.executeDCA();
 
@@ -245,7 +263,7 @@ contract YieldDCATest is Test {
         for (uint256 i = 0; i < epochs; i++) {
             _addYield(yieldPerEpoch);
 
-            _shiftTime(yieldDca.DCA_PERIOD());
+            _shiftTime(yieldDca.DCA_INTERVAL());
 
             yieldDca.executeDCA();
         }
@@ -285,7 +303,7 @@ contract YieldDCATest is Test {
         // step 3 - dca
         uint256 firstExchangeRate = 3e18;
         swapper.setExchangeRate(firstExchangeRate);
-        _shiftTime(yieldDca.DCA_PERIOD());
+        _shiftTime(yieldDca.DCA_INTERVAL());
 
         yieldDca.executeDCA();
 
@@ -300,7 +318,7 @@ contract YieldDCATest is Test {
         // step 6 - dca
         uint256 secondExchangeRate = 2e18;
         swapper.setExchangeRate(secondExchangeRate);
-        _shiftTime(yieldDca.DCA_PERIOD());
+        _shiftTime(yieldDca.DCA_INTERVAL());
 
         yieldDca.executeDCA();
 
@@ -344,7 +362,7 @@ contract YieldDCATest is Test {
         // step 3 - dca - buy 3 DCA tokens for 1 ether
         uint256 firstExchangeRate = 3e18;
         swapper.setExchangeRate(firstExchangeRate);
-        _shiftTime(yieldDca.DCA_PERIOD());
+        _shiftTime(yieldDca.DCA_INTERVAL());
 
         yieldDca.executeDCA();
 
@@ -362,7 +380,7 @@ contract YieldDCATest is Test {
         // step 7 - dca - buy 8 DCA tokens for 4 ether
         uint256 secondExchangeRate = 2e18;
         swapper.setExchangeRate(secondExchangeRate);
-        _shiftTime(yieldDca.DCA_PERIOD());
+        _shiftTime(yieldDca.DCA_INTERVAL());
 
         yieldDca.executeDCA();
 
