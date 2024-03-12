@@ -406,6 +406,50 @@ contract YieldDCATest is Test {
         assertApproxEqAbs(_convertSharesToAssetsFor(carol), 1e18, 1, "principal");
     }
 
+    // *** #withdraw *** //
+
+    function test_withdraw_worksInSameEpochAsDeposit() public {
+        uint256 principal = 1 ether;
+        uint256 shares = _depositIntoDca(alice, principal);
+
+        vm.prank(alice);
+        yieldDca.withdraw();
+
+        assertEq(vault.balanceOf(alice), shares, "alice's balance");
+        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
+
+        (uint256 balance, uint256 dcaBalance) = yieldDca.balanceOf(alice);
+        assertEq(balance, 0, "alice's balance");
+        assertEq(dcaBalance, 0, "alice's dca balance");
+        assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
+    }
+
+    function test_withdraw_withdrawsOnlySharesIfDcaIsNotExecuted() public {
+        uint256 principal = 1 ether;
+        uint256 shares = _depositIntoDca(alice, principal);
+
+        // add 100% yield
+        _addYield(1e18);
+        _shiftTime(yieldDca.DCA_INTERVAL());
+
+        (uint256 balance, uint256 dcaBalance) = yieldDca.balanceOf(alice);
+        assertEq(balance, shares, "alice's balance");
+        assertEq(dcaBalance, 0, "alice's dca balance");
+        assertEq(yieldDca.totalPrincipalDeposited(), principal, "total principal deposited");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
+
+        vm.prank(alice);
+        yieldDca.withdraw();
+
+        assertEq(vault.balanceOf(alice), shares, "alice's balance");
+        assertEq(vault.convertToAssets(shares), principal * 2, "alice's assets");
+        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
+        assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
+    }
+
+    // *** helper functions *** ///
+
     function _depositIntoDca(address _account, uint256 _amount) public returns (uint256 shares) {
         vm.startPrank(_account);
 

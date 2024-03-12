@@ -73,12 +73,12 @@ contract YieldDCA {
     function deposit(uint256 _shares) external {
         uint256 principal = vault.convertToAssets(_shares);
 
-        Deposit storage position = deposits[msg.sender];
+        Deposit storage deposit_ = deposits[msg.sender];
 
         // check if user has already deposited in the past
-        if (position.epoch != 0 && position.epoch < currentEpoch) {
-            (uint256 shares, uint256 dcaTokens) = _calculateBalances(position);
-            position.shares = shares;
+        if (deposit_.epoch != 0 && deposit_.epoch < currentEpoch) {
+            (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
+            deposit_.shares = shares;
 
             // TODO: this could be unnecessary
             if (dcaTokens != 0) {
@@ -86,9 +86,9 @@ contract YieldDCA {
             }
         }
 
-        position.shares += _shares;
-        position.principal += principal;
-        position.epoch = currentEpoch;
+        deposit_.shares += _shares;
+        deposit_.principal += principal;
+        deposit_.epoch = currentEpoch;
 
         totalPrincipalDeposited += principal;
 
@@ -130,27 +130,32 @@ contract YieldDCA {
 
     // NOTE: uses around 300k gas iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
     function withdraw() external {
-        Deposit memory user = deposits[msg.sender];
-        // TODO: reconsider this to allow withdrawing in the same epoch as deposit
-        require(user.epoch < currentEpoch, "Cannot withdraw in the same epoch");
+        Deposit memory _deposit = deposits[msg.sender];
 
-        (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(user);
+        (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(_deposit);
 
         // withdraw remaining shares
-        if (sharesRemaining > vault.balanceOf(address(this))) {
-            sharesRemaining = vault.balanceOf(address(this));
+        uint256 vaultBalance = vault.balanceOf(address(this));
+
+        // TODO: avoid rounding errors?
+        if (sharesRemaining > vaultBalance) {
+            sharesRemaining = vaultBalance;
         }
 
         vault.safeTransfer(msg.sender, sharesRemaining);
 
-        if (dcaAmount > dcaToken.balanceOf(address(this))) {
-            dcaAmount = dcaToken.balanceOf(address(this));
+        // withdraw DCA tokens
+        uint256 dcaBalance = dcaToken.balanceOf(address(this));
+
+        // TODO: avoid rounding errors?
+        if (dcaAmount > dcaBalance) {
+            dcaAmount = dcaBalance;
         }
 
         dcaToken.safeTransfer(msg.sender, dcaAmount);
 
         // update
-        totalPrincipalDeposited -= user.principal;
+        totalPrincipalDeposited -= _deposit.principal;
 
         // update user position
         delete deposits[msg.sender];
@@ -191,6 +196,7 @@ contract YieldDCA {
             uint256 usersYield = sharesValue - _deposit.principal;
             uint256 sharesSpent = usersYield.divWadDown(epoch.pricePerShare);
 
+            // TODO: is this safe?
             shares -= sharesSpent;
             dcaTokens += usersYield.mulWadDown(epoch.dcaPrice);
         }
