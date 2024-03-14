@@ -38,6 +38,7 @@ contract YieldDCA {
         uint256 shares;
         uint256 principal;
         uint256 epoch;
+        uint256 dcaAmountAtEpoch;
     }
 
     struct EpochInfo {
@@ -80,9 +81,8 @@ contract YieldDCA {
             (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
             deposit_.shares = shares;
 
-            // TODO: this could be unnecessary
             if (dcaTokens != 0) {
-                dcaToken.safeTransfer(msg.sender, dcaTokens);
+                deposit_.dcaAmountAtEpoch = dcaTokens;
             }
         }
 
@@ -129,7 +129,7 @@ contract YieldDCA {
     }
 
     // NOTE: uses around 300k gas iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
-    function withdraw() external {
+    function withdrawAll() external {
         Deposit memory _deposit = deposits[msg.sender];
 
         (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(_deposit);
@@ -155,7 +155,8 @@ contract YieldDCA {
         dcaToken.safeTransfer(msg.sender, dcaAmount);
 
         // update
-        totalPrincipalDeposited -= _deposit.principal;
+        // TODO: can underflow?
+        totalPrincipalDeposited -= deposit_.principal;
 
         // update user position
         delete deposits[msg.sender];
@@ -183,6 +184,7 @@ contract YieldDCA {
         if (_deposit.epoch == 0) return (0, 0);
 
         shares = _deposit.shares;
+        dcaTokens = _deposit.dcaAmountAtEpoch;
 
         for (uint256 i = _deposit.epoch; i < currentEpoch; i++) {
             EpochInfo memory epoch = epochDetails[i];
