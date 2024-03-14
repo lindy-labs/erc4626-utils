@@ -49,6 +49,8 @@ contract YieldDCA {
 
     error DcaIntervalNotPassed();
     error DcaZeroYield();
+    error NoDepositFound();
+    error InsufficientSharesToWithdraw();
 
     uint256 public constant DCA_INTERVAL = 2 weeks;
 
@@ -128,11 +130,57 @@ contract YieldDCA {
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
 
-    // NOTE: uses around 300k gas iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
-    function withdrawAll() external {
-        Deposit memory _deposit = deposits[msg.sender];
+    // if 0 is passed only dca is withdrawn
+    function withdraw(uint256 _shares) external {
+        Deposit storage deposit_ = deposits[msg.sender];
 
-        (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(_deposit);
+        if (deposit_.epoch == 0) revert NoDepositFound();
+
+        (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(deposit_);
+
+        if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
+
+        if (_shares == sharesRemaining) {
+            // withadraw all
+            totalPrincipalDeposited -= deposit_.principal;
+
+            delete deposits[msg.sender];
+        } else {
+            // withdraw partial
+            uint256 principalRemoved = deposit_.principal.mulDivDown(_shares, sharesRemaining);
+
+            deposit_.principal -= principalRemoved;
+            deposit_.shares = sharesRemaining - _shares;
+            deposit_.dcaAmountAtEpoch = 0;
+            deposit_.epoch = currentEpoch;
+
+            totalPrincipalDeposited -= principalRemoved;
+        }
+
+        if (dcaAmount > 0) {
+            // withdraw DCA tokens
+            uint256 dcaBalance = dcaToken.balanceOf(address(this));
+
+            // TODO: avoid rounding errors?
+            // TODO: refactor
+            if (dcaAmount > dcaBalance) {
+                console2.log("when is this");
+                dcaAmount = dcaBalance;
+            }
+        }
+
+        // withdraw shares
+        vault.safeTransfer(msg.sender, _shares);
+
+        dcaToken.safeTransfer(msg.sender, dcaAmount);
+    }
+
+    // NOTE: uses around 300k gas iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
+    // TODO: remove this function
+    function withdrawAll() external {
+        Deposit memory deposit_ = deposits[msg.sender];
+
+        (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(deposit_);
 
         // withdraw remaining shares
         uint256 vaultBalance = vault.balanceOf(address(this));
