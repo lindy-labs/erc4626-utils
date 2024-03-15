@@ -161,8 +161,7 @@ contract YieldDCATest is Test {
         assertEq(dcaAmount, expectedDcaAmount, "balanceOf: dcaAmount");
 
         // step 4 - alice withdraws and gets 1 ether in shares and 1.5 DCA tokens
-        vm.prank(alice);
-        yieldDca.withdrawAll();
+        _withdrawAll(alice);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaAmount, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), principal, 1, "principal");
@@ -202,8 +201,7 @@ contract YieldDCATest is Test {
         yieldDca.executeDCA();
 
         // step 5 - alice withdraws and gets 2 DCA tokens
-        vm.prank(alice);
-        yieldDca.withdrawAll();
+        _withdrawAll(alice);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 2e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
@@ -250,14 +248,13 @@ contract YieldDCATest is Test {
         yieldDca.executeDCA();
 
         // step 7 - alice withdraws
-        vm.prank(alice);
-        yieldDca.withdrawAll();
+        _withdrawAll(alice);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 7e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
     }
 
-    function test_executeDCA_oneDepositMultipleEpochs() public {
+    function test_executeDCA_oneDeposit200Epochs() public {
         /**
          * scenario:
          * 1. alice deposits 1 ether in principal
@@ -265,16 +262,17 @@ contract YieldDCATest is Test {
          * 3. execute DCA at 3:1 exchange in each cycle, 3 DCA tokens = 1 ether
          * 4. alice withdraws and gets 1 ether in shares and gets 0.05 * 200 * 3 = 30 DCA tokens
          */
+
+        // step 1 - alice deposits
         uint256 principal = 1 ether;
         _depositIntoDca(alice, principal);
 
-        // set exchange rate
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
         uint256 yieldPerEpoch = 0.05e18; // 5%
         uint256 epochs = 200;
 
-        // generate yield over all epochs
+        // step 2 & 3 - generate 5% yield over 200 epochs and do DCA
         for (uint256 i = 0; i < epochs; i++) {
             _addYield(yieldPerEpoch);
 
@@ -285,14 +283,52 @@ contract YieldDCATest is Test {
 
         assertEq(yieldDca.currentEpoch(), epochs + 1, "epoch not incremented");
 
-        vm.prank(alice);
-        yieldDca.withdrawAll();
+        // step 4 - alice withdraws and gets 30 DCA tokens
+        _withdrawAll(alice);
 
         uint256 expectedDcaTokenBalance = epochs * principal.mulWadDown(yieldPerEpoch).mulWadDown(exchangeRate);
         assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaTokenBalance, 0.00001e18, "dca token balance");
         assertApproxEqRel(_convertSharesToAssetsFor(alice), principal, 0.00001e18, "principal");
-        assertEq(vault.balanceOf(address(yieldDca)), 0);
-        assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
+        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca token balance");
+    }
+
+    function test_executeDCA_oneDeposit5Epochs() public {
+        /**
+         * scenario:
+         * 1. alice deposits 1 ether in principal
+         * 2. yield generated is 5% over 5 dca cycles (epochs)
+         * 3. execute DCA at 3:1 exchange in each cycle, 3 DCA tokens = 1 ether
+         * 4. alice withdraws and gets 1 ether in shares and gets 0.05 * 5 * 3 = 0.75 DCA tokens
+         */
+
+        // step 1 - alice deposits
+        uint256 principal = 1 ether;
+        _depositIntoDca(alice, principal);
+
+        uint256 exchangeRate = 3e18;
+        swapper.setExchangeRate(exchangeRate);
+        uint256 yieldPerEpoch = 0.05e18; // 5%
+        uint256 epochs = 5;
+
+        // step 2 & 3 - generate 5% yield over 200 epochs and do DCA
+        for (uint256 i = 0; i < epochs; i++) {
+            _addYield(yieldPerEpoch);
+
+            _shiftTime(yieldDca.DCA_INTERVAL());
+
+            yieldDca.executeDCA();
+        }
+
+        // step 4 - alice withdraws and gets 30 DCA tokens
+        _withdrawAll(alice);
+
+        uint256 expectedDcaTokenBalance = epochs * principal.mulWadDown(yieldPerEpoch).mulWadDown(exchangeRate);
+        assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaTokenBalance, 0.00001e18, "dca token balance");
+        assertApproxEqRel(_convertSharesToAssetsFor(alice), principal, 0.00001e18, "principal");
+        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
+        // there can be some leftover dca tokens because of rounding errors
+        assertApproxEqAbs(dcaToken.balanceOf(address(yieldDca)), 0, 3 * epochs, "contract's dca token balance");
     }
 
     function test_executeDCA_twoDeposits_separatesBalancesOverTwoEpochsCorrectly() public {
@@ -338,15 +374,13 @@ contract YieldDCATest is Test {
         yieldDca.executeDCA();
 
         // step 7 - alice withdraws and gets 5 DCA tokens
-        vm.prank(alice);
-        yieldDca.withdrawAll();
+        _withdrawAll(alice);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 5e18, 0.00001e18, "alice's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 1, "alice's principal");
 
         // step 8 - bob withdraws and gets 2 DCA tokens
-        vm.prank(bob);
-        yieldDca.withdrawAll();
+        _withdrawAll(bob);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 2e18, 0.00001e18, "bob's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 1, "bob's principal");
@@ -391,15 +425,13 @@ contract YieldDCATest is Test {
         yieldDca.executeDCA();
 
         // step 5 - alice withdraws and gets 5 DCA tokens
-        vm.prank(alice);
-        yieldDca.withdrawAll();
+        _withdrawAll(alice);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 3e18, 0.00001e18, "alice's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 1, "alice's principal");
 
         // step 6 - bob withdraws and gets 2 DCA tokens
-        vm.prank(bob);
-        yieldDca.withdrawAll();
+        _withdrawAll(bob);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 0, 0.00001e18, "bob's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), 2 * bobsPrincipal, 1, "bob's principal");
@@ -453,22 +485,19 @@ contract YieldDCATest is Test {
         yieldDca.executeDCA();
 
         // step 8 - alice withdraws and gets 5 DCA tokens
-        vm.prank(alice);
-        yieldDca.withdrawAll();
+        _withdrawAll(alice);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 5e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 1e18, 1, "principal");
 
         // step 9 - bob withdraws and gets 4 DCA tokens
-        vm.prank(bob);
-        yieldDca.withdrawAll();
+        _withdrawAll(bob);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 4e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), 2e18, 1, "principal");
 
         // step 10 - carol withdraws and gets 2 DCA tokens
-        vm.prank(carol);
-        yieldDca.withdrawAll();
+        _withdrawAll(carol);
 
         assertApproxEqRel(dcaToken.balanceOf(carol), 2e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(carol), 1e18, 1, "principal");
@@ -507,7 +536,7 @@ contract YieldDCATest is Test {
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
     }
 
-    function test_withdraw_withdrawsOnlySharesIfDcaIsNotExecuted() public {
+    function test_withdraw_withdrawsOnlySharesIfDcaTokensNotEarned() public {
         uint256 principal = 1 ether;
         uint256 shares = _depositIntoDca(alice, principal);
 
@@ -529,9 +558,40 @@ contract YieldDCATest is Test {
         assertEq(vault.convertToAssets(shares), principal * 2, "alice's assets");
         assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
         assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
+        assertEq(dcaToken.balanceOf(alice), 0, "alice's dca balance");
     }
 
-    function test_withdrawPartial() public {
+    function test_withdraw_withdrawsOnlyDcaTokensWhenParamIs0() public {
+        uint256 principal = 1 ether;
+        _depositIntoDca(alice, principal);
+
+        // add 100% yield
+        _addYield(1e18);
+        _shiftTime(yieldDca.DCA_INTERVAL());
+
+        yieldDca.executeDCA();
+
+        // 1:1 exchange rate
+        uint256 dcaAmount = 1 ether;
+
+        (uint256 balance, uint256 dcaBalance) = yieldDca.balanceOf(alice);
+        assertEq(balance, vault.convertToShares(principal), "alice's balance");
+        assertEq(dcaBalance, dcaAmount, "alice's dca balance");
+        assertEq(yieldDca.totalPrincipalDeposited(), principal, "total principal deposited");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), dcaAmount);
+
+        vm.prank(alice);
+        yieldDca.withdraw(0);
+
+        assertEq(vault.balanceOf(alice), 0, "alice's balance");
+        assertEq(vault.balanceOf(address(yieldDca)), vault.convertToShares(principal), "contract's balance");
+        assertEq(yieldDca.totalPrincipalDeposited(), principal, "total principal deposited");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
+        assertEq(dcaToken.balanceOf(alice), dcaAmount, "alice's dca balance");
+    }
+
+    function test_withdraw_partial() public {
         /**
          * scenario:
          * 1. alice deposits 1 ether in principal
@@ -623,8 +683,15 @@ contract YieldDCATest is Test {
         return vault.convertToAssets(vault.balanceOf(_account));
     }
 
-    function _getSharesBalanceInDcaFor(address _account) internal view returns (uint256) {
-        (uint256 shares,) = yieldDca.balanceOf(_account);
-        return shares;
+    function _getSharesBalanceInDcaFor(address _account) internal view returns (uint256 shares) {
+        (shares,) = yieldDca.balanceOf(_account);
+    }
+
+    function _withdrawAll(address _account) internal {
+        vm.startPrank(_account);
+
+        yieldDca.withdraw(_getSharesBalanceInDcaFor(_account));
+
+        vm.stopPrank();
     }
 }
