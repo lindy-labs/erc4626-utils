@@ -47,6 +47,11 @@ contract YieldDCA {
         uint256 pricePerShare;
     }
 
+    error DcaTokenAddressZero();
+    error VaultAddressZero();
+    error SwapperAddressZero();
+    error DcaTokenSameAsVaultAsset();
+
     error DcaIntervalNotPassed();
     error DcaYieldZero();
     error NoDepositFound();
@@ -70,19 +75,23 @@ contract YieldDCA {
     mapping(uint256 => EpochInfo) public epochDetails;
 
     constructor(IERC20 _dcaToken, IERC4626 _vault, ISwapper _swapper) {
+        if (address(_dcaToken) == address(0)) revert DcaTokenAddressZero();
+        if (address(_vault) == address(0)) revert VaultAddressZero();
+        if (address(_swapper) == address(0)) revert SwapperAddressZero();
+        if (address(_dcaToken) == _vault.asset()) revert DcaTokenSameAsVaultAsset();
+
         dcaToken = _dcaToken;
         vault = _vault;
         swapper = _swapper;
 
         // approve swapper to spend deposits on DCA token
         IERC20(vault.asset()).approve(address(swapper), type(uint256).max);
-        // TODO: make sure dca token and underlying asset are not the same
     }
 
     function deposit(uint256 _shares) external {
         DepositInfo storage deposit_ = deposits[msg.sender];
 
-        // check if user has already deposited in the past
+        // check if the user has made a deposit previously
         if (deposit_.epoch != 0 && deposit_.epoch < currentEpoch) {
             (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
 
@@ -128,7 +137,6 @@ contract YieldDCA {
     }
 
     // if 0 is passed only dca is withdrawn
-    // TODO: return values?
     // NOTE: uses around 300k gas iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
     function withdraw(uint256 _shares) external returns (uint256 principal, uint256 dcaTokens) {
         DepositInfo storage deposit_ = deposits[msg.sender];

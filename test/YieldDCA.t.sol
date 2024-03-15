@@ -41,6 +41,37 @@ contract YieldDCATest is Test {
         yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper);
     }
 
+    // *** constructor *** //
+    function test_constructor() public {
+        assertEq(address(yieldDca.dcaToken()), address(dcaToken), "dca token");
+        assertEq(address(yieldDca.vault()), address(vault), "vault");
+        assertEq(address(yieldDca.swapper()), address(swapper), "swapper");
+
+        assertEq(yieldDca.currentEpoch(), 1, "current epoch");
+        assertEq(yieldDca.currentEpochTimestamp(), block.timestamp, "current epoch timestamp");
+        assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
+    }
+
+    function test_constructor_dcaTokenZeroAddress() public {
+        vm.expectRevert(YieldDCA.DcaTokenAddressZero.selector);
+        yieldDca = new YieldDCA(IERC20(address(0)), IERC4626(address(vault)), swapper);
+    }
+
+    function test_constructor_vaultZeroAddress() public {
+        vm.expectRevert(YieldDCA.VaultAddressZero.selector);
+        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(0)), swapper);
+    }
+
+    function test_constructor_swapperZeroAddress() public {
+        vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
+        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), ISwapper(address(0)));
+    }
+
+    function test_constructor_dcaTokenSameAsVaultAsset() public {
+        vm.expectRevert(YieldDCA.DcaTokenSameAsVaultAsset.selector);
+        yieldDca = new YieldDCA(IERC20(address(asset)), IERC4626(address(vault)), swapper);
+    }
+
     // *** #deposit *** //
 
     function test_deposit_transfersSharesToDcaContract() public {
