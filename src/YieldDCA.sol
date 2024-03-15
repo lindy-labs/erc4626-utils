@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
+import "forge-std/console2.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
@@ -34,7 +34,7 @@ contract YieldDCA {
     using SafeERC20 for IERC4626;
     using SafeERC20 for IERC20;
 
-    struct Deposit {
+    struct DepositInfo {
         uint256 shares;
         uint256 principal;
         uint256 epoch;
@@ -48,10 +48,15 @@ contract YieldDCA {
     }
 
     error DcaIntervalNotPassed();
-    error DcaZeroYield();
+    error DcaYieldZero();
     error NoDepositFound();
     error InsufficientSharesToWithdraw();
 
+    event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
+    event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
+    event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
+
+    // TODO: make this configurable?
     uint256 public constant DCA_INTERVAL = 2 weeks;
 
     IERC20 public dcaToken;
@@ -61,7 +66,7 @@ contract YieldDCA {
     uint256 public currentEpoch = 1; // starts from 1
     uint256 public currentEpochTimestamp = block.timestamp;
     uint256 public totalPrincipalDeposited;
-    mapping(address => Deposit) public deposits;
+    mapping(address => DepositInfo) public deposits;
     mapping(uint256 => EpochInfo) public epochDetails;
 
     constructor(IERC20 _dcaToken, IERC4626 _vault, ISwapper _swapper) {
@@ -75,7 +80,7 @@ contract YieldDCA {
     }
 
     function deposit(uint256 _shares) external {
-        Deposit storage deposit_ = deposits[msg.sender];
+        DepositInfo storage deposit_ = deposits[msg.sender];
 
         // check if user has already deposited in the past
         if (deposit_.epoch != 0 && deposit_.epoch < currentEpoch) {
@@ -95,15 +100,16 @@ contract YieldDCA {
 
         vault.safeTransferFrom(msg.sender, address(this), _shares);
 
-        // TODO: emit event
+        emit Deposit(msg.sender, currentEpoch, _shares, principal);
     }
 
+    // TODO: pass amount out min here?
     function executeDCA() external {
         if (block.timestamp < currentEpochTimestamp + DCA_INTERVAL) revert DcaIntervalNotPassed();
 
         uint256 yieldInShares = calculateCurrentYieldInShares();
 
-        if (yieldInShares == 0) revert DcaZeroYield();
+        if (yieldInShares == 0) revert DcaYieldZero();
 
         uint256 yield = vault.redeem(yieldInShares, address(this), address(this));
         // TODO: use asset.balanceOf here instead of yield?
@@ -111,22 +117,21 @@ contract YieldDCA {
         uint256 tokensBought = _buyDcaToken(yield);
 
         uint256 tokenPrice = tokensBought.divWadDown(yield);
-        uint256 realizedPricePerShare = yield.divWadDown(yieldInShares);
+        uint256 sharePrice = yield.divWadDown(yieldInShares);
 
-        epochDetails[currentEpoch] =
-            EpochInfo({yieldSpent: yield, dcaPrice: tokenPrice, pricePerShare: realizedPricePerShare});
+        epochDetails[currentEpoch] = EpochInfo({yieldSpent: yield, dcaPrice: tokenPrice, pricePerShare: sharePrice});
 
         currentEpoch++;
         currentEpochTimestamp = block.timestamp;
 
-        // TODO: emit event
+        emit DCAExecuted(currentEpoch - 1, yield, tokensBought, tokenPrice, sharePrice);
     }
 
     // if 0 is passed only dca is withdrawn
     // TODO: return values?
     // NOTE: uses around 300k gas iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
-    function withdraw(uint256 _shares) external {
-        Deposit storage deposit_ = deposits[msg.sender];
+    function withdraw(uint256 _shares) external returns (uint256 principal, uint256 dcaTokens) {
+        DepositInfo storage deposit_ = deposits[msg.sender];
 
         if (deposit_.epoch == 0) revert NoDepositFound();
 
@@ -137,15 +142,14 @@ contract YieldDCA {
         uint256 sharesBalance = vault.balanceOf(address(this));
         uint256 dcaBalance = dcaToken.balanceOf(address(this));
 
+        uint256 principalRemoved = deposit_.principal.mulDivDown(_shares, sharesRemaining);
         if (_shares == sharesRemaining) {
             // withadraw all
-            totalPrincipalDeposited -= deposit_.principal;
+            totalPrincipalDeposited -= principalRemoved;
 
             delete deposits[msg.sender];
         } else {
             // withdraw partial
-            uint256 principalRemoved = deposit_.principal.mulDivDown(_shares, sharesRemaining);
-
             deposit_.principal -= principalRemoved;
             deposit_.shares = sharesRemaining - _shares;
             deposit_.dcaAmountAtEpoch = 0;
@@ -160,6 +164,14 @@ contract YieldDCA {
 
         dcaAmount = dcaAmount > dcaBalance ? dcaBalance : dcaAmount;
         dcaToken.safeTransfer(msg.sender, dcaAmount);
+
+        emit Withdraw(msg.sender, currentEpoch, principalRemoved, _shares, dcaAmount);
+
+        return (principalRemoved, dcaAmount);
+    }
+
+    function balanceOf(address _user) public view returns (uint256 shares, uint256 dcaTokens) {
+        return _calculateBalances(deposits[_user]);
     }
 
     function calculateCurrentYieldInShares() public view returns (uint256) {
@@ -169,11 +181,7 @@ contract YieldDCA {
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
 
-    function balanceOf(address _user) public view returns (uint256 shares, uint256 dcaTokens) {
-        return _calculateBalances(deposits[_user]);
-    }
-
-    function _buyDcaToken(uint256 _amountIn) private returns (uint256 amountOut) {
+    function _buyDcaToken(uint256 _amountIn) internal returns (uint256 amountOut) {
         uint256 balanceBefore = dcaToken.balanceOf(address(this));
         uint256 amountOutMin = 0;
 
@@ -186,7 +194,11 @@ contract YieldDCA {
         );
     }
 
-    function _calculateBalances(Deposit memory _deposit) internal view returns (uint256 shares, uint256 dcaTokens) {
+    function _calculateBalances(DepositInfo memory _deposit)
+        internal
+        view
+        returns (uint256 shares, uint256 dcaTokens)
+    {
         if (_deposit.epoch == 0) return (0, 0);
 
         shares = _deposit.shares;
@@ -202,9 +214,11 @@ contract YieldDCA {
             uint256 usersYield = sharesValue - _deposit.principal;
             uint256 sharesSpent = usersYield.divWadDown(epoch.pricePerShare);
 
-            // TODO: is this safe?
-            shares -= sharesSpent;
-            dcaTokens += usersYield.mulWadDown(epoch.dcaPrice);
+            // since we are only working with yield, `sharesSpent` is never greater than `shares` (ie. principal)
+            unchecked {
+                shares -= sharesSpent;
+                dcaTokens += usersYield.mulWadDown(epoch.dcaPrice);
+            }
         }
     }
 }

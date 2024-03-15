@@ -16,6 +16,10 @@ import {SwapperMock} from "./mock/SwapperMock.sol";
 contract YieldDCATest is Test {
     using FixedPointMathLib for uint256;
 
+    event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
+    event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
+    event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
+
     YieldDCA yieldDca;
     MockERC20 asset;
     MockERC4626 vault;
@@ -47,6 +51,7 @@ contract YieldDCATest is Test {
         asset.approve(address(vault), principal);
         uint256 shares = vault.deposit(principal, alice);
         vault.approve(address(yieldDca), shares);
+
         yieldDca.deposit(shares);
         vm.stopPrank();
 
@@ -58,6 +63,22 @@ contract YieldDCATest is Test {
         assertEq(dcaBalance, 0, "alice's dca balance");
         assertEq(yieldDca.totalPrincipalDeposited(), principal, "total principal deposited");
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
+    }
+
+    function test_deposit_emitsEvent() public {
+        uint256 principal = 1 ether;
+        asset.mint(alice, principal);
+
+        vm.startPrank(alice);
+        asset.approve(address(vault), principal);
+        uint256 shares = vault.deposit(principal, alice);
+        vault.approve(address(yieldDca), shares);
+
+        vm.expectEmit(true, true, true, true);
+        emit Deposit(alice, 1, shares, principal);
+
+        yieldDca.deposit(shares);
+        vm.stopPrank();
     }
 
     function test_deposit_worksMultipleTimesInSameEpoch() public {
@@ -118,7 +139,7 @@ contract YieldDCATest is Test {
 
         _shiftTime(yieldDca.DCA_INTERVAL());
 
-        vm.expectRevert(YieldDCA.DcaZeroYield.selector);
+        vm.expectRevert(YieldDCA.DcaYieldZero.selector);
         yieldDca.executeDCA();
     }
 
@@ -170,6 +191,31 @@ contract YieldDCATest is Test {
         (uint256 balance, uint256 dcaBalance) = yieldDca.balanceOf(alice);
         assertEq(balance, 0, "alice's balance");
         assertEq(dcaBalance, 0, "alice's dca balance");
+    }
+
+    function test_executeDca_emitsEvent() public {
+        uint256 principal = 1 ether;
+        _depositIntoDca(alice, principal);
+
+        // generate 50% yield
+        uint256 yieldPct = 0.5e18;
+        _addYield(yieldPct);
+
+        // dca - buy 2.5 DCA tokens for 0.5 ether
+        uint256 currentEpoch = yieldDca.currentEpoch();
+        uint256 exchangeRate = 5e18;
+        swapper.setExchangeRate(exchangeRate);
+        _shiftTime(yieldDca.DCA_INTERVAL());
+
+        uint256 expectedYield = 0.5 ether + 1; // 1 is the rounding error
+        uint256 expectedDcaAmount = expectedYield.mulWadDown(exchangeRate);
+        uint256 expectedDcaPrice = 5e18;
+        uint256 expectedSharePrice = 1.5e18; // 50% yield
+
+        vm.expectEmit(true, true, true, true);
+        emit DCAExecuted(currentEpoch, expectedYield, expectedDcaAmount, expectedDcaPrice, expectedSharePrice);
+
+        yieldDca.executeDCA();
     }
 
     function test_executeDCA_twoDepositsInSameEpoch() public {
@@ -591,7 +637,7 @@ contract YieldDCATest is Test {
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "alice's dca balance");
     }
 
-    function test_withdraw_partial() public {
+    function test_withdraw_worksForPartialWithdraws() public {
         /**
          * scenario:
          * 1. alice deposits 1 ether in principal
@@ -654,6 +700,31 @@ contract YieldDCATest is Test {
 
         assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca balance");
+    }
+
+    function test_withdraw_emitsEvent() public {
+        uint256 principal = 1 ether;
+        _depositIntoDca(alice, principal);
+
+        // add 50% yield
+        _addYield(0.5e18);
+        _shiftTime(yieldDca.DCA_INTERVAL());
+        uint256 exchangeRate = 5e18;
+        swapper.setExchangeRate(exchangeRate);
+
+        yieldDca.executeDCA();
+
+        (uint256 shares, uint256 dcaBalance) = yieldDca.balanceOf(alice);
+        uint256 toWithdraw = shares / 2;
+        uint256 principalToWithdraw = vault.convertToAssets(toWithdraw);
+
+        vm.expectEmit(true, true, true, true);
+        emit Withdraw(alice, 2, principalToWithdraw, toWithdraw, dcaBalance);
+
+        vm.prank(alice);
+        (uint256 principalWithdrawn, uint256 dcaWithdrawn) = yieldDca.withdraw(toWithdraw);
+        assertEq(principalWithdrawn, principalToWithdraw, "principal withdrawn");
+        assertEq(dcaWithdrawn, dcaBalance, "dca withdrawn");
     }
 
     // *** helper functions *** ///
