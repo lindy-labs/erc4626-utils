@@ -41,7 +41,8 @@ contract YieldDCATest is Test {
         yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper);
     }
 
-    // *** constructor *** //
+    // *** #constructor *** //
+
     function test_constructor() public {
         assertEq(address(yieldDca.dcaToken()), address(dcaToken), "dca token");
         assertEq(address(yieldDca.vault()), address(vault), "vault");
@@ -135,9 +136,8 @@ contract YieldDCATest is Test {
 
         // add 100% yield
         _addYield(1e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
 
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(1e18);
 
         uint256 expectedDcaAmount = 1 ether;
 
@@ -272,10 +272,7 @@ contract YieldDCATest is Test {
         assertEq(dcaToken.balanceOf(alice), 0, "dca token balance");
 
         // step 4 - dca - buy 2 DCA tokens for 1 ether
-        swapper.setExchangeRate(2e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(2e18);
 
         // step 5 - alice withdraws and gets 2 DCA tokens
         _withdrawAll(alice);
@@ -284,7 +281,7 @@ contract YieldDCATest is Test {
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
     }
 
-    function test_deposit_twoTimesInDifferentEpochs() public {
+    function test_executeDca_twoDepositsInDifferentEpochs() public {
         /**
          * scenario:
          * 1. alice deposits 1 ether
@@ -304,10 +301,7 @@ contract YieldDCATest is Test {
         _addYield(1e18);
 
         // step 3 - dca
-        swapper.setExchangeRate(3e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(3e18);
 
         // step 4 - alice deposits again
         _depositIntoDca(alice, principal);
@@ -319,10 +313,7 @@ contract YieldDCATest is Test {
         _addYield(1e18);
 
         // step 6 - dca
-        swapper.setExchangeRate(2e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(2e18);
 
         // step 7 - alice withdraws
         _withdrawAll(alice);
@@ -331,6 +322,7 @@ contract YieldDCATest is Test {
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
     }
 
+    // TODO: make this a fuzzing test?
     function test_executeDCA_oneDeposit200Epochs() public {
         /**
          * scenario:
@@ -429,11 +421,7 @@ contract YieldDCATest is Test {
         _addYield(1e18);
 
         // step 3 - dca
-        uint256 firstExchangeRate = 3e18;
-        swapper.setExchangeRate(firstExchangeRate);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(3e18);
 
         // step 4 - bob deposits
 
@@ -444,11 +432,7 @@ contract YieldDCATest is Test {
         _addYield(1e18);
 
         // step 6 - dca
-        uint256 secondExchangeRate = 2e18;
-        swapper.setExchangeRate(secondExchangeRate);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(2e18);
 
         // step 7 - alice withdraws and gets 5 DCA tokens
         _withdrawAll(alice);
@@ -495,11 +479,7 @@ contract YieldDCATest is Test {
         vm.stopPrank();
 
         // step 4 - dca
-        uint256 firstExchangeRate = 3e18;
-        swapper.setExchangeRate(firstExchangeRate);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(3e18);
 
         // step 5 - alice withdraws and gets 5 DCA tokens
         _withdrawAll(alice);
@@ -537,11 +517,7 @@ contract YieldDCATest is Test {
         _addYield(1e18);
 
         // step 3 - dca - buy 3 DCA tokens for 1 ether
-        uint256 firstExchangeRate = 3e18;
-        swapper.setExchangeRate(firstExchangeRate);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(3e18);
 
         // step 4 - bob deposits
         uint256 bobsPrincipal = 2 ether;
@@ -555,11 +531,7 @@ contract YieldDCATest is Test {
         _addYield(1e18);
 
         // step 7 - dca - buy 8 DCA tokens for 4 ether
-        uint256 secondExchangeRate = 2e18;
-        swapper.setExchangeRate(secondExchangeRate);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(2e18);
 
         // step 8 - alice withdraws and gets 5 DCA tokens
         _withdrawAll(alice);
@@ -617,7 +589,6 @@ contract YieldDCATest is Test {
         uint256 principal = 1 ether;
         uint256 shares = _depositIntoDca(alice, principal);
 
-        // add 100% yield
         _addYield(1e18);
         _shiftTime(yieldDca.DCA_INTERVAL());
 
@@ -643,13 +614,10 @@ contract YieldDCATest is Test {
         uint256 principal = 1 ether;
         _depositIntoDca(alice, principal);
 
-        // add 100% yield
         _addYield(1e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
 
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(1e18);
 
-        // 1:1 exchange rate
         uint256 dcaAmount = 1 ether;
 
         (uint256 balance, uint256 dcaBalance) = yieldDca.balanceOf(alice);
@@ -688,10 +656,7 @@ contract YieldDCATest is Test {
         _addYield(1e18);
 
         // step 3 - dca - buy 3 DCA tokens for 1 ether
-        swapper.setExchangeRate(3e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(3e18);
 
         // step 4 - alice withdraws 1/2 principal
         uint256 toWithdraw = vault.convertToShares(principal / 2);
@@ -711,10 +676,7 @@ contract YieldDCATest is Test {
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 1 ether, 1, "alice's principal");
 
         // step 6 - dca - buy 1.5 DCA tokens for 0.5 ether
-        swapper.setExchangeRate(3e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(3e18);
 
         // step 7 - withdraw remaining 0.5 ether
         toWithdraw = vault.convertToShares(principal / 2);
@@ -737,13 +699,9 @@ contract YieldDCATest is Test {
         uint256 principal = 1 ether;
         _depositIntoDca(alice, principal);
 
-        // add 50% yield
         _addYield(0.5e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
-        uint256 exchangeRate = 5e18;
-        swapper.setExchangeRate(exchangeRate);
 
-        yieldDca.executeDCA();
+        _executeDcaAtExchangeRate(5e18);
 
         (uint256 shares, uint256 dcaBalance) = yieldDca.balanceOf(alice);
         uint256 toWithdraw = shares / 2;
@@ -795,5 +753,12 @@ contract YieldDCATest is Test {
         yieldDca.withdraw(_getSharesBalanceInDcaFor(_account));
 
         vm.stopPrank();
+    }
+
+    function _executeDcaAtExchangeRate(uint256 _exchangeRate) internal {
+        swapper.setExchangeRate(_exchangeRate);
+        _shiftTime(yieldDca.DCA_INTERVAL());
+
+        yieldDca.executeDCA();
     }
 }

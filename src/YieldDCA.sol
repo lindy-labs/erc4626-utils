@@ -147,9 +147,6 @@ contract YieldDCA {
 
         if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
 
-        uint256 sharesBalance = vault.balanceOf(address(this));
-        uint256 dcaBalance = dcaToken.balanceOf(address(this));
-
         uint256 principalRemoved = deposit_.principal.mulDivDown(_shares, sharesRemaining);
         if (_shares == sharesRemaining) {
             // withadraw all
@@ -166,10 +163,12 @@ contract YieldDCA {
             totalPrincipalDeposited -= principalRemoved;
         }
 
+        uint256 sharesBalance = vault.balanceOf(address(this));
         // limit to available shares and dca tokens because of possible rounding errors
         _shares = _shares > sharesBalance ? sharesBalance : _shares;
         vault.safeTransfer(msg.sender, _shares);
 
+        uint256 dcaBalance = dcaToken.balanceOf(address(this));
         dcaAmount = dcaAmount > dcaBalance ? dcaBalance : dcaAmount;
         dcaToken.safeTransfer(msg.sender, dcaAmount);
 
