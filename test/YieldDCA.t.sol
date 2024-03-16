@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
+import {IAccessControl} from "openzeppelin-contracts/access/IAccessControl.sol";
 
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
@@ -27,6 +28,9 @@ contract YieldDCATest is Test {
 
     SwapperMock swapper;
 
+    address constant admin = address(0x01);
+    address constant keeper = address(0x02);
+
     address constant alice = address(0x06);
     address constant bob = address(0x07);
     address constant carol = address(0x08);
@@ -38,12 +42,12 @@ contract YieldDCATest is Test {
         swapper = new SwapperMock();
 
         dcaToken.mint(address(swapper), 10000 ether);
-        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper);
+        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, admin, keeper);
     }
 
     // *** #constructor *** //
 
-    function test_constructor() public {
+    function test_constructor_initialState() public {
         assertEq(address(yieldDca.dcaToken()), address(dcaToken), "dca token");
         assertEq(address(yieldDca.vault()), address(vault), "vault");
         assertEq(address(yieldDca.swapper()), address(swapper), "swapper");
@@ -51,26 +55,40 @@ contract YieldDCATest is Test {
         assertEq(yieldDca.currentEpoch(), 1, "current epoch");
         assertEq(yieldDca.currentEpochTimestamp(), block.timestamp, "current epoch timestamp");
         assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
+
+        assertTrue(yieldDca.hasRole(yieldDca.DEFAULT_ADMIN_ROLE(), admin), "admin role");
+        assertTrue(yieldDca.hasRole(yieldDca.KEEPER_ROLE(), keeper), "keeper role");
     }
 
     function test_constructor_dcaTokenZeroAddress() public {
         vm.expectRevert(YieldDCA.DcaTokenAddressZero.selector);
-        yieldDca = new YieldDCA(IERC20(address(0)), IERC4626(address(vault)), swapper);
+        yieldDca = new YieldDCA(IERC20(address(0)), IERC4626(address(vault)), swapper, admin, keeper);
     }
 
     function test_constructor_vaultZeroAddress() public {
         vm.expectRevert(YieldDCA.VaultAddressZero.selector);
-        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(0)), swapper);
+        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(0)), swapper, admin, keeper);
     }
 
     function test_constructor_swapperZeroAddress() public {
         vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
-        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), ISwapper(address(0)));
+        yieldDca =
+            new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), ISwapper(address(0)), admin, keeper);
     }
 
     function test_constructor_dcaTokenSameAsVaultAsset() public {
         vm.expectRevert(YieldDCA.DcaTokenSameAsVaultAsset.selector);
-        yieldDca = new YieldDCA(IERC20(address(asset)), IERC4626(address(vault)), swapper);
+        yieldDca = new YieldDCA(IERC20(address(asset)), IERC4626(address(vault)), swapper, admin, keeper);
+    }
+
+    function test_constructor_keeperZeroAddress() public {
+        vm.expectRevert(YieldDCA.KeeperAddressZero.selector);
+        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, admin, address(0));
+    }
+
+    function test_constructor_adminZeroAddress() public {
+        vm.expectRevert(YieldDCA.AdminAddressZero.selector);
+        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, address(0), keeper);
     }
 
     // *** #deposit *** //
@@ -156,12 +174,25 @@ contract YieldDCATest is Test {
 
     // *** #executeDCA *** //
 
+    function test_executeDCA_failsIfCallerIsNotKeeper() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, alice, yieldDca.KEEPER_ROLE()
+            )
+        );
+
+        vm.prank(alice);
+        yieldDca.executeDCA();
+    }
+
     function test_executeDCA_failsIfNotEnoughTimePassed() public {
         _depositIntoDca(alice, 1 ether);
 
         _shiftTime(yieldDca.DCA_INTERVAL() - 1);
 
         vm.expectRevert(YieldDCA.DcaIntervalNotPassed.selector);
+
+        vm.prank(keeper);
         yieldDca.executeDCA();
     }
 
@@ -171,6 +202,8 @@ contract YieldDCATest is Test {
         _shiftTime(yieldDca.DCA_INTERVAL());
 
         vm.expectRevert(YieldDCA.DcaYieldZero.selector);
+
+        vm.prank(keeper);
         yieldDca.executeDCA();
     }
 
@@ -199,6 +232,7 @@ contract YieldDCATest is Test {
         swapper.setExchangeRate(exchangeRate);
         _shiftTime(yieldDca.DCA_INTERVAL());
 
+        vm.prank(keeper);
         yieldDca.executeDCA();
 
         assertEq(yieldDca.currentEpoch(), ++currentEpoch, "epoch not incremented");
@@ -246,6 +280,7 @@ contract YieldDCATest is Test {
         vm.expectEmit(true, true, true, true);
         emit DCAExecuted(currentEpoch, expectedYield, expectedDcaAmount, expectedDcaPrice, expectedSharePrice);
 
+        vm.prank(keeper);
         yieldDca.executeDCA();
     }
 
@@ -347,6 +382,7 @@ contract YieldDCATest is Test {
 
             _shiftTime(yieldDca.DCA_INTERVAL());
 
+            vm.prank(keeper);
             yieldDca.executeDCA();
         }
 
@@ -386,6 +422,7 @@ contract YieldDCATest is Test {
 
             _shiftTime(yieldDca.DCA_INTERVAL());
 
+            vm.prank(keeper);
             yieldDca.executeDCA();
         }
 
@@ -759,6 +796,7 @@ contract YieldDCATest is Test {
         swapper.setExchangeRate(_exchangeRate);
         _shiftTime(yieldDca.DCA_INTERVAL());
 
+        vm.prank(keeper);
         yieldDca.executeDCA();
     }
 }

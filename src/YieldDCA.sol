@@ -6,6 +6,7 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
+import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
 import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 
@@ -29,7 +30,7 @@ import {ISwapper} from "./ISwapper.sol";
  * This contract requires external integration with a vault (IERC4626 for asset management), a token to DCA into (IERC20), and a swapper contract for executing trades.
  * It is designed for efficiency and scalability, with considerations for gas optimization and handling a large number of epochs and user deposits.
  */
-contract YieldDCA {
+contract YieldDCA is AccessControl {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
     using SafeERC20 for IERC20;
@@ -51,6 +52,8 @@ contract YieldDCA {
     error VaultAddressZero();
     error SwapperAddressZero();
     error DcaTokenSameAsVaultAsset();
+    error KeeperAddressZero();
+    error AdminAddressZero();
 
     error DcaIntervalNotPassed();
     error DcaYieldZero();
@@ -63,6 +66,7 @@ contract YieldDCA {
 
     // TODO: make this configurable?
     uint256 public constant DCA_INTERVAL = 2 weeks;
+    bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
     IERC20 public dcaToken;
     IERC4626 public vault;
@@ -74,18 +78,24 @@ contract YieldDCA {
     mapping(address => DepositInfo) public deposits;
     mapping(uint256 => EpochInfo) public epochDetails;
 
-    constructor(IERC20 _dcaToken, IERC4626 _vault, ISwapper _swapper) {
+    constructor(IERC20 _dcaToken, IERC4626 _vault, ISwapper _swapper, address _admin, address _keeper) {
         if (address(_dcaToken) == address(0)) revert DcaTokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
         if (address(_swapper) == address(0)) revert SwapperAddressZero();
         if (address(_dcaToken) == _vault.asset()) revert DcaTokenSameAsVaultAsset();
+        if (_admin == address(0)) revert AdminAddressZero();
+        if (_keeper == address(0)) revert KeeperAddressZero();
 
         dcaToken = _dcaToken;
         vault = _vault;
         swapper = _swapper;
 
         // approve swapper to spend deposits on DCA token
+        // TODO: not needed if swapper is a delegate call
         IERC20(vault.asset()).approve(address(swapper), type(uint256).max);
+
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _grantRole(KEEPER_ROLE, _keeper);
     }
 
     function deposit(uint256 _shares) external {
@@ -113,7 +123,7 @@ contract YieldDCA {
     }
 
     // TODO: pass amount out min here?
-    function executeDCA() external {
+    function executeDCA() external onlyRole(KEEPER_ROLE) {
         if (block.timestamp < currentEpochTimestamp + DCA_INTERVAL) revert DcaIntervalNotPassed();
 
         uint256 yieldInShares = calculateCurrentYieldInShares();
