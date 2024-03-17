@@ -123,7 +123,7 @@ contract YieldDCATest is Test {
     }
 
     function test_setDcaInterval_updatesDcaInterval() public {
-        uint256 newInterval = 1 weeks;
+        uint256 newInterval = 2 weeks;
 
         vm.prank(admin);
         yieldDca.setDcaInterval(newInterval);
@@ -132,7 +132,7 @@ contract YieldDCATest is Test {
     }
 
     function test_setDcaInterval_emitsEvent() public {
-        uint256 newInterval = 1 weeks;
+        uint256 newInterval = 2 weeks;
 
         vm.expectEmit(true, true, true, true);
         emit DCAIntervalUpdated(admin, newInterval);

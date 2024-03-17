@@ -67,7 +67,7 @@ contract YieldDCA is AccessControl {
 
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
-    uint256 public constant MIN_DCA_INTERVAL = 1 weeks;
+    uint256 public constant MIN_DCA_INTERVAL = 2 weeks;
     uint256 public constant MAX_DCA_INTERVAL = 10 weeks;
 
     IERC20 public dcaToken;
@@ -125,7 +125,6 @@ contract YieldDCA is AccessControl {
     function deposit(uint256 _shares) external {
         DepositInfo storage deposit_ = deposits[msg.sender];
 
-        // TODO: fix this to withdraw dca tokens here
         // check if the user has made a deposit previously
         if (deposit_.epoch != 0 && deposit_.epoch < currentEpoch) {
             (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
