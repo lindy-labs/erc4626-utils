@@ -43,7 +43,6 @@ contract YieldDCA is AccessControl {
     }
 
     struct EpochInfo {
-        uint256 yieldSpent;
         uint256 dcaPrice;
         uint256 pricePerShare;
     }
@@ -66,7 +65,6 @@ contract YieldDCA is AccessControl {
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
 
-    // TODO: make this configurable?
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
     uint256 public constant MIN_DCA_INTERVAL = 1 weeks;
@@ -114,14 +112,14 @@ contract YieldDCA is AccessControl {
 
     function setDcaInterval(uint256 _interval) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setDcaInterval(_interval);
+
+        emit DCAIntervalUpdated(msg.sender, _interval);
     }
 
     function _setDcaInterval(uint256 _interval) internal {
         if (_interval < MIN_DCA_INTERVAL || _interval > MAX_DCA_INTERVAL) revert DcaIntervalNotAllowed();
 
         dcaInterval = _interval;
-
-        emit DCAIntervalUpdated(msg.sender, _interval);
     }
 
     function deposit(uint256 _shares) external {
@@ -164,7 +162,7 @@ contract YieldDCA is AccessControl {
         uint256 tokenPrice = tokensBought.divWadDown(yield);
         uint256 sharePrice = yield.divWadDown(yieldInShares);
 
-        epochDetails[currentEpoch] = EpochInfo({yieldSpent: yield, dcaPrice: tokenPrice, pricePerShare: sharePrice});
+        epochDetails[currentEpoch] = EpochInfo({dcaPrice: tokenPrice, pricePerShare: sharePrice});
 
         currentEpoch++;
         currentEpochTimestamp = block.timestamp;
@@ -173,7 +171,7 @@ contract YieldDCA is AccessControl {
     }
 
     // if 0 is passed only dca is withdrawn
-    // NOTE: uses around 300k gas iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
+    // NOTE: uses around 1073k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
     function withdraw(uint256 _shares) external returns (uint256 principal, uint256 dcaTokens) {
         DepositInfo storage deposit_ = deposits[msg.sender];
 
@@ -184,10 +182,11 @@ contract YieldDCA is AccessControl {
         if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
 
         uint256 principalRemoved = deposit_.principal.mulDivDown(_shares, sharesRemaining);
+
+        totalPrincipalDeposited -= principalRemoved;
+
         if (_shares == sharesRemaining) {
             // withadraw all
-            totalPrincipalDeposited -= principalRemoved;
-
             delete deposits[msg.sender];
         } else {
             // withdraw partial
@@ -195,8 +194,6 @@ contract YieldDCA is AccessControl {
             deposit_.shares = sharesRemaining - _shares;
             deposit_.dcaAmountAtEpoch = 0;
             deposit_.epoch = currentEpoch;
-
-            totalPrincipalDeposited -= principalRemoved;
         }
 
         uint256 sharesBalance = vault.balanceOf(address(this));
@@ -247,20 +244,22 @@ contract YieldDCA is AccessControl {
         shares = _deposit.shares;
         dcaTokens = _deposit.dcaAmountAtEpoch;
 
+        // NOTE: one iteration costs around 4900 gas when called from a non-view function compared to 1000 gas when called from a view function
         for (uint256 i = _deposit.epoch; i < currentEpoch; i++) {
             EpochInfo memory epoch = epochDetails[i];
 
-            uint256 sharesValue = shares.mulWadDown(epoch.pricePerShare);
+            uint256 sharesValue = shares * epoch.pricePerShare / 1e18;
 
             if (sharesValue <= _deposit.principal) continue;
 
-            uint256 usersYield = sharesValue - _deposit.principal;
-            uint256 sharesSpent = usersYield.divWadDown(epoch.pricePerShare);
-
-            // since we are only working with yield, `sharesSpent` is never greater than `shares` (ie. principal)
             unchecked {
-                shares -= sharesSpent;
-                dcaTokens += usersYield.mulWadDown(epoch.dcaPrice);
+                // cannot underflow because of the check above
+                uint256 usersYield = sharesValue - _deposit.principal;
+
+                // "shares spent" = usersYield / pricePerShare
+                // since we are only working with yield, "shares spent" is never greater than `shares` (ie. principal)
+                shares -= usersYield * 1e18 / epoch.pricePerShare;
+                dcaTokens += usersYield * epoch.dcaPrice / 1e18;
             }
         }
     }

@@ -482,7 +482,7 @@ contract YieldDCATest is Test {
         uint256 yieldPerEpoch = 0.05e18; // 5%
         uint256 epochs = 5;
 
-        // step 2 & 3 - generate 5% yield over 200 epochs and do DCA
+        // step 2 & 3 - generate 5% yield over 5 epochs and do DCA
         for (uint256 i = 0; i < epochs; i++) {
             _addYield(yieldPerEpoch);
 
