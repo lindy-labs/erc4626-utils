@@ -44,7 +44,7 @@ contract YieldDCA is AccessControl {
 
     struct EpochInfo {
         uint256 dcaPrice;
-        uint256 pricePerShare;
+        uint256 sharePrice;
     }
 
     error DcaTokenAddressZero();
@@ -125,6 +125,7 @@ contract YieldDCA is AccessControl {
     function deposit(uint256 _shares) external {
         DepositInfo storage deposit_ = deposits[msg.sender];
 
+        // TODO: fix this to withdraw dca tokens here
         // check if the user has made a deposit previously
         if (deposit_.epoch != 0 && deposit_.epoch < currentEpoch) {
             (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
@@ -146,7 +147,6 @@ contract YieldDCA is AccessControl {
         emit Deposit(msg.sender, currentEpoch, _shares, principal);
     }
 
-    // TODO: pass amount out min here?
     function executeDCA() external onlyRole(KEEPER_ROLE) {
         if (block.timestamp < currentEpochTimestamp + dcaInterval) revert DcaIntervalNotPassed();
 
@@ -157,17 +157,17 @@ contract YieldDCA is AccessControl {
         uint256 yield = vault.redeem(yieldInShares, address(this), address(this));
         // TODO: use asset.balanceOf here instead of yield?
 
-        uint256 tokensBought = _buyDcaToken(yield);
+        uint256 amountOut = _buyDcaToken(yield);
 
-        uint256 tokenPrice = tokensBought.divWadDown(yield);
+        uint256 dcaPrice = amountOut.divWadDown(yield);
         uint256 sharePrice = yield.divWadDown(yieldInShares);
 
-        epochDetails[currentEpoch] = EpochInfo({dcaPrice: tokenPrice, pricePerShare: sharePrice});
+        epochDetails[currentEpoch] = EpochInfo({dcaPrice: dcaPrice, sharePrice: sharePrice});
 
         currentEpoch++;
         currentEpochTimestamp = block.timestamp;
 
-        emit DCAExecuted(currentEpoch - 1, yield, tokensBought, tokenPrice, sharePrice);
+        emit DCAExecuted(currentEpoch - 1, yield, amountOut, dcaPrice, sharePrice);
     }
 
     // if 0 is passed only dca is withdrawn
@@ -223,14 +223,15 @@ contract YieldDCA is AccessControl {
 
     function _buyDcaToken(uint256 _amountIn) internal returns (uint256 amountOut) {
         uint256 balanceBefore = dcaToken.balanceOf(address(this));
-        uint256 amountOutMin = 0;
+        uint256 _dcaAmountOutMin = 0;
 
         // TODO: handle slippage somehow
         // TODO: use delegate call
-        amountOut = swapper.execute(vault.asset(), address(dcaToken), _amountIn, amountOutMin);
+        amountOut = swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin);
 
         require(
-            dcaToken.balanceOf(address(this)) >= balanceBefore + amountOut, "received less DCA tokens than expected"
+            dcaToken.balanceOf(address(this)) >= balanceBefore + _dcaAmountOutMin,
+            "received less DCA tokens than expected"
         );
     }
 
@@ -248,7 +249,7 @@ contract YieldDCA is AccessControl {
         for (uint256 i = _deposit.epoch; i < currentEpoch; i++) {
             EpochInfo memory epoch = epochDetails[i];
 
-            uint256 sharesValue = shares * epoch.pricePerShare / 1e18;
+            uint256 sharesValue = shares * epoch.sharePrice / 1e18;
 
             if (sharesValue <= _deposit.principal) continue;
 
@@ -256,9 +257,8 @@ contract YieldDCA is AccessControl {
                 // cannot underflow because of the check above
                 uint256 usersYield = sharesValue - _deposit.principal;
 
-                // "shares spent" = usersYield / pricePerShare
-                // since we are only working with yield, "shares spent" is never greater than `shares` (ie. principal)
-                shares -= usersYield * 1e18 / epoch.pricePerShare;
+                // since we are only working with yield, it is unrealistic for these values to be large enough to overflow
+                shares -= usersYield * 1e18 / epoch.sharePrice;
                 dcaTokens += usersYield * epoch.dcaPrice / 1e18;
             }
         }
