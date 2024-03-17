@@ -52,6 +52,7 @@ contract YieldDCA is AccessControl {
     error VaultAddressZero();
     error SwapperAddressZero();
     error DcaTokenSameAsVaultAsset();
+    error DcaIntervalNotAllowed();
     error KeeperAddressZero();
     error AdminAddressZero();
 
@@ -60,31 +61,44 @@ contract YieldDCA is AccessControl {
     error NoDepositFound();
     error InsufficientSharesToWithdraw();
 
+    event DCAIntervalUpdated(address indexed admin, uint256 interval);
     event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
 
     // TODO: make this configurable?
-    uint256 public constant DCA_INTERVAL = 2 weeks;
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
+
+    uint256 public constant MIN_DCA_INTERVAL = 1 weeks;
+    uint256 public constant MAX_DCA_INTERVAL = 10 weeks;
 
     IERC20 public dcaToken;
     IERC4626 public vault;
     ISwapper public swapper;
 
+    uint256 public dcaInterval = 2 weeks;
     uint256 public currentEpoch = 1; // starts from 1
     uint256 public currentEpochTimestamp = block.timestamp;
     uint256 public totalPrincipalDeposited;
     mapping(address => DepositInfo) public deposits;
     mapping(uint256 => EpochInfo) public epochDetails;
 
-    constructor(IERC20 _dcaToken, IERC4626 _vault, ISwapper _swapper, address _admin, address _keeper) {
+    constructor(
+        IERC20 _dcaToken,
+        IERC4626 _vault,
+        ISwapper _swapper,
+        uint256 _dcaInterval,
+        address _admin,
+        address _keeper
+    ) {
         if (address(_dcaToken) == address(0)) revert DcaTokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
         if (address(_swapper) == address(0)) revert SwapperAddressZero();
         if (address(_dcaToken) == _vault.asset()) revert DcaTokenSameAsVaultAsset();
         if (_admin == address(0)) revert AdminAddressZero();
         if (_keeper == address(0)) revert KeeperAddressZero();
+
+        _setDcaInterval(_dcaInterval);
 
         dcaToken = _dcaToken;
         vault = _vault;
@@ -96,6 +110,18 @@ contract YieldDCA is AccessControl {
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(KEEPER_ROLE, _keeper);
+    }
+
+    function setDcaInterval(uint256 _interval) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setDcaInterval(_interval);
+    }
+
+    function _setDcaInterval(uint256 _interval) internal {
+        if (_interval < MIN_DCA_INTERVAL || _interval > MAX_DCA_INTERVAL) revert DcaIntervalNotAllowed();
+
+        dcaInterval = _interval;
+
+        emit DCAIntervalUpdated(msg.sender, _interval);
     }
 
     function deposit(uint256 _shares) external {
@@ -124,7 +150,7 @@ contract YieldDCA is AccessControl {
 
     // TODO: pass amount out min here?
     function executeDCA() external onlyRole(KEEPER_ROLE) {
-        if (block.timestamp < currentEpochTimestamp + DCA_INTERVAL) revert DcaIntervalNotPassed();
+        if (block.timestamp < currentEpochTimestamp + dcaInterval) revert DcaIntervalNotPassed();
 
         uint256 yieldInShares = calculateCurrentYieldInShares();
 

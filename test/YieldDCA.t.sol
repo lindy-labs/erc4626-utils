@@ -17,9 +17,12 @@ import {SwapperMock} from "./mock/SwapperMock.sol";
 contract YieldDCATest is Test {
     using FixedPointMathLib for uint256;
 
+    event DCAIntervalUpdated(address indexed admin, uint256 interval);
     event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
+
+    uint256 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
 
     YieldDCA yieldDca;
     MockERC20 asset;
@@ -42,7 +45,9 @@ contract YieldDCATest is Test {
         swapper = new SwapperMock();
 
         dcaToken.mint(address(swapper), 10000 ether);
-        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, admin, keeper);
+        yieldDca = new YieldDCA(
+            IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper
+        );
     }
 
     // *** #constructor *** //
@@ -62,33 +67,94 @@ contract YieldDCATest is Test {
 
     function test_constructor_dcaTokenZeroAddress() public {
         vm.expectRevert(YieldDCA.DcaTokenAddressZero.selector);
-        yieldDca = new YieldDCA(IERC20(address(0)), IERC4626(address(vault)), swapper, admin, keeper);
+        yieldDca =
+            new YieldDCA(IERC20(address(0)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
     }
 
     function test_constructor_vaultZeroAddress() public {
         vm.expectRevert(YieldDCA.VaultAddressZero.selector);
-        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(0)), swapper, admin, keeper);
+        yieldDca =
+            new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(0)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
     }
 
     function test_constructor_swapperZeroAddress() public {
         vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
-        yieldDca =
-            new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), ISwapper(address(0)), admin, keeper);
+        yieldDca = new YieldDCA(
+            IERC20(address(dcaToken)),
+            IERC4626(address(vault)),
+            ISwapper(address(0)),
+            DEFAULT_DCA_INTERVAL,
+            admin,
+            keeper
+        );
     }
 
     function test_constructor_dcaTokenSameAsVaultAsset() public {
         vm.expectRevert(YieldDCA.DcaTokenSameAsVaultAsset.selector);
-        yieldDca = new YieldDCA(IERC20(address(asset)), IERC4626(address(vault)), swapper, admin, keeper);
+        yieldDca =
+            new YieldDCA(IERC20(address(asset)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
     }
 
     function test_constructor_keeperZeroAddress() public {
         vm.expectRevert(YieldDCA.KeeperAddressZero.selector);
-        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, admin, address(0));
+        yieldDca = new YieldDCA(
+            IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, address(0)
+        );
     }
 
     function test_constructor_adminZeroAddress() public {
         vm.expectRevert(YieldDCA.AdminAddressZero.selector);
-        yieldDca = new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, address(0), keeper);
+        yieldDca = new YieldDCA(
+            IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, address(0), keeper
+        );
+    }
+
+    // *** #setDcaInterval *** //
+
+    function test_setDcaInterval_failsIfCallerIsNotAdmin() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, alice, yieldDca.DEFAULT_ADMIN_ROLE()
+            )
+        );
+
+        vm.prank(alice);
+        yieldDca.setDcaInterval(1 weeks);
+    }
+
+    function test_setDcaInterval_updatesDcaInterval() public {
+        uint256 newInterval = 1 weeks;
+
+        vm.prank(admin);
+        yieldDca.setDcaInterval(newInterval);
+
+        assertEq(yieldDca.dcaInterval(), newInterval);
+    }
+
+    function test_setDcaInterval_emitsEvent() public {
+        uint256 newInterval = 1 weeks;
+
+        vm.expectEmit(true, true, true, true);
+        emit DCAIntervalUpdated(admin, newInterval);
+
+        vm.prank(admin);
+        yieldDca.setDcaInterval(newInterval);
+    }
+
+    function test_setDcaInterval_failsIfIntervalIsLessThanMin() public {
+        uint256 invalidInterval = yieldDca.MIN_DCA_INTERVAL() - 1;
+
+        vm.prank(admin);
+        vm.expectRevert(YieldDCA.DcaIntervalNotAllowed.selector);
+        yieldDca.setDcaInterval(invalidInterval);
+    }
+
+    function test_setDcaInterval_failsIfIntervalIsGreaterThanMax() public {
+        uint256 invalidInterval = yieldDca.MAX_DCA_INTERVAL() + 1;
+
+        vm.prank(admin);
+        vm.expectRevert(YieldDCA.DcaIntervalNotAllowed.selector);
+        yieldDca.setDcaInterval(invalidInterval);
     }
 
     // *** #deposit *** //
@@ -188,7 +254,7 @@ contract YieldDCATest is Test {
     function test_executeDCA_failsIfNotEnoughTimePassed() public {
         _depositIntoDca(alice, 1 ether);
 
-        _shiftTime(yieldDca.DCA_INTERVAL() - 1);
+        _shiftTime(yieldDca.dcaInterval() - 1);
 
         vm.expectRevert(YieldDCA.DcaIntervalNotPassed.selector);
 
@@ -199,7 +265,7 @@ contract YieldDCATest is Test {
     function test_executeDCA_failsIfYieldIsZero() public {
         _depositIntoDca(alice, 1 ether);
 
-        _shiftTime(yieldDca.DCA_INTERVAL());
+        _shiftTime(yieldDca.dcaInterval());
 
         vm.expectRevert(YieldDCA.DcaYieldZero.selector);
 
@@ -230,7 +296,7 @@ contract YieldDCATest is Test {
         uint256 currentEpoch = yieldDca.currentEpoch();
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
-        _shiftTime(yieldDca.DCA_INTERVAL());
+        _shiftTime(yieldDca.dcaInterval());
 
         vm.prank(keeper);
         yieldDca.executeDCA();
@@ -270,7 +336,7 @@ contract YieldDCATest is Test {
         uint256 currentEpoch = yieldDca.currentEpoch();
         uint256 exchangeRate = 5e18;
         swapper.setExchangeRate(exchangeRate);
-        _shiftTime(yieldDca.DCA_INTERVAL());
+        _shiftTime(yieldDca.dcaInterval());
 
         uint256 expectedYield = 0.5 ether + 1; // 1 is the rounding error
         uint256 expectedDcaAmount = expectedYield.mulWadDown(exchangeRate);
@@ -380,7 +446,7 @@ contract YieldDCATest is Test {
         for (uint256 i = 0; i < epochs; i++) {
             _addYield(yieldPerEpoch);
 
-            _shiftTime(yieldDca.DCA_INTERVAL());
+            _shiftTime(yieldDca.dcaInterval());
 
             vm.prank(keeper);
             yieldDca.executeDCA();
@@ -420,7 +486,7 @@ contract YieldDCATest is Test {
         for (uint256 i = 0; i < epochs; i++) {
             _addYield(yieldPerEpoch);
 
-            _shiftTime(yieldDca.DCA_INTERVAL());
+            _shiftTime(yieldDca.dcaInterval());
 
             vm.prank(keeper);
             yieldDca.executeDCA();
@@ -627,7 +693,7 @@ contract YieldDCATest is Test {
         uint256 shares = _depositIntoDca(alice, principal);
 
         _addYield(1e18);
-        _shiftTime(yieldDca.DCA_INTERVAL());
+        _shiftTime(yieldDca.dcaInterval());
 
         (uint256 balance, uint256 dcaBalance) = yieldDca.balanceOf(alice);
         assertEq(balance, shares, "alice's balance");
@@ -794,7 +860,7 @@ contract YieldDCATest is Test {
 
     function _executeDcaAtExchangeRate(uint256 _exchangeRate) internal {
         swapper.setExchangeRate(_exchangeRate);
-        _shiftTime(yieldDca.DCA_INTERVAL());
+        _shiftTime(yieldDca.dcaInterval());
 
         vm.prank(keeper);
         yieldDca.executeDCA();
