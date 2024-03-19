@@ -58,6 +58,7 @@ contract YieldDCA is AccessControl {
     error DcaIntervalNotPassed();
     error DcaYieldZero();
     error NoDepositFound();
+    error NoPrincipalDeposited();
     error InsufficientSharesToWithdraw();
 
     event DCAIntervalUpdated(address indexed admin, uint256 interval);
@@ -78,6 +79,14 @@ contract YieldDCA is AccessControl {
     uint256 public currentEpoch = 1; // starts from 1
     uint256 public currentEpochTimestamp = block.timestamp;
     uint256 public totalPrincipalDeposited;
+    /**
+     * @dev pendingDcaAllocation tracks the total amount of DCA tokens that have yet to be allocated to users due to the variance
+     * between the expected yields based on their deposited principals and the actual yields realized. This variance can result in
+     * a surplus of DCA tokens that were not distributed as initially calculated. The pendingDcaAllocation variable ensures this surplus
+     * is systematically tracked and later distributed to users, ensuring equitable compensation for their participation in the DCA strategy.
+     */
+    uint256 public pendingDcaAllocation;
+
     mapping(address => DepositInfo) public deposits;
     mapping(uint256 => EpochInfo) public epochDetails;
 
@@ -127,10 +136,11 @@ contract YieldDCA is AccessControl {
 
         // check if the user has made a deposit previously
         if (deposit_.epoch != 0 && deposit_.epoch < currentEpoch) {
-            (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
+            (uint256 shares, uint256 dcaTokens, uint256 discrepancyDcaAmount) = _calculateBalances(deposit_);
 
             deposit_.shares = shares;
             deposit_.dcaAmountAtEpoch = dcaTokens;
+            pendingDcaAllocation += discrepancyDcaAmount;
         }
 
         uint256 principal = vault.convertToAssets(_shares);
@@ -146,7 +156,9 @@ contract YieldDCA is AccessControl {
         emit Deposit(msg.sender, currentEpoch, _shares, principal);
     }
 
+    // TODO: add min amount out param
     function executeDCA() external onlyRole(KEEPER_ROLE) {
+        if (totalPrincipalDeposited == 0) revert NoPrincipalDeposited();
         if (block.timestamp < currentEpochTimestamp + dcaInterval) revert DcaIntervalNotPassed();
 
         uint256 yieldInShares = calculateCurrentYieldInShares();
@@ -176,7 +188,8 @@ contract YieldDCA is AccessControl {
 
         if (deposit_.epoch == 0) revert NoDepositFound();
 
-        (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(deposit_);
+        (uint256 sharesRemaining, uint256 dcaAmount, uint256 discrepancyDcaAmount) = _calculateBalances(deposit_);
+        if (discrepancyDcaAmount > 0) pendingDcaAllocation += discrepancyDcaAmount;
 
         if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
 
@@ -200,6 +213,12 @@ contract YieldDCA is AccessControl {
         _shares = _shares > sharesBalance ? sharesBalance : _shares;
         vault.safeTransfer(msg.sender, _shares);
 
+        if (pendingDcaAllocation > 0) {
+            uint256 allocation = pendingDcaAllocation.mulDivDown(_shares, sharesBalance);
+            dcaAmount += allocation;
+            pendingDcaAllocation -= allocation;
+        }
+
         uint256 dcaBalance = dcaToken.balanceOf(address(this));
         dcaAmount = dcaAmount > dcaBalance ? dcaBalance : dcaAmount;
         dcaToken.safeTransfer(msg.sender, dcaAmount);
@@ -210,7 +229,7 @@ contract YieldDCA is AccessControl {
     }
 
     function balanceOf(address _user) public view returns (uint256 shares, uint256 dcaTokens) {
-        return _calculateBalances(deposits[_user]);
+        (shares, dcaTokens,) = _calculateBalances(deposits[_user]);
     }
 
     function calculateCurrentYieldInShares() public view returns (uint256) {
@@ -237,9 +256,9 @@ contract YieldDCA is AccessControl {
     function _calculateBalances(DepositInfo memory _deposit)
         internal
         view
-        returns (uint256 shares, uint256 dcaTokens)
+        returns (uint256 shares, uint256 dcaTokens, uint256 dcaTokenDiscrepancy)
     {
-        if (_deposit.epoch == 0) return (0, 0);
+        if (_deposit.epoch == 0) return (0, 0, 0);
 
         shares = _deposit.shares;
         dcaTokens = _deposit.dcaAmountAtEpoch;
@@ -250,9 +269,12 @@ contract YieldDCA is AccessControl {
 
             uint256 sharesValue = shares * epoch.sharePrice / 1e18;
 
-            if (sharesValue <= _deposit.principal) continue;
-
             unchecked {
+                if (sharesValue <= _deposit.principal) {
+                    dcaTokenDiscrepancy += _deposit.principal - sharesValue;
+                    continue;
+                }
+
                 // cannot underflow because of the check above
                 uint256 usersYield = sharesValue - _deposit.principal;
 
