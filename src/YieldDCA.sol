@@ -62,7 +62,8 @@ contract YieldDCA is AccessControl {
     error DcaAmountReceivedTooLow();
     error InsufficientSharesToWithdraw();
 
-    event DCAIntervalUpdated(address indexed admin, uint256 interval);
+    event DCAIntervalUpdated(address indexed admin, uint256 oldInterval, uint256 newInterval);
+    event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
     event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
@@ -120,10 +121,20 @@ contract YieldDCA is AccessControl {
         _grantRole(KEEPER_ROLE, _keeper);
     }
 
+    function setSwapper(ISwapper _swapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (address(_swapper) == address(0)) revert SwapperAddressZero();
+
+        emit SwapperUpdated(msg.sender, address(swapper), address(_swapper));
+
+        swapper = _swapper;
+    }
+
     function setDcaInterval(uint256 _interval) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setDcaInterval(_interval);
 
-        emit DCAIntervalUpdated(msg.sender, _interval);
+        emit DCAIntervalUpdated(msg.sender, dcaInterval, _interval);
+
+        dcaInterval = _interval;
     }
 
     function _setDcaInterval(uint256 _interval) internal {
@@ -157,7 +168,6 @@ contract YieldDCA is AccessControl {
         emit Deposit(msg.sender, currentEpoch, _shares, principal);
     }
 
-    // TODO: add min amount out param
     function executeDCA(uint256 _dcaAmountOutMin) external onlyRole(KEEPER_ROLE) {
         if (totalPrincipalDeposited == 0) revert NoPrincipalDeposited();
         if (block.timestamp < currentEpochTimestamp + dcaInterval) revert DcaIntervalNotPassed();

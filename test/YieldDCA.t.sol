@@ -17,7 +17,8 @@ import {SwapperMock} from "./mock/SwapperMock.sol";
 contract YieldDCATest is Test {
     using FixedPointMathLib for uint256;
 
-    event DCAIntervalUpdated(address indexed admin, uint256 interval);
+    event DCAIntervalUpdated(address indexed admin, uint256 oldInterval, uint256 newInterval);
+    event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
     event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
@@ -109,6 +110,44 @@ contract YieldDCATest is Test {
         );
     }
 
+    // *** #setSwapper *** //
+
+    function test_setSwapper_failsIfCallerIsNotAdmin() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, alice, yieldDca.DEFAULT_ADMIN_ROLE()
+            )
+        );
+
+        vm.prank(alice);
+        yieldDca.setSwapper(ISwapper(address(0)));
+    }
+
+    function test_setSwapper_updatesSwapper() public {
+        address newSwapper = address(0x03);
+
+        vm.prank(admin);
+        yieldDca.setSwapper(ISwapper(newSwapper));
+
+        assertEq(address(yieldDca.swapper()), newSwapper);
+    }
+
+    function test_setSwapper_emitsEvent() public {
+        address newSwapper = address(0x03);
+
+        vm.expectEmit(true, true, true, true);
+        emit SwapperUpdated(admin, address(swapper), newSwapper);
+
+        vm.prank(admin);
+        yieldDca.setSwapper(ISwapper(newSwapper));
+    }
+
+    function test_setSwapper_failsIfNewSwapperIsZeroAddress() public {
+        vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
+        vm.prank(admin);
+        yieldDca.setSwapper(ISwapper(address(0)));
+    }
+
     // *** #setDcaInterval *** //
 
     function test_setDcaInterval_failsIfCallerIsNotAdmin() public {
@@ -135,7 +174,7 @@ contract YieldDCATest is Test {
         uint256 newInterval = 2 weeks;
 
         vm.expectEmit(true, true, true, true);
-        emit DCAIntervalUpdated(admin, newInterval);
+        emit DCAIntervalUpdated(admin, yieldDca.dcaInterval(), newInterval);
 
         vm.prank(admin);
         yieldDca.setDcaInterval(newInterval);
@@ -1139,6 +1178,6 @@ contract YieldDCATest is Test {
         _shiftTime(yieldDca.dcaInterval());
 
         vm.prank(keeper);
-        yieldDca.executeDCA();
+        yieldDca.executeDCA(0);
     }
 }
