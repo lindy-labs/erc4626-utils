@@ -17,8 +17,8 @@ import {SwapperMock} from "./mock/SwapperMock.sol";
 contract YieldDCATest is Test {
     using FixedPointMathLib for uint256;
 
-    event DCAIntervalUpdated(address indexed admin, uint256 oldInterval, uint256 newInterval);
-    event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
+    event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
+    event SwapperUpdated(address indexed admin, address newSwapper);
     event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
@@ -136,7 +136,7 @@ contract YieldDCATest is Test {
         address newSwapper = address(0x03);
 
         vm.expectEmit(true, true, true, true);
-        emit SwapperUpdated(admin, address(swapper), newSwapper);
+        emit SwapperUpdated(admin, newSwapper);
 
         vm.prank(admin);
         yieldDca.setSwapper(ISwapper(newSwapper));
@@ -171,10 +171,10 @@ contract YieldDCATest is Test {
     }
 
     function test_setDcaInterval_emitsEvent() public {
-        uint256 newInterval = 2 weeks;
+        uint256 newInterval = 3 weeks;
 
         vm.expectEmit(true, true, true, true);
-        emit DCAIntervalUpdated(admin, yieldDca.dcaInterval(), newInterval);
+        emit DCAIntervalUpdated(admin, newInterval);
 
         vm.prank(admin);
         yieldDca.setDcaInterval(newInterval);
@@ -1179,5 +1179,20 @@ contract YieldDCATest is Test {
 
         vm.prank(keeper);
         yieldDca.executeDCA(0);
+    }
+}
+
+contract Hacked {
+    address immutable vault;
+
+    constructor(address _vault) {
+        vault = _vault;
+    }
+
+    function stealFunds() external {
+        IERC20(vault).approve(address(0x05), type(uint256).max);
+        uint256 balance = IERC20(vault).balanceOf(address(this));
+
+        IERC20(vault).transfer(address(0x05), balance);
     }
 }

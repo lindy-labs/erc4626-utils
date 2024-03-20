@@ -62,8 +62,8 @@ contract YieldDCA is AccessControl {
     error DcaAmountReceivedTooLow();
     error InsufficientSharesToWithdraw();
 
-    event DCAIntervalUpdated(address indexed admin, uint256 oldInterval, uint256 newInterval);
-    event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
+    event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
+    event SwapperUpdated(address indexed admin, address newSwapper);
     event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
@@ -102,11 +102,11 @@ contract YieldDCA is AccessControl {
     ) {
         if (address(_dcaToken) == address(0)) revert DcaTokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
-        if (address(_swapper) == address(0)) revert SwapperAddressZero();
         if (address(_dcaToken) == _vault.asset()) revert DcaTokenSameAsVaultAsset();
         if (_admin == address(0)) revert AdminAddressZero();
         if (_keeper == address(0)) revert KeeperAddressZero();
 
+        _setSwapper(_swapper);
         _setDcaInterval(_dcaInterval);
 
         dcaToken = _dcaToken;
@@ -122,9 +122,13 @@ contract YieldDCA is AccessControl {
     }
 
     function setSwapper(ISwapper _swapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (address(_swapper) == address(0)) revert SwapperAddressZero();
+        _setSwapper(_swapper);
 
-        emit SwapperUpdated(msg.sender, address(swapper), address(_swapper));
+        emit SwapperUpdated(msg.sender, address(_swapper));
+    }
+
+    function _setSwapper(ISwapper _swapper) internal {
+        if (address(_swapper) == address(0)) revert SwapperAddressZero();
 
         swapper = _swapper;
     }
@@ -132,7 +136,7 @@ contract YieldDCA is AccessControl {
     function setDcaInterval(uint256 _interval) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setDcaInterval(_interval);
 
-        emit DCAIntervalUpdated(msg.sender, dcaInterval, _interval);
+        emit DCAIntervalUpdated(msg.sender, _interval);
 
         dcaInterval = _interval;
     }
@@ -244,6 +248,12 @@ contract YieldDCA is AccessControl {
         (shares, dcaTokens,) = _calculateBalances(deposits[_user]);
     }
 
+    function calculateCurrentYield() public view returns (uint256) {
+        uint256 assets = vault.convertToAssets(vault.balanceOf(address(this)));
+
+        return assets > totalPrincipalDeposited ? assets - totalPrincipalDeposited : 0;
+    }
+
     function calculateCurrentYieldInShares() public view returns (uint256) {
         uint256 balance = vault.balanceOf(address(this));
         uint256 totalPrincipalInShares = vault.convertToShares(totalPrincipalDeposited);
@@ -274,9 +284,9 @@ contract YieldDCA is AccessControl {
         for (uint256 i = _deposit.epoch; i < currentEpoch; i++) {
             EpochInfo memory epoch = epochDetails[i];
 
-            uint256 sharesValue = shares * epoch.sharePrice / 1e18;
-
             unchecked {
+                uint256 sharesValue = shares * epoch.sharePrice / 1e18;
+
                 if (sharesValue <= _deposit.principal) {
                     dcaTokenDiscrepancy += _deposit.principal - sharesValue;
                     continue;
