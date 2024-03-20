@@ -59,6 +59,7 @@ contract YieldDCA is AccessControl {
     error DcaYieldZero();
     error NoDepositFound();
     error NoPrincipalDeposited();
+    error DcaAmountReceivedTooLow();
     error InsufficientSharesToWithdraw();
 
     event DCAIntervalUpdated(address indexed admin, uint256 interval);
@@ -157,7 +158,7 @@ contract YieldDCA is AccessControl {
     }
 
     // TODO: add min amount out param
-    function executeDCA() external onlyRole(KEEPER_ROLE) {
+    function executeDCA(uint256 _dcaAmountOutMin) external onlyRole(KEEPER_ROLE) {
         if (totalPrincipalDeposited == 0) revert NoPrincipalDeposited();
         if (block.timestamp < currentEpochTimestamp + dcaInterval) revert DcaIntervalNotPassed();
 
@@ -165,10 +166,11 @@ contract YieldDCA is AccessControl {
 
         if (yieldInShares == 0) revert DcaYieldZero();
 
-        uint256 yield = vault.redeem(yieldInShares, address(this), address(this));
-        // TODO: use asset.balanceOf here instead of yield?
+        vault.redeem(yieldInShares, address(this), address(this));
 
-        uint256 amountOut = _buyDcaToken(yield);
+        uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
+
+        uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin);
 
         uint256 dcaPrice = amountOut.divWadDown(yield);
         uint256 sharePrice = yield.divWadDown(yieldInShares);
@@ -239,18 +241,13 @@ contract YieldDCA is AccessControl {
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
 
-    function _buyDcaToken(uint256 _amountIn) internal returns (uint256 amountOut) {
+    function _buyDcaToken(uint256 _amountIn, uint256 _dcaAmountOutMin) internal returns (uint256 amountOut) {
         uint256 balanceBefore = dcaToken.balanceOf(address(this));
-        uint256 _dcaAmountOutMin = 0;
 
-        // TODO: handle slippage somehow
         // TODO: use delegate call
         amountOut = swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin);
 
-        require(
-            dcaToken.balanceOf(address(this)) >= balanceBefore + _dcaAmountOutMin,
-            "received less DCA tokens than expected"
-        );
+        if (dcaToken.balanceOf(address(this)) < balanceBefore + _dcaAmountOutMin) revert DcaAmountReceivedTooLow();
     }
 
     function _calculateBalances(DepositInfo memory _deposit)
