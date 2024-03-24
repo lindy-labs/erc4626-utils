@@ -172,7 +172,7 @@ contract YieldDCA is AccessControl {
         emit Deposit(msg.sender, currentEpoch, _shares, principal);
     }
 
-    function executeDCA(uint256 _dcaAmountOutMin) external onlyRole(KEEPER_ROLE) {
+    function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
         if (totalPrincipalDeposited == 0) revert NoPrincipalDeposited();
         if (block.timestamp < currentEpochTimestamp + dcaInterval) revert DcaIntervalNotPassed();
 
@@ -184,7 +184,7 @@ contract YieldDCA is AccessControl {
 
         uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
 
-        uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin);
+        uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin, _swapData);
 
         uint256 dcaPrice = amountOut.divWadDown(yield);
         uint256 sharePrice = yield.divWadDown(yieldInShares);
@@ -261,11 +261,13 @@ contract YieldDCA is AccessControl {
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
 
-    function _buyDcaToken(uint256 _amountIn, uint256 _dcaAmountOutMin) internal returns (uint256 amountOut) {
+    function _buyDcaToken(uint256 _amountIn, uint256 _dcaAmountOutMin, bytes calldata _swapData)
+        internal
+        returns (uint256 amountOut)
+    {
         uint256 balanceBefore = dcaToken.balanceOf(address(this));
 
-        // TODO: use delegate call
-        amountOut = swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin);
+        amountOut = swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin, _swapData);
 
         if (dcaToken.balanceOf(address(this)) < balanceBefore + _dcaAmountOutMin) revert DcaAmountReceivedTooLow();
     }

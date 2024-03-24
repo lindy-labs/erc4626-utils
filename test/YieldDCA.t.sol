@@ -368,7 +368,7 @@ contract YieldDCATest is Test {
         );
 
         vm.prank(alice);
-        yieldDca.executeDCA(0);
+        yieldDca.executeDCA(0, "");
     }
 
     function test_executeDCA_failsIfNotEnoughTimePassed() public {
@@ -379,7 +379,7 @@ contract YieldDCATest is Test {
         vm.expectRevert(YieldDCA.DcaIntervalNotPassed.selector);
 
         vm.prank(keeper);
-        yieldDca.executeDCA(0);
+        yieldDca.executeDCA(0, "");
     }
 
     function test_executeDCA_failsIfNoPrincipalDeposited() public {
@@ -399,7 +399,7 @@ contract YieldDCATest is Test {
         vm.expectRevert(YieldDCA.NoPrincipalDeposited.selector);
 
         vm.prank(keeper);
-        yieldDca.executeDCA(0);
+        yieldDca.executeDCA(0, "");
     }
 
     function test_executeDCA_failsIfYieldIsZero() public {
@@ -410,7 +410,7 @@ contract YieldDCATest is Test {
         vm.expectRevert(YieldDCA.DcaYieldZero.selector);
 
         vm.prank(keeper);
-        yieldDca.executeDCA(0);
+        yieldDca.executeDCA(0, "");
     }
 
     function test_executeDCA_failsIfYieldIsNegative() public {
@@ -426,7 +426,7 @@ contract YieldDCATest is Test {
         vm.expectRevert(YieldDCA.DcaYieldZero.selector);
 
         vm.prank(keeper);
-        yieldDca.executeDCA(0);
+        yieldDca.executeDCA(0, "");
     }
 
     function test_executeDCA_failsIfAmountReceivedIsBelowMin() public {
@@ -441,7 +441,7 @@ contract YieldDCATest is Test {
         vm.expectRevert(YieldDCA.DcaAmountReceivedTooLow.selector);
 
         vm.prank(keeper);
-        yieldDca.executeDCA(expectedToReceive + 1);
+        yieldDca.executeDCA(expectedToReceive + 1, "");
     }
 
     function test_executeDCA_oneDepositOneEpoch() public {
@@ -470,7 +470,7 @@ contract YieldDCATest is Test {
         _shiftTime(yieldDca.dcaInterval());
 
         vm.prank(keeper);
-        yieldDca.executeDCA(0);
+        yieldDca.executeDCA(0, "");
 
         assertEq(yieldDca.currentEpoch(), ++currentEpoch, "epoch not incremented");
 
@@ -518,7 +518,7 @@ contract YieldDCATest is Test {
         emit DCAExecuted(currentEpoch, expectedYield, expectedDcaAmount, expectedDcaPrice, expectedSharePrice);
 
         vm.prank(keeper);
-        yieldDca.executeDCA(0);
+        yieldDca.executeDCA(0, "");
     }
 
     function test_executeDCA_twoDepositsInSameEpoch() public {
@@ -620,7 +620,7 @@ contract YieldDCATest is Test {
             _shiftTime(yieldDca.dcaInterval());
 
             vm.prank(keeper);
-            yieldDca.executeDCA(0);
+            yieldDca.executeDCA(0, "");
         }
 
         assertEq(yieldDca.currentEpoch(), epochs + 1, "epoch not incremented");
@@ -660,7 +660,7 @@ contract YieldDCATest is Test {
             _shiftTime(yieldDca.dcaInterval());
 
             vm.prank(keeper);
-            yieldDca.executeDCA(0);
+            yieldDca.executeDCA(0, "");
         }
 
         // step 4 - alice withdraws and gets 30 DCA tokens
@@ -1178,7 +1178,7 @@ contract YieldDCATest is Test {
         _shiftTime(yieldDca.dcaInterval());
 
         vm.prank(keeper);
-        yieldDca.executeDCA(0);
+        yieldDca.executeDCA(0, "");
     }
 }
 

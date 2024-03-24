@@ -15,7 +15,7 @@ contract SwapperMock is ISwapper {
         exchangeRate = _exchangeRate;
     }
 
-    function execute(address _tokenIn, address _tokenOut, uint256 _amountIn, uint256)
+    function execute(address _tokenIn, address _tokenOut, uint256 _amountIn, uint256, bytes calldata)
         external
         returns (uint256 amountOut)
     {
