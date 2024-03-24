@@ -113,7 +113,6 @@ contract YieldDCA is AccessControl {
         swapper = _swapper;
 
         // approve swapper to spend deposits on DCA token
-        // TODO: not needed if swapper is a delegate call
         IERC20(vault.asset()).approve(address(swapper), type(uint256).max);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);

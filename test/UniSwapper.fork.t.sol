@@ -15,7 +15,7 @@ contract UniSwapperTest is Test {
     IERC20 usdc = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
     IERC20 weth = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
-    ISwapper swapper;
+    UniSwapper swapper;
 
     function setUp() public {
         uint256 mainnetFork = vm.createFork(vm.envString("RPC_URL_MAINNET"));
@@ -84,5 +84,21 @@ contract UniSwapperTest is Test {
 
         vm.expectRevert("Too little received");
         swapper.execute(address(usdc), address(weth), usdcSwapAmount, expectedToReceive + 1, abi.encode(500));
+    }
+
+    function test_previewExecute_swapsUsdcForWeth() public {
+        uint256 usdcSwapAmount = 3000e6;
+        deal(address(usdc), address(this), usdcSwapAmount);
+        usdc.approve(address(swapper), usdcSwapAmount);
+
+        uint24 poolFee = 500;
+
+        uint256 expectedToReceive =
+            swapper.previewExecute(address(usdc), address(weth), usdcSwapAmount, abi.encode(poolFee));
+
+        uint256 received =
+            swapper.execute(address(usdc), address(weth), usdcSwapAmount, expectedToReceive, abi.encode(poolFee));
+
+        assertEq(expectedToReceive, received, "amount received");
     }
 }
