@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
-import "forge-std/console2.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
@@ -10,7 +9,7 @@ import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
 import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 
-import {ISwapper} from "./ISwapper.sol";
+import {ISwapper} from "./interfaces/ISwapper.sol";
 
 /**
  * @title YieldDCA

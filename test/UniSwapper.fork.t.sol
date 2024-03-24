@@ -83,7 +83,6 @@ contract UniSwapperTest is Test {
         uint256 expectedToReceive = 0.877770309464456727e18;
 
         vm.expectRevert("Too little received");
-
         swapper.execute(address(usdc), address(weth), usdcSwapAmount, expectedToReceive + 1, abi.encode(500));
     }
 }

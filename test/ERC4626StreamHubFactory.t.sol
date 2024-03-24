@@ -5,8 +5,8 @@ import "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 
-import {ERC4626StreamHubFactory} from "../src/ERC4626StreamHubFactory.sol";
-import {ERC4626StreamHub} from "../src/ERC4626StreamHub.sol";
+import {ERC4626StreamHubFactory} from "src/ERC4626StreamHubFactory.sol";
+import {ERC4626StreamHub} from "src/ERC4626StreamHub.sol";
 
 contract ERC4626StreamHubFactoryTest is Test {
     function test_create_deploysStreamHubInstance() public {

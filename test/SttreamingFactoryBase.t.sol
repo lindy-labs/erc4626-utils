@@ -2,13 +2,12 @@
 pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
-import {CREATE3} from "solmate/utils/CREATE3.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 
-import "../src/common/Errors.sol";
+import "src/common/Errors.sol";
 
-import {StreamingFactoryBase} from "../src/common/StreamingFactoryBase.sol";
+import {StreamingFactoryBase} from "src/common/StreamingFactoryBase.sol";
 
 contract SttreamingFactoryBaseTest is Test {
     FactoryHarness public factory;

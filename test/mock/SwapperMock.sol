@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 
-import {ISwapper} from "../../src/ISwapper.sol";
+import {ISwapper} from "src/interfaces/ISwapper.sol";
 
 contract SwapperMock is ISwapper {
     using FixedPointMathLib for uint256;
