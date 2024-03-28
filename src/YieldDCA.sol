@@ -72,8 +72,8 @@ contract YieldDCA is AccessControl {
     uint256 public constant MIN_DCA_INTERVAL = 2 weeks;
     uint256 public constant MAX_DCA_INTERVAL = 10 weeks;
 
-    IERC20 public dcaToken;
-    IERC4626 public vault;
+    IERC20 public immutable dcaToken;
+    IERC4626 public immutable vault;
     ISwapper public swapper;
 
     uint256 public dcaInterval = 2 weeks;
@@ -102,18 +102,17 @@ contract YieldDCA is AccessControl {
         if (address(_dcaToken) == address(0)) revert DcaTokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
         if (address(_dcaToken) == _vault.asset()) revert DcaTokenSameAsVaultAsset();
+        if (address(_swapper) == address(0)) revert SwapperAddressZero();
         if (_admin == address(0)) revert AdminAddressZero();
         if (_keeper == address(0)) revert KeeperAddressZero();
-
-        _setSwapper(_swapper);
-        _setDcaInterval(_dcaInterval);
 
         dcaToken = _dcaToken;
         vault = _vault;
         swapper = _swapper;
 
-        // approve swapper to spend deposits on DCA token
-        IERC20(vault.asset()).approve(address(swapper), type(uint256).max);
+        _setDcaInterval(_dcaInterval);
+
+        IERC20(vault.asset()).forceApprove(address(_swapper), type(uint256).max);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(KEEPER_ROLE, _keeper);
@@ -127,6 +126,11 @@ contract YieldDCA is AccessControl {
 
     function _setSwapper(ISwapper _swapper) internal {
         if (address(_swapper) == address(0)) revert SwapperAddressZero();
+
+        // revoke previous swapper's approval and approve new swapper
+        IERC20 asset = IERC20(vault.asset());
+        asset.forceApprove(address(swapper), 0);
+        asset.forceApprove(address(_swapper), type(uint256).max);
 
         swapper = _swapper;
     }
@@ -176,6 +180,7 @@ contract YieldDCA is AccessControl {
 
         uint256 yieldInShares = calculateCurrentYieldInShares();
 
+        // this check will also prevent reentrancy when calling sapper.execute
         if (yieldInShares == 0) revert DcaYieldZero();
 
         vault.redeem(yieldInShares, address(this), address(this));

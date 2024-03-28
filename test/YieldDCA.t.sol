@@ -64,6 +64,7 @@ contract YieldDCATest is Test {
 
         assertTrue(yieldDca.hasRole(yieldDca.DEFAULT_ADMIN_ROLE(), admin), "admin role");
         assertTrue(yieldDca.hasRole(yieldDca.KEEPER_ROLE(), keeper), "keeper role");
+        assertEq(asset.allowance(address(yieldDca), address(swapper)), type(uint256).max, "vault allowance");
     }
 
     function test_constructor_dcaTokenZeroAddress() public {
@@ -130,6 +131,10 @@ contract YieldDCATest is Test {
         yieldDca.setSwapper(ISwapper(newSwapper));
 
         assertEq(address(yieldDca.swapper()), newSwapper);
+        uint256 oldAllowance = asset.allowance(address(yieldDca), address(swapper));
+        assertEq(oldAllowance, 0, "old allowance");
+        uint256 newAllowance = asset.allowance(address(yieldDca), newSwapper);
+        assertEq(newAllowance, type(uint256).max, "new allowance");
     }
 
     function test_setSwapper_emitsEvent() public {
@@ -146,6 +151,29 @@ contract YieldDCATest is Test {
         vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
         vm.prank(admin);
         yieldDca.setSwapper(ISwapper(address(0)));
+    }
+
+    function test_setSwapper_newSwapperWorks() public {
+        _depositIntoDca(alice, 1 ether);
+
+        // generate 50% yield
+        _addYield(0.5e18);
+
+        // change the swapper
+        SwapperMock newSwapper = new SwapperMock();
+        dcaToken.mint(address(newSwapper), 10000 ether);
+
+        vm.prank(admin);
+        yieldDca.setSwapper(newSwapper);
+
+        // dca - buy 1 DCA tokens for 0.5 yield
+        newSwapper.setExchangeRate(2e18);
+        _shiftTime(yieldDca.dcaInterval());
+
+        vm.prank(keeper);
+        yieldDca.executeDCA(0, "");
+
+        assertApproxEqAbs(dcaToken.balanceOf(address(yieldDca)), 1e18, 5, "dca token balance");
     }
 
     // *** #setDcaInterval *** //
