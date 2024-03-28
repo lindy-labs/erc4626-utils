@@ -305,87 +305,6 @@ contract YieldDCATest is Test {
         assertEq(dcaBalance, expectedDcaAmount, "2nd: alice's dca balance");
     }
 
-    function test_deposit_restoresUnrealizedYieldDueToSomeAccountsExperiencingNegativeYield() public {
-        /**
-         * scenario:
-         * 1. alice deposits 1 ether
-         * 2. yield generated is 100% (alice has 1 ether in principal and 1 ether in yield)
-         * 3. bob deposits 1 ether
-         * 4. from this point yield becomes negative -20%, bob is 0.8 ether in principal and alice has 1.6 ether (0.6 in yield)
-         *      total principal = 2 ether, total assets = 2.4 ether, so yield is 0.4 ether
-         * 5. execute DCA at 2:1 exchange, 0.4 ether = 0.8 DCA token (bob gets 0 DCA tokens and alice gets 0.8 DCA token but should be entitled to 1.2 DCA tokens)
-         *      this creates a discrepancy in dca distribution of 0.4 DCA tokens
-         * 6. again yield generated is 50%, enough to recover bob's loss (from 0.8 to 1.2 ether)
-         *      total principal = 2 ether, total assets = 3 ether, so usable yield is 1 ether
-         *      alices will get half of the yield, ie 0.5 ether since her principal is equal to bob's
-         * 7. execute DCA at 2:1 exchange, 1 ether = 2 DCA token (bob should get 0.4 DCA tokens and alice 1.6 DCA token)
-         *      due to the way accounting works, alice will get 1 DCA token from this distribution and 1.2 from previous so 2.2 DCA tokens
-         *      bob will get 0.4 DCA tokens as expected, however total DCA tokens bought is 2.8! -> 0.2 are now undistributed!!!
-         * 8. bob deposits 1 ether and thus updates the discrepancy in dca distribution to 0.2 DCA tokens
-         * 9. alice withdraws principal and should get 2.2 DCA tokens + share of 0.2 undistributed DCA tokens
-         *      since alices principal is now 1/3 of the total principal, she should get 1/3 of the pending dca tokens
-         *      alice gets: 2.2 + 1/3 * 0.2 = 2266666666666666667 DCA tokens
-         * 10. bob withdraws and gets 0.4 + 2/3 * 0.2 = 0.533333333333333333 DCA tokens
-         */
-
-        // step 1 - alice deposits
-        uint256 alicesPrincipal = 1 ether;
-        _depositIntoDca(alice, alicesPrincipal);
-
-        // step 2 - generate 100% yield
-        _addYield(1e18);
-
-        // step 3 - bob deposits
-        uint256 bobsPrincipal = 1 ether;
-        _depositIntoDca(bob, bobsPrincipal);
-
-        // step 4 - generate -20% yield
-        _removeYield(0.2e18);
-
-        // step 5 - dca - buy 0.8 DCA tokens for 0.4 ether
-        _executeDcaAtExchangeRate(2e18);
-
-        assertEq(dcaToken.balanceOf(address(yieldDca)), 0.8e18, "dca token balance not 0.8");
-
-        // step 6 - generate 50% yield
-        _addYield(0.5e18);
-
-        // step 7 - dca - buy 2 DCA tokens for 1 ether
-        _executeDcaAtExchangeRate(2e18);
-
-        assertEq(dcaToken.balanceOf(address(yieldDca)), 2.8e18, "dca token balance not 2.8");
-
-        // step 8 - deposit 1 ether
-        _depositIntoDca(bob, 1 ether);
-
-        assertEq(yieldDca.pendingDcaAllocation(), 0.2e18, "undistributed dca");
-
-        // step 9 - alice withdraws and gets 2.3 DCA tokens
-        (uint256 remainingShares, uint256 dcaAmount) = yieldDca.balanceOf(alice);
-        assertApproxEqAbs(
-            vault.convertToAssets(remainingShares), alicesPrincipal, 5, "alice's principal before withdraw"
-        );
-
-        assertApproxEqAbs(dcaAmount, 2.2e18, 5, "alice's dca token balance before withdraw");
-
-        _withdrawAll(alice);
-
-        assertApproxEqAbs(dcaToken.balanceOf(alice), 2.266666666666666667e18, 5, "alice's dca token balance");
-        assertApproxEqAbs(_convertSharesToAssetsFor(alice), 1e18, 5, "alice's principal");
-
-        // step 10 - bob withdraws and gets 0.533333333333333333 DCA tokens
-        _withdrawAll(bob);
-
-        assertApproxEqAbs(dcaToken.balanceOf(bob), 0.533333333333333333e18, 5, "bob's dca token balance");
-        assertApproxEqAbs(_convertSharesToAssetsFor(bob), 2e18, 5, "bob's principal");
-
-        // assert contract's end balances
-        assertApproxEqAbs(dcaToken.balanceOf(address(yieldDca)), 0, 10, "contract's dca token balance");
-        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
-        assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
-        assertEq(yieldDca.pendingDcaAllocation(), 0, "undistributed dca");
-    }
-
     // *** #executeDCA *** //
 
     function test_executeDCA_failsIfCallerIsNotKeeper() public {
@@ -854,26 +773,31 @@ contract YieldDCATest is Test {
         assertApproxEqAbs(_convertSharesToAssetsFor(carol), 1e18, 1, "principal");
     }
 
-    function test_executeDCA_correctAccountingIfOneUserHasNegativeYield() public {
+    function test_executeDCA_oneOfUsersExperiencesNegativeYield() public {
         /**
          * scenario:
          * 1. alice deposits 1 ether
-         * 2. yield generated is 100% in the first epoch, ie 1 ether
-         * 3. execute DCA at 4:1 exchange, 4 DCA tokens = 1 ether (alice gets 4 DCA tokens)
+         * 2. yield generated is 100% in the first epoch
+         *      alice has 1 ether in principal and 1 ether in yield
+         * 3. execute DCA at 4:1 exchange, 4 DCA tokens = 1 ether
+         *      alice gets 4 DCA tokens
          * 4. again yield generated is 100% (1 ether)
-         * 5. bob deposits 1 ether
-         * 6. at this point yield becomes negative -25%, alice still has 0.5 ether in yield but bob is underwater 0.25 ether.
-         *      total principal variable is 2 ether but shares are worth 3 * 0.75 = 2.25 ether, so only 0.25 ether in yield can be spent.
-         *      this means that bob's loss of 0.25 is is "eating up" the yield from alice's gain of 0.5.
-         *      however this is not a permanent loss, and as bob regains his principal, alice will regain part of her yield but not the entirety of it
-         *      because of the accounting logic in the contract. There will be some discrepancy in the DCA token distribution, which will be resolved when
-         *      users with negative yield regain their principal and interact with the contract again.
+         *      alice has 1 ether in principal and 1 ether in yield (total 2 ether)
+         * 5. bob deposits 1 ether         *
+         * 6. at this point yield becomes negative -25%
+         *      alice has 1 ether in principal and 0.5 ether in yield (total 1.5 ether)
+         *      bob has 0.75 ether in principal         *
          *
-         * 7. execute DCA at 2:1 exchange, 0.25 ether = 0.5 DCA token (bob gets 0 DCA tokens and alice gets 0.5 DCA token)
-         * 8. alice withdraws and gets 1 ether in shares and 4.5 DCA tokens
+         *      total principal per accouting is 2 ether but shares are only worth 3 * 0.75 = 2.25 ether => only 0.25 ether in yield can be spent
+         *      this means that bob's loss of 0.25 is covered by alice's yield of 0.5, however this is not a permanent loss,
+         *      as bob regains his principal, alice will regain her "lost" yield.
+         *
+         * 7. execute DCA at 2:1 exchange, 0.25 ether = 0.5 DCA token
+         *      alice should get 1 DCA token per accounting, but only 0.5 DCA tokens are bought
+         *      bob gets 0 DCA tokens
+         * 8. alice withdraws and gets 1 ether in principal and 4.5 DCA tokens (should get 5 DCA tokens)
          * 9. bob withdraws and gets 0.75 ether in shares and 0 DCA tokens
-         * TODO: - check this
-         * 10. 0.25 ether is left in the contract as yield? inconsistent state?
+         * 10. 0.25 ether worth of shares are left in the contract as yield? - because alice withrew before bob had a chance to recover from his loss
          */
 
         // step 1 - alice deposits
@@ -929,6 +853,218 @@ contract YieldDCATest is Test {
         assertEq(vault.balanceOf(address(yieldDca)), yieldInShares, "contract's balance");
         assertApproxEqAbs(vault.convertToAssets(yieldInShares), 0.25 ether, 5, "contract's assets");
         assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
+    }
+
+    function test_executeDca_negativeYieldIsRecoveredWithSurplus() public {
+        /**
+         * scenario:
+         * 1. alice deposits 1 ether
+         * 2. yield generated is 100% (alice has 1 ether in principal and 1 ether in yield)
+         * 3. bob deposits 1 ether
+         * 4. carol deposits 1 ether
+         * 5. from this point yield becomes negative -20%,
+         *      alice has 1.6 ether
+         *      bob has 0.8 ether
+         *      carol has 0.8 ether
+         *      total principal = 3 ether, total assets = 3.2 ether, so usable yield per accounting is 0.2 ether
+         * 6. execute DCA at 2:1 exchange, 0.2 ether = 0.4 DCA token
+         *      alice gets 0.4 DCA tokens (per accounting 1.2 DCA tokens are expected)
+         *      bob gets 0 DCA tokens
+         *      carol gets 0 DCA tokens
+         * 7. generate 50% yield, enough to recover bob's and carol's loss
+         *      alice has 2.1 ether
+         *      bob has 1.2 ether
+         *      carol has 1.2 ether
+         *      total principal = 3 ether, total assets = 4.5, so usable yield is 1.5 ether
+         * 8. execute DCA at 2:1 exchange, 1.5 ether = 3 DCA token
+         *      alice gets 2.2 DCA tokens (per accounting 1 DCA tokens are expected)
+         *      bob gets 0.4 DCA tokens
+         *      carol gets 0.4 DCA tokens
+         *
+         *      in total: 3.4 DCA tokens are bought
+         *          alice is entitled to 1.2 + 1 = 2.2 DCA tokens
+         *          bob is entitled to 0 + 0.4 = 0.4 DCA tokens
+         *          carol is entitled to 0 + 0.4 = 0.4 DCA tokens
+         *          => 3.4 - 3 = 0.4 DCA tokens are undistributed
+         *
+         * 9. alice withdraws and gets 1 ether in shares and 2.2 DCA tokens
+         * 10. bob withdraws and gets 1 ether in shares and 0.4 DCA tokens
+         * 11. carol withdraws and gets 1 ether in shares and 0.4 DCA tokens
+         *
+         * 12. total DCA tokens bought is 3.4, but per accounting only 3 DCA tokens are expected -> 0.4 DCA tokens are undistributed
+         */
+
+        // step 1 - alice deposits
+        uint256 alicesPrincipal = 1 ether;
+        _depositIntoDca(alice, alicesPrincipal);
+
+        // step 2 - generate 100% yield
+        _addYield(1e18);
+
+        // step 3 - bob deposits
+        uint256 bobsPrincipal = 1 ether;
+        _depositIntoDca(bob, bobsPrincipal);
+
+        // step 4 - carol deposits
+        uint256 carolsPrincipal = 1 ether;
+        _depositIntoDca(carol, carolsPrincipal);
+
+        // step 5 - generate -20% yield
+        _removeYield(0.2e18);
+
+        // step 6 - dca - buy 0.4 DCA tokens for 0.2 ether
+        _executeDcaAtExchangeRate(2e18);
+
+        assertEq(yieldDca.totalPrincipalDeposited(), 3e18, "total principal deposited");
+
+        // step 7 - generate 50% yield
+        _addYield(0.5e18);
+
+        // step 8 - dca - buy 3 DCA tokens for 1.5 ether
+        _executeDcaAtExchangeRate(2e18);
+
+        assertEq(yieldDca.totalPrincipalDeposited(), 3e18, "total principal deposited");
+
+        // step 9 - alice's balance is 1 ether in principal and 2.2 DCA tokens
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balanceOf(alice);
+        assertApproxEqAbs(vault.convertToAssets(shares), alicesPrincipal, 2, "bw: alice's principal");
+        assertApproxEqRel(dcaAmount, 2.2e18, 0.00001e18, "bw: alice's dca token balance");
+
+        _withdrawAll(alice);
+
+        assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 2, "aw: alice's principal");
+        assertEq(dcaToken.balanceOf(alice), dcaAmount, "aw: alice's dca token balance");
+
+        // step 10 - bob's balance is 1 ether in principal and 0.4 DCA tokens
+        (shares, dcaAmount) = yieldDca.balanceOf(bob);
+        assertApproxEqAbs(vault.convertToAssets(shares), bobsPrincipal, 2, "bob's principal");
+        assertApproxEqRel(dcaAmount, 0.4e18, 0.00001e18, "bob's dca token balance");
+
+        _withdrawAll(bob);
+
+        assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 2, "aw: bob's principal");
+        assertEq(dcaToken.balanceOf(bob), dcaAmount, "aw: bob's dca token balance");
+
+        // step 11 - carol's balance is 1 ether in principal and 0.4 DCA tokens
+        (shares, dcaAmount) = yieldDca.balanceOf(carol);
+        assertApproxEqAbs(vault.convertToAssets(shares), carolsPrincipal, 2, "carol's principal");
+        assertApproxEqRel(dcaAmount, 0.4e18, 0.00001e18, "carol's dca token balance");
+
+        _withdrawAll(carol);
+
+        assertApproxEqAbs(_convertSharesToAssetsFor(carol), carolsPrincipal, 2, "aw: carol's principal");
+        assertEq(dcaToken.balanceOf(carol), dcaAmount, "aw: carol's dca token balance");
+
+        // step 12 - 0.4 DCA tokens are left in the contract
+        assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
+        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
+        assertApproxEqRel(dcaToken.balanceOf(address(yieldDca)), 0.4e18, 0.00001e18, "contract's dca token balance");
+    }
+
+    function test_executeDCA_negativeYieldIsRecoveredWithDeficit() public {
+        /**
+         * scenario:
+         * 1. alice deposits 1 ether
+         * 2. yield generated is 100% (alice has 1 ether in principal and 1 ether in yield)
+         * 3. bob deposits 1 ether
+         * 4. carol deposits 1 ether
+         * 5. from this point yield becomes negative -20%,
+         *      alice has 1.6 ether
+         *      bob has 0.8 ether
+         *      carol has 0.8 ether
+         *      total principal = 3 ether, total assets = 3.2 ether, so usable yield per accounting is 0.2 ether
+         * 6. execute DCA at 2:1 exchange, 0.2 ether = 0.4 DCA token
+         *      alice gets 0.4 DCA tokens (per accounting 1.2 DCA tokens are expected)
+         *      bob gets 0 DCA tokens
+         *      carol gets 0 DCA tokens
+         * 7. generate 50% yield, enough to recover bob's and carol's loss
+         *      alice has 2.1 ether
+         *      bob has 1.2 ether
+         *      carol has 1.2 ether
+         *      total principal = 3 ether, total assets = 4.5, so usable yield is 1.5 ether
+         *
+         * 8. execute DCA at 1:1 exchange, 1.5 ether = 1.5 DCA token
+         *      alice gets 1.1 DCA tokens (per accounting 0.5 DCA tokens are expected)
+         *      bob gets 0.2 DCA tokens
+         *      carol gets 0.2 DCA tokens
+         *
+         *      in total: 1.9 DCA tokens are bought
+         *          alice is entitled to 1.2 + 0.5 = 1.7 DCA tokens
+         *          bob is entitled to 0 + 0.2 = 0.2 DCA tokens
+         *          carol is entitled to 0 + 0.2 = 0.2 DCA tokens
+         *          => 1.9 - 2.1 = -0.2 DCA tokens are missing
+         *
+         * 9. alice withdraws and gets 1 ether in shares and 1.7 DCA tokens
+         * 10. bob withdraws and gets 1 ether in shares and 0.2 DCA tokens
+         *
+         * 11. carol withdraws and gets 1 ether in shares and 0 DCA tokens - because of the missing DCA tokens, carol and bob are racing for the last DCA token?
+         */
+
+        // step 1 - alice deposits
+        uint256 alicesPrincipal = 1 ether;
+        _depositIntoDca(alice, alicesPrincipal);
+
+        // step 2 - generate 100% yield
+        _addYield(1e18);
+
+        // step 3 - bob deposits
+        uint256 bobsPrincipal = 1 ether;
+        _depositIntoDca(bob, bobsPrincipal);
+
+        // step 4 - carol deposits
+        uint256 carolsPrincipal = 1 ether;
+        _depositIntoDca(carol, carolsPrincipal);
+
+        // step 5 - generate -20% yield
+        _removeYield(0.2e18);
+
+        // step 6 - dca - buy 0.4 DCA tokens for 0.2 ether
+        _executeDcaAtExchangeRate(2e18);
+
+        assertEq(yieldDca.totalPrincipalDeposited(), 3e18, "total principal deposited");
+
+        // step 7 - generate 50% yield
+        _addYield(0.5e18);
+
+        // step 8 - dca - buy 1.5 DCA tokens for 1.5 ether
+        _executeDcaAtExchangeRate(1e18);
+
+        assertEq(yieldDca.totalPrincipalDeposited(), 3e18, "total principal deposited");
+
+        // step 9 - alice's balance is 1 ether in principal and 1.7 DCA tokens
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balanceOf(alice);
+        assertApproxEqAbs(vault.convertToAssets(shares), alicesPrincipal, 2, "bw: alice's principal");
+        assertApproxEqRel(dcaAmount, 1.7e18, 0.00001e18, "bw: alice's dca token balance");
+
+        _withdrawAll(alice);
+
+        assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 2, "aw: alice's principal");
+        assertEq(dcaToken.balanceOf(alice), dcaAmount, "aw: alice's dca token balance");
+
+        // step 10 - bob's balance is 1 ether in principal and 0.2 DCA tokens
+        (shares, dcaAmount) = yieldDca.balanceOf(bob);
+        assertApproxEqAbs(vault.convertToAssets(shares), bobsPrincipal, 2, "bob's principal");
+        assertApproxEqRel(dcaAmount, 0.2e18, 0.00001e18, "bob's dca token balance");
+
+        _withdrawAll(bob);
+
+        assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 2, "aw: bob's principal");
+        assertEq(dcaToken.balanceOf(bob), dcaAmount, "aw: bob's dca token balance");
+
+        // step 11 - carol's balance is 1 ether in principal and 0 DCA tokens
+        (shares, dcaAmount) = yieldDca.balanceOf(carol);
+        assertApproxEqAbs(vault.convertToAssets(shares), carolsPrincipal, 2, "carol's principal");
+        assertEq(dcaAmount, 0.2e18, "carol's dca token balance");
+
+        _withdrawAll(carol);
+
+        assertApproxEqAbs(_convertSharesToAssetsFor(carol), carolsPrincipal, 2, "aw: carol's principal");
+        assertEq(dcaToken.balanceOf(carol), 0, "aw: carol's dca token balance");
+
+        // 0 DCA tokens are left in the contract
+        assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
+        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca token balance");
     }
 
     // *** #withdraw *** //
@@ -1095,69 +1231,6 @@ contract YieldDCATest is Test {
         assertEq(dcaWithdrawn, dcaBalance, "dca withdrawn");
     }
 
-    function test_withdraw_restoresUnrealizedYieldDueToSomeAccountsExperiencingNegativeYield() public {
-        /**
-         * scenario:
-         * 1. alice deposits 1 ether
-         * 2. yield generated is 100% (alice has 1 ether in principal and 1 ether in yield)
-         * 3. bob deposits 1 ether
-         * 4. from this point yield becomes negative -20%, bob is 0.8 ether in principal and alice has 1.6 ether (0.6 in yield)
-         *      total principal = 2 ether, total assets = 2.4 ether, so yield is 0.4 ether
-         * 5. execute DCA at 2:1 exchange, 0.4 ether = 0.8 DCA token (bob gets 0 DCA tokens and alice gets 0.8 DCA token but should be entitled to 1.2 DCA tokens)
-         * 6. again yield generated is 50%, enough to recover bob's loss (from 0.8 to 1.2 ether)
-         *      total principal = 2 ether, total assets = 3 ether, so usable yield is 1 ether
-         * 7. execute DCA at 2:1 exchange, 1 ether = 2 DCA token (bob gets 0.4 DCA tokens and alice gets 1.6 DCA token)
-         * 8. alice withdraws principal and should also get 2.4 DCA tokens
-         *      but instead she gets 2.3 DCA tokens (due to dca distribution discrepancy)
-         * 9. bob withdraws principal and should also get 0.4 DCA tokens
-         *      but instead he gets 0.5 DCA tokens (due to dca distribution discrepancy)
-         */
-
-        // step 1 - alice deposits
-        uint256 alicesPrincipal = 1 ether;
-        _depositIntoDca(alice, alicesPrincipal);
-
-        // step 2 - generate 100% yield
-        _addYield(1e18);
-
-        // step 3 - bob deposits
-        uint256 bobsPrincipal = 1 ether;
-        _depositIntoDca(bob, bobsPrincipal);
-
-        // step 4 - generate -20% yield
-        _removeYield(0.2e18);
-
-        // step 5 - dca - buy 0.8 DCA tokens for 0.4 ether
-        _executeDcaAtExchangeRate(2e18);
-
-        assertEq(dcaToken.balanceOf(address(yieldDca)), 0.8e18, "dca token balance not 0.8");
-
-        // step 6 - generate 50% yield
-        _addYield(0.5e18);
-
-        // step 7 - dca - buy 2 DCA tokens for 1 ether
-        _executeDcaAtExchangeRate(2e18);
-
-        assertEq(dcaToken.balanceOf(address(yieldDca)), 2.8e18, "dca token balance not 2.8");
-
-        // step 8 - bob withdraws and gets 0.5 DCA tokens
-        _withdrawAll(bob);
-
-        assertApproxEqAbs(dcaToken.balanceOf(bob), 0.5e18, 5, "bob's dca token balance");
-        assertApproxEqAbs(_convertSharesToAssetsFor(bob), 1e18, 5, "bob's principal");
-
-        // step 9 - alice withdraws and gets 2.3 DCA tokens
-        _withdrawAll(alice);
-
-        assertApproxEqAbs(dcaToken.balanceOf(alice), 2.3e18, 5, "alice's dca token balance");
-        assertApproxEqAbs(_convertSharesToAssetsFor(alice), 1e18, 5, "alice's principal");
-
-        assertApproxEqAbs(dcaToken.balanceOf(address(yieldDca)), 0, 10, "contract's dca token balance");
-        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
-        assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
-        assertEq(yieldDca.pendingDcaAllocation(), 0, "undistributed dca");
-    }
-
     // *** helper functions *** ///
 
     function _depositIntoDca(address _account, uint256 _amount) public returns (uint256 shares) {
@@ -1207,20 +1280,5 @@ contract YieldDCATest is Test {
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
-    }
-}
-
-contract Hacked {
-    address immutable vault;
-
-    constructor(address _vault) {
-        vault = _vault;
-    }
-
-    function stealFunds() external {
-        IERC20(vault).approve(address(0x05), type(uint256).max);
-        uint256 balance = IERC20(vault).balanceOf(address(this));
-
-        IERC20(vault).transfer(address(0x05), balance);
     }
 }
