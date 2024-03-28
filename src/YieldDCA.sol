@@ -178,9 +178,7 @@ contract YieldDCA is AccessControl {
         vault.redeem(yieldInShares, address(this), address(this));
 
         uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
-
         uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin, _swapData);
-
         uint256 dcaPrice = amountOut.divWadDown(yield);
         uint256 sharePrice = yield.divWadDown(yieldInShares);
 
@@ -194,25 +192,26 @@ contract YieldDCA is AccessControl {
 
     // if 0 is passed only dca is withdrawn
     // NOTE: uses around 1073k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
-    function withdraw(uint256 _shares) external returns (uint256 principal, uint256 dcaTokens) {
+    function withdraw(uint256 _shares) external returns (uint256 principal, uint256 dcaAmount) {
         DepositInfo storage deposit_ = deposits[msg.sender];
 
         if (deposit_.epoch == 0) revert NoDepositFound();
 
-        (uint256 sharesRemaining, uint256 dcaAmount) = _calculateBalances(deposit_);
+        uint256 sharesRemaining;
+        (sharesRemaining, dcaAmount) = _calculateBalances(deposit_);
 
         if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
 
-        uint256 principalRemoved = deposit_.principal.mulDivDown(_shares, sharesRemaining);
+        principal = deposit_.principal.mulDivDown(_shares, sharesRemaining);
 
-        totalPrincipalDeposited -= principalRemoved;
+        totalPrincipalDeposited -= principal;
 
         if (_shares == sharesRemaining) {
             // withadraw all
             delete deposits[msg.sender];
         } else {
             // withdraw partial
-            deposit_.principal -= principalRemoved;
+            deposit_.principal -= principal;
             deposit_.shares = sharesRemaining - _shares;
             deposit_.dcaAmountAtEpoch = 0;
             deposit_.epoch = currentEpoch;
@@ -227,9 +226,7 @@ contract YieldDCA is AccessControl {
         dcaAmount = dcaAmount > dcaBalance ? dcaBalance : dcaAmount;
         dcaToken.safeTransfer(msg.sender, dcaAmount);
 
-        emit Withdraw(msg.sender, currentEpoch, principalRemoved, _shares, dcaAmount);
-
-        return (principalRemoved, dcaAmount);
+        emit Withdraw(msg.sender, currentEpoch, principal, _shares, dcaAmount);
     }
 
     function balanceOf(address _user) public view returns (uint256 shares, uint256 dcaTokens) {
@@ -251,13 +248,17 @@ contract YieldDCA is AccessControl {
 
     function _buyDcaToken(uint256 _amountIn, uint256 _dcaAmountOutMin, bytes calldata _swapData)
         internal
-        returns (uint256 amountOut)
+        returns (uint256)
     {
         uint256 balanceBefore = dcaToken.balanceOf(address(this));
 
-        amountOut = swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin, _swapData);
+        swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin, _swapData);
+
+        uint256 balanceAfter = dcaToken.balanceOf(address(this));
 
         if (dcaToken.balanceOf(address(this)) < balanceBefore + _dcaAmountOutMin) revert DcaAmountReceivedTooLow();
+
+        return balanceAfter - balanceBefore;
     }
 
     function _calculateBalances(DepositInfo memory _deposit)
@@ -275,16 +276,15 @@ contract YieldDCA is AccessControl {
             EpochInfo memory epoch = epochDetails[i];
 
             unchecked {
+                // use plain arithmetic instead of FixedPointMathLib to lower gas costs
+                // since we are only working with yield, it is not realistic to expect values large enough to overflow on multiplication
                 uint256 sharesValue = shares * epoch.sharePrice / 1e18;
 
-                if (sharesValue <= _deposit.principal) {
-                    continue;
-                }
+                if (sharesValue <= _deposit.principal) continue;
 
                 // cannot underflow because of the check above
                 uint256 usersYield = sharesValue - _deposit.principal;
 
-                // since we are only working with yield, it is unrealistic for these values to be large enough to overflow
                 shares -= usersYield * 1e18 / epoch.sharePrice;
                 dcaTokens += usersYield * epoch.dcaPrice / 1e18;
             }
