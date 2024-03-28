@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
-import "forge-std/console2.sol";
 import "forge-std/Test.sol";
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
@@ -12,8 +11,8 @@ import {Ownable} from "openzeppelin-contracts/access/Ownable.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
-import {YieldStreaming} from "../src/YieldStreaming.sol";
-import "../src/common/Errors.sol";
+import {YieldStreaming} from "src/YieldStreaming.sol";
+import "src/common/Errors.sol";
 
 contract YieldStreamingTests is Test {
     using FixedPointMathLib for uint256;

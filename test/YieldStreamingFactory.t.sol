@@ -5,8 +5,8 @@ import "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 
-import {YieldStreamingFactory} from "../src/YieldStreamingFactory.sol";
-import {YieldStreaming} from "../src/YieldStreaming.sol";
+import {YieldStreamingFactory} from "src/YieldStreamingFactory.sol";
+import {YieldStreaming} from "src/YieldStreaming.sol";
 
 contract YieldStreamingFactoryTest is Test {
     function test_create_deploysYieldStreamingInstance() public {
