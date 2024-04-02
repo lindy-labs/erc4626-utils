@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
+import "forge-std/console2.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
+import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
@@ -29,7 +31,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * This contract requires external integration with a vault (IERC4626 for asset management), a token to DCA into (IERC20), and a swapper contract for executing trades.
  * It is designed for efficiency and scalability, with considerations for gas optimization and handling a large number of epochs and user deposits.
  */
-contract YieldDCA is AccessControl {
+contract YieldDCA is ERC721, AccessControl {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
     using SafeERC20 for IERC20;
@@ -81,7 +83,8 @@ contract YieldDCA is AccessControl {
     uint256 public currentEpochTimestamp = block.timestamp;
     uint256 public totalPrincipalDeposited;
 
-    mapping(address => DepositInfo) public deposits;
+    uint256 public nextDepositId = 1; // starts from 1
+    mapping(uint256 => DepositInfo) public deposits;
     mapping(uint256 => EpochInfo) public epochDetails;
 
     constructor(
@@ -91,7 +94,7 @@ contract YieldDCA is AccessControl {
         uint256 _dcaInterval,
         address _admin,
         address _keeper
-    ) {
+    ) ERC721("YieldDCA", "YDCA") {
         if (address(_dcaToken) == address(0)) revert DcaTokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
         if (address(_dcaToken) == _vault.asset()) revert DcaTokenSameAsVaultAsset();
@@ -109,6 +112,13 @@ contract YieldDCA is AccessControl {
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(KEEPER_ROLE, _keeper);
+    }
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     */
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
+        return interfaceId == type(ERC721).interfaceId || interfaceId == type(AccessControl).interfaceId;
     }
 
     function setSwapper(ISwapper _swapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -142,15 +152,22 @@ contract YieldDCA is AccessControl {
         dcaInterval = _interval;
     }
 
-    function deposit(uint256 _shares) external {
-        DepositInfo storage deposit_ = deposits[msg.sender];
+    function deposit(uint256 _shares, uint256 depositId) external returns (uint256 tokenId) {
+        DepositInfo storage deposit_ = deposits[depositId];
 
-        // check if the user has made a deposit previously
-        if (deposit_.epoch != 0 && deposit_.epoch < currentEpoch) {
-            (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
+        if (depositId != 0) {
+            require(ownerOf(depositId) == msg.sender, "You must own the NFT to deposit");
+            // check if the user has made a deposit previously
+            if (deposit_.epoch < currentEpoch) {
+                (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
 
-            deposit_.shares = shares;
-            deposit_.dcaAmountAtEpoch = dcaTokens;
+                deposit_.shares = shares;
+                deposit_.dcaAmountAtEpoch = dcaTokens;
+            }
+        } else {
+            tokenId = nextDepositId++;
+            _mint(msg.sender, tokenId);
+            deposit_ = deposits[tokenId];
         }
 
         uint256 principal = vault.convertToAssets(_shares);
@@ -192,10 +209,12 @@ contract YieldDCA is AccessControl {
 
     // if 0 is passed only dca is withdrawn
     // NOTE: uses around 1073k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
-    function withdraw(uint256 _shares) external returns (uint256 principal, uint256 dcaAmount) {
-        DepositInfo storage deposit_ = deposits[msg.sender];
+    function withdraw(uint256 _shares, uint256 _tokenId) external returns (uint256 principal, uint256 dcaAmount) {
+        DepositInfo storage deposit_ = deposits[_tokenId];
 
         if (deposit_.epoch == 0) revert NoDepositFound();
+
+        require(ownerOf(_tokenId) == msg.sender, "You must own the NFT to withdraw");
 
         uint256 sharesRemaining;
         (sharesRemaining, dcaAmount) = _calculateBalances(deposit_);
@@ -208,7 +227,8 @@ contract YieldDCA is AccessControl {
 
         if (_shares == sharesRemaining) {
             // withadraw all
-            delete deposits[msg.sender];
+            delete deposits[_tokenId];
+            _burn(_tokenId);
         } else {
             // withdraw partial
             deposit_.principal -= principal;
@@ -229,8 +249,8 @@ contract YieldDCA is AccessControl {
         emit Withdraw(msg.sender, currentEpoch, principal, _shares, dcaAmount);
     }
 
-    function balanceOf(address _user) public view returns (uint256 shares, uint256 dcaTokens) {
-        (shares, dcaTokens) = _calculateBalances(deposits[_user]);
+    function balancesOf(uint256 _tokenId) public view returns (uint256 shares, uint256 dcaTokens) {
+        (shares, dcaTokens) = _calculateBalances(deposits[_tokenId]);
     }
 
     function calculateCurrentYield() public view returns (uint256) {

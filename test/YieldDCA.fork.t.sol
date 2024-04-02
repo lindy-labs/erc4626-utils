@@ -69,11 +69,11 @@ contract YieldDCATest is Test {
 
         assertEq(dcaToken.balanceOf(address(yieldDca)), expectedDcaAmount, "dca token balance");
 
-        (uint256 shares, uint256 dcaAmount) = yieldDca.balanceOf(alice);
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(1);
         assertApproxEqRel(vault.convertToAssets(shares), principal, 0.00001e18, "alices principal");
         assertApproxEqRel(dcaAmount, expectedDcaAmount, 0.00001e18, "alices dca amount");
 
-        _withdrawAll(alice);
+        _withdrawAll(alice, 1);
 
         assertEq(dcaToken.balanceOf(address(yieldDca)), expectedDcaAmount - dcaAmount, "aw: contract dca balance");
         assertEq(vault.balanceOf(address(yieldDca)), 0, "aw: contract vault balance");
@@ -122,11 +122,11 @@ contract YieldDCATest is Test {
         vm.prank(keeper);
         yieldDca.executeDCA(0, POOL_FEE);
 
-        _withdrawAll(alice);
+        _withdrawAll(alice, 1);
 
-        _withdrawAll(bob);
+        _withdrawAll(bob, 2);
 
-        _withdrawAll(carol);
+        _withdrawAll(carol, 3);
 
         assertApproxEqRel(vault.convertToAssets(vault.balanceOf(alice)), alicePrincipal, 0.001e18, "alice principal");
         assertApproxEqRel(vault.convertToAssets(vault.balanceOf(bob)), bobPrincipal, 0.001e18, "bob principal");
@@ -149,7 +149,7 @@ contract YieldDCATest is Test {
         shares = vault.deposit(_amount, _account);
 
         vault.approve(address(yieldDca), shares);
-        yieldDca.deposit(shares);
+        yieldDca.deposit(shares, 0);
 
         vm.stopPrank();
     }
@@ -165,12 +165,12 @@ contract YieldDCATest is Test {
         vm.warp(block.timestamp + _period);
     }
 
-    function _withdrawAll(address _account) internal {
+    function _withdrawAll(address _account, uint256 _id) internal {
         vm.startPrank(_account);
 
-        (uint256 shares,) = yieldDca.balanceOf(_account);
+        (uint256 shares,) = yieldDca.balancesOf(_id);
 
-        yieldDca.withdraw(shares);
+        yieldDca.withdraw(shares, _id);
 
         vm.stopPrank();
     }
