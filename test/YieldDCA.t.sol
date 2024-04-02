@@ -5,12 +5,13 @@ import "forge-std/Test.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
-import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
+import {IERC721} from "openzeppelin-contracts/token/ERC721/IERC721.sol";
 import {IAccessControl} from "openzeppelin-contracts/access/IAccessControl.sol";
 
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
+import "src/common/Errors.sol";
 import {YieldDCA} from "src/YieldDCA.sol";
 import {ISwapper} from "src/interfaces/ISwapper.sol";
 import {SwapperMock} from "./mock/SwapperMock.sol";
@@ -20,7 +21,7 @@ contract YieldDCATest is Test {
 
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
     event SwapperUpdated(address indexed admin, address newSwapper);
-    event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
+    event Deposit(address indexed user, uint256 indexed tokenId, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
 
@@ -112,6 +113,10 @@ contract YieldDCATest is Test {
         );
     }
 
+    function test_supportsInterface_trueForIERC721() public {
+        assertTrue(yieldDca.supportsInterface(type(IERC721).interfaceId), "supports interface");
+    }
+
     // *** #setSwapper *** //
 
     function test_setSwapper_failsIfCallerIsNotAdmin() public {
@@ -155,7 +160,7 @@ contract YieldDCATest is Test {
     }
 
     function test_setSwapper_newSwapperWorks() public {
-        _depositIntoDca(alice, 1 ether, 0);
+        _depositIntoDca(alice, 1 ether);
 
         // generate 50% yield
         _addYield(0.5e18);
@@ -236,7 +241,7 @@ contract YieldDCATest is Test {
         uint256 shares = vault.deposit(principal, alice);
         vault.approve(address(yieldDca), shares);
 
-        yieldDca.deposit(shares, 0);
+        yieldDca.deposit(shares);
         vm.stopPrank();
 
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -249,7 +254,7 @@ contract YieldDCATest is Test {
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
     }
 
-    function test_deposit_emitsEvent() public {
+    function test_deposit_failsIfAmountIsZero() public {
         uint256 principal = 1 ether;
         asset.mint(alice, principal);
 
@@ -258,10 +263,29 @@ contract YieldDCATest is Test {
         uint256 shares = vault.deposit(principal, alice);
         vault.approve(address(yieldDca), shares);
 
-        vm.expectEmit(true, true, true, true);
-        emit Deposit(alice, 1, shares, principal);
+        vm.expectRevert(AmountZero.selector);
+        yieldDca.deposit(0);
+    }
 
-        yieldDca.deposit(shares, 0);
+    function test_deposit_emitsEvent() public {
+        // to increment deposit id
+        _depositIntoDca(bob, 2 ether);
+
+        uint256 principal = 1 ether;
+        asset.mint(alice, principal);
+
+        vm.startPrank(alice);
+        asset.approve(address(vault), principal);
+        uint256 shares = vault.deposit(principal, alice);
+        vault.approve(address(yieldDca), shares);
+
+        uint256 nextTokenId = yieldDca.nextDepositId();
+        assertEq(nextTokenId, 2, "next token id");
+
+        vm.expectEmit(true, true, true, true);
+        emit Deposit(alice, nextTokenId, shares, principal, 1);
+
+        yieldDca.deposit(shares);
         vm.stopPrank();
     }
 
@@ -274,7 +298,7 @@ contract YieldDCATest is Test {
         uint256 shares = vault.deposit(principal, alice);
         vault.approve(address(yieldDca), shares);
 
-        uint256 tokenId = yieldDca.deposit(shares, 0);
+        uint256 tokenId = yieldDca.deposit(shares);
         vm.stopPrank();
 
         assertEq(tokenId, 1, "token id");
@@ -286,53 +310,168 @@ contract YieldDCATest is Test {
         shares = vault.deposit(principal, bob);
         vault.approve(address(yieldDca), shares);
 
-        tokenId = yieldDca.deposit(shares, 0);
+        tokenId = yieldDca.deposit(shares);
         vm.stopPrank();
 
         assertEq(tokenId, 2, "2nd token id");
         assertEq(yieldDca.ownerOf(tokenId), bob, "2nd owner");
     }
 
-    function test_deposit_worksMultipleTimesInSameEpoch() public {
+    function test_deposit_multipleDepositsFromSameUserAreSeparated() public {
         uint256 principal = 1 ether;
-        uint256 shares = vault.convertToShares(principal);
-        uint256 tokenId = _depositIntoDca(alice, principal, 0);
 
-        // repeat the deposit with same amount
-        _depositIntoDca(alice, principal, tokenId);
+        vm.startPrank(alice);
+        asset.mint(alice, principal);
+        asset.approve(address(vault), principal);
+        uint256 shares = vault.deposit(principal, alice);
+        vault.approve(address(yieldDca), shares);
 
-        assertEq(vault.balanceOf(alice), 0, "alice's vault balance");
-        assertEq(vault.balanceOf(address(yieldDca)), shares * 2, "contract's vault balance");
+        uint256 tokenId = yieldDca.deposit(shares);
 
-        (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(1);
-        assertEq(balance, shares * 2, "alice's balance");
-        assertEq(dcaBalance, 0, "alice's dca balance");
-        assertEq(yieldDca.totalPrincipalDeposited(), principal * 2, "total principal deposited");
-        assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "dca token balance");
+        assertEq(tokenId, 1, "token id");
+        assertEq(yieldDca.ownerOf(tokenId), alice, "owner");
+
+        asset.mint(alice, principal);
+        asset.approve(address(vault), principal);
+        shares = vault.deposit(principal, alice);
+        vault.approve(address(yieldDca), shares);
+
+        tokenId = yieldDca.deposit(shares);
+        vm.stopPrank();
+
+        assertEq(tokenId, 2, "2nd token id");
+        assertEq(yieldDca.ownerOf(tokenId), alice, "2nd owner");
     }
 
-    function test_deposit_subsequentDepositsDontAffectSharesAndDcaBalances() public {
+    // *** #topUp *** //
+
+    function test_topUp_failsIfCallerIsNotTokenOwner() public {
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        uint256 shares = vault.convertToShares(principal);
+        uint256 tokenId = _depositIntoDca(alice, principal);
+
+        vm.expectRevert(YieldDCA.CallerNotTokenOwner.selector);
+        vm.prank(bob);
+        yieldDca.topUp(shares, tokenId);
+    }
+
+    function test_topUp_failsIfAmountIsZero() public {
+        uint256 tokenId = _depositIntoDca(alice, 1 ether);
+
+        vm.expectRevert(AmountZero.selector);
+        vm.prank(alice);
+        yieldDca.topUp(0, tokenId);
+    }
+
+    function test_topUp_worksMultipleTimesInSameEpoch() public {
+        uint256 principal = 1 ether;
+        uint256 shares = vault.convertToShares(principal);
+        uint256 tokenId = _depositIntoDca(alice, principal);
+
+        // top up with same amount
+        uint256 firstTopUp = 1 ether;
+        vm.startPrank(alice);
+
+        asset.mint(alice, firstTopUp);
+        asset.approve(address(vault), firstTopUp);
+        shares = vault.deposit(firstTopUp, alice);
+
+        vault.approve(address(yieldDca), shares);
+        yieldDca.topUp(shares, tokenId);
+
+        vm.stopPrank();
+
+        assertEq(vault.balanceOf(alice), 0, "1st: alice's vault balance");
+        assertEq(vault.balanceOf(address(yieldDca)), shares * 2, "1st: contract's vault balance");
+
+        (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(tokenId);
+        assertEq(balance, vault.convertToShares(principal + firstTopUp), "1st: alice's balance");
+        assertEq(dcaBalance, 0, "1st: alice's dca balance");
+        assertEq(yieldDca.totalPrincipalDeposited(), principal + firstTopUp, "1st: total principal deposited");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "1st: dca token balance");
+
+        // topUp with different amount
+        uint256 secondTopUp = 2 ether;
+        vm.startPrank(alice);
+
+        asset.mint(alice, secondTopUp);
+
+        asset.approve(address(vault), secondTopUp);
+        shares = vault.deposit(secondTopUp, alice);
+
+        vault.approve(address(yieldDca), shares);
+        yieldDca.topUp(shares, tokenId);
+
+        vm.stopPrank();
+
+        assertEq(vault.balanceOf(alice), 0, "2nd: alice's vault balance");
+        assertEq(vault.balanceOf(address(yieldDca)), 4e18, "2nd: contract's vault balance");
+
+        (balance, dcaBalance) = yieldDca.balancesOf(tokenId);
+        assertEq(balance, vault.convertToShares(principal + firstTopUp + secondTopUp), "2nd: alice's balance");
+        assertEq(dcaBalance, 0, "2nd: alice's dca balance");
+        assertEq(
+            yieldDca.totalPrincipalDeposited(), principal + firstTopUp + secondTopUp, "2nd: total principal deposited"
+        );
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "2nd: dca token balance");
+    }
+
+    function test_topUp_worksMultipleTimesInDifferentEpochs() public {
+        uint256 principal = 1 ether;
+        uint256 tokenId = _depositIntoDca(alice, principal);
 
         // add 100% yield
         _addYield(1e18);
-
         _executeDcaAtExchangeRate(1e18);
 
         uint256 expectedDcaAmount = 1 ether;
 
-        (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(1);
-        assertEq(balance, vault.convertToShares(principal), "1st: alice's balance");
-        assertEq(dcaBalance, expectedDcaAmount, "1st: alice's dca balance");
+        (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(tokenId);
+        assertEq(balance, vault.convertToShares(principal), "alice's balance");
+        assertEq(dcaBalance, expectedDcaAmount, "alice's dca balance");
 
         // repeat the deposit with same principal amount
-        uint256 addedPrincipal = 3 ether;
-        _depositIntoDca(alice, addedPrincipal, 1);
+        uint256 firstTopUp = 3 ether;
+        _topUp(alice, firstTopUp, tokenId);
 
-        (balance, dcaBalance) = yieldDca.balancesOf(1);
-        assertEq(balance, vault.convertToShares(principal + addedPrincipal), "2nd: alice's balance");
+        (balance, dcaBalance) = yieldDca.balancesOf(tokenId);
+        assertEq(balance, vault.convertToShares(principal + firstTopUp), "1st: alice's balance");
+        assertEq(dcaBalance, expectedDcaAmount, "1st: alice's dca balance");
+
+        _addYield(0.5e18);
+        _executeDcaAtExchangeRate(1e18);
+
+        expectedDcaAmount += 2 ether;
+
+        // repeat the deposit with different principal amount
+        uint256 secondTopUp = 2 ether;
+        _topUp(alice, secondTopUp, tokenId);
+
+        (balance, dcaBalance) = yieldDca.balancesOf(tokenId);
+        assertApproxEqAbs(
+            balance, vault.convertToShares(principal + firstTopUp + secondTopUp), 1, "2nd: alice's balance"
+        );
         assertEq(dcaBalance, expectedDcaAmount, "2nd: alice's dca balance");
+    }
+
+    function test_topUp_emitsEvent() public {
+        uint256 tokenId = _depositIntoDca(alice, 1 ether);
+
+        _addYield(1e18);
+        _executeDcaAtExchangeRate(1e18);
+
+        uint256 topUpAmount = 2 ether;
+        vm.startPrank(alice);
+
+        asset.mint(alice, topUpAmount);
+        asset.approve(address(vault), topUpAmount);
+        uint256 shares = vault.deposit(topUpAmount, alice);
+        vault.approve(address(yieldDca), shares);
+
+        vm.expectEmit(true, true, true, true);
+        emit Deposit(alice, tokenId, shares, topUpAmount, 2);
+
+        yieldDca.topUp(shares, tokenId);
     }
 
     // *** #executeDCA *** //
@@ -349,7 +488,7 @@ contract YieldDCATest is Test {
     }
 
     function test_executeDCA_failsIfNotEnoughTimePassed() public {
-        _depositIntoDca(alice, 1 ether, 0);
+        _depositIntoDca(alice, 1 ether);
 
         _shiftTime(yieldDca.dcaInterval() - 1);
 
@@ -380,7 +519,7 @@ contract YieldDCATest is Test {
     }
 
     function test_executeDCA_failsIfYieldIsZero() public {
-        _depositIntoDca(alice, 1 ether, 0);
+        _depositIntoDca(alice, 1 ether);
 
         _shiftTime(yieldDca.dcaInterval());
 
@@ -391,7 +530,7 @@ contract YieldDCATest is Test {
     }
 
     function test_executeDCA_failsIfYieldIsNegative() public {
-        _depositIntoDca(alice, 1 ether, 0);
+        _depositIntoDca(alice, 1 ether);
 
         _shiftTime(yieldDca.dcaInterval());
 
@@ -407,7 +546,7 @@ contract YieldDCATest is Test {
     }
 
     function test_executeDCA_failsIfAmountReceivedIsBelowMin() public {
-        _depositIntoDca(alice, 1 ether, 0);
+        _depositIntoDca(alice, 1 ether);
 
         _shiftTime(yieldDca.dcaInterval());
         _addYield(1e18);
@@ -432,7 +571,7 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        _depositIntoDca(alice, principal);
 
         // step 2 - generate 50% yield
         uint256 yieldPct = 0.5e18;
@@ -474,7 +613,7 @@ contract YieldDCATest is Test {
 
     function test_executeDca_emitsEvent() public {
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        _depositIntoDca(alice, principal);
 
         // generate 50% yield
         uint256 yieldPct = 0.5e18;
@@ -509,13 +648,14 @@ contract YieldDCATest is Test {
          */
 
         // step 1 - alice deposits
-        _depositIntoDca(alice, 1 ether, 0);
+        uint256 tokenId = _depositIntoDca(alice, 1 ether);
 
         // step 2 - generate 100% yield
         _addYield(1e18);
 
         // step 3 - alice deposits again (this one doesn't generate yield)
-        _depositIntoDca(alice, 1 ether, 1);
+
+        _topUp(alice, 1 ether, tokenId);
 
         assertEq(vault.balanceOf(alice), 0, "shares balance");
         assertEq(dcaToken.balanceOf(alice), 0, "dca token balance");
@@ -544,7 +684,7 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        uint256 tokenId = _depositIntoDca(alice, principal);
 
         // step 2 - generate 100% yield
         _addYield(1e18);
@@ -553,7 +693,7 @@ contract YieldDCATest is Test {
         _executeDcaAtExchangeRate(3e18);
 
         // step 4 - alice deposits again
-        _depositIntoDca(alice, principal, 1);
+        _topUp(alice, principal, tokenId);
 
         assertEq(vault.balanceOf(alice), 0, "shares balance");
         assertApproxEqRel(dcaToken.balanceOf(alice), 0, 0.00001e18, "dca token balance");
@@ -583,12 +723,12 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        _depositIntoDca(alice, principal);
 
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
         uint256 yieldPerEpoch = 0.01e18; // 5%
-        uint256 epochs = 1000;
+        uint256 epochs = 200;
 
         // step 2 & 3 - generate 5% yield over 200 epochs and do DCA
         for (uint256 i = 0; i < epochs; i++) {
@@ -623,7 +763,7 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        _depositIntoDca(alice, principal);
 
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
@@ -666,7 +806,7 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositIntoDca(alice, alicesPrincipal, 0);
+        _depositIntoDca(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _addYield(1e18);
@@ -677,7 +817,7 @@ contract YieldDCATest is Test {
         // step 4 - bob deposits
 
         uint256 bobsPrincipal = 1 ether;
-        _depositIntoDca(bob, bobsPrincipal, 0);
+        _depositIntoDca(bob, bobsPrincipal);
 
         // step 5 - generate 100% yield
         _addYield(1e18);
@@ -712,7 +852,7 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositIntoDca(alice, alicesPrincipal, 0);
+        _depositIntoDca(alice, alicesPrincipal);
 
         // step 2 - bob deposits into vault
         vm.startPrank(bob);
@@ -726,7 +866,7 @@ contract YieldDCATest is Test {
 
         // step 4 - bob deposits into DCA
         vault.approve(address(yieldDca), bobsShares);
-        yieldDca.deposit(bobsShares, 0);
+        yieldDca.deposit(bobsShares);
         vm.stopPrank();
 
         // step 4 - dca
@@ -762,7 +902,7 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositIntoDca(alice, alicesPrincipal, 0);
+        _depositIntoDca(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _addYield(1e18);
@@ -772,11 +912,11 @@ contract YieldDCATest is Test {
 
         // step 4 - bob deposits
         uint256 bobsPrincipal = 2 ether;
-        _depositIntoDca(bob, bobsPrincipal, 0);
+        _depositIntoDca(bob, bobsPrincipal);
 
         // step 5 - carol deposits
         uint256 carolsPrincipal = 1 ether;
-        _depositIntoDca(carol, carolsPrincipal, 0);
+        _depositIntoDca(carol, carolsPrincipal);
 
         // step 6 - generate 100% yield (ie 4 ether)
         _addYield(1e18);
@@ -832,7 +972,7 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositIntoDca(alice, alicesPrincipal, 0);
+        _depositIntoDca(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _addYield(1e18);
@@ -845,7 +985,7 @@ contract YieldDCATest is Test {
 
         // step 5 - bob deposits
         uint256 bobsPrincipal = 1 ether;
-        _depositIntoDca(bob, bobsPrincipal, 0);
+        _depositIntoDca(bob, bobsPrincipal);
 
         // step 6 - generate -25% yield
         _removeYield(0.25e18);
@@ -926,18 +1066,18 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositIntoDca(alice, alicesPrincipal, 0);
+        _depositIntoDca(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _addYield(1e18);
 
         // step 3 - bob deposits
         uint256 bobsPrincipal = 1 ether;
-        _depositIntoDca(bob, bobsPrincipal, 0);
+        _depositIntoDca(bob, bobsPrincipal);
 
         // step 4 - carol deposits
         uint256 carolsPrincipal = 1 ether;
-        _depositIntoDca(carol, carolsPrincipal, 0);
+        _depositIntoDca(carol, carolsPrincipal);
 
         // step 5 - generate -20% yield
         _removeYield(0.2e18);
@@ -1032,18 +1172,18 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositIntoDca(alice, alicesPrincipal, 0);
+        _depositIntoDca(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _addYield(1e18);
 
         // step 3 - bob deposits
         uint256 bobsPrincipal = 1 ether;
-        _depositIntoDca(bob, bobsPrincipal, 0);
+        _depositIntoDca(bob, bobsPrincipal);
 
         // step 4 - carol deposits
         uint256 carolsPrincipal = 1 ether;
-        _depositIntoDca(carol, carolsPrincipal, 0);
+        _depositIntoDca(carol, carolsPrincipal);
 
         // step 5 - generate -20% yield
         _removeYield(0.2e18);
@@ -1105,7 +1245,7 @@ contract YieldDCATest is Test {
     }
 
     function test_withdraw_failsIfTryingToWithdrawMoreThanAvaiable() public {
-        uint256 tokenId = _depositIntoDca(alice, 1 ether, 0);
+        uint256 tokenId = _depositIntoDca(alice, 1 ether);
         uint256 shares = vault.convertToShares(1 ether);
 
         vm.expectRevert(YieldDCA.InsufficientSharesToWithdraw.selector);
@@ -1116,7 +1256,7 @@ contract YieldDCATest is Test {
     function test_withdraw_worksInSameEpochAsDeposit() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.convertToShares(principal);
-        uint256 tokenId = _depositIntoDca(alice, principal, 0);
+        uint256 tokenId = _depositIntoDca(alice, principal);
 
         uint256 toWithdraw = _getSharesBalanceInDcaFor(1);
         vm.prank(alice);
@@ -1135,7 +1275,7 @@ contract YieldDCATest is Test {
     function test_withdraw_withdrawsOnlySharesIfDcaTokensNotEarned() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.convertToShares(principal);
-        uint256 tokenId = _depositIntoDca(alice, principal, 0);
+        uint256 tokenId = _depositIntoDca(alice, principal);
 
         _addYield(1e18);
         _shiftTime(yieldDca.dcaInterval());
@@ -1160,7 +1300,7 @@ contract YieldDCATest is Test {
 
     function test_withdraw_withdrawsOnlyDcaTokensWhenParamIs0() public {
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        _depositIntoDca(alice, principal);
 
         _addYield(1e18);
 
@@ -1186,7 +1326,7 @@ contract YieldDCATest is Test {
 
     function test_withdraw_withdrawAllBurnsNft() public {
         uint256 principal = 1 ether;
-        uint256 tokenId = _depositIntoDca(alice, principal, 0);
+        uint256 tokenId = _depositIntoDca(alice, principal);
 
         _addYield(1e18);
         _executeDcaAtExchangeRate(1e18);
@@ -1218,7 +1358,7 @@ contract YieldDCATest is Test {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        _depositIntoDca(alice, principal);
 
         // step 2 - generate 100% yield
         _addYield(1e18);
@@ -1265,7 +1405,7 @@ contract YieldDCATest is Test {
 
     function test_withdraw_emitsEvent() public {
         uint256 principal = 1 ether;
-        _depositIntoDca(alice, principal, 0);
+        _depositIntoDca(alice, principal);
 
         _addYield(0.5e18);
 
@@ -1288,7 +1428,7 @@ contract YieldDCATest is Test {
 
     function test_transfer_changesOwner() public {
         uint256 principal = 1 ether;
-        uint256 tokenId = _depositIntoDca(alice, principal, 0);
+        uint256 tokenId = _depositIntoDca(alice, principal);
 
         _addYield(1e18);
         _executeDcaAtExchangeRate(3e18);
@@ -1313,7 +1453,7 @@ contract YieldDCATest is Test {
 
     // *** helper functions *** ///
 
-    function _depositIntoDca(address _account, uint256 _amount, uint256 _id) public returns (uint256 tokenId) {
+    function _depositIntoDca(address _account, uint256 _amount) public returns (uint256 tokenId) {
         vm.startPrank(_account);
 
         asset.mint(_account, _amount);
@@ -1321,7 +1461,20 @@ contract YieldDCATest is Test {
         uint256 shares = vault.deposit(_amount, _account);
 
         vault.approve(address(yieldDca), shares);
-        tokenId = yieldDca.deposit(shares, _id);
+        tokenId = yieldDca.deposit(shares);
+
+        vm.stopPrank();
+    }
+
+    function _topUp(address _account, uint256 _amount, uint256 _id) public {
+        vm.startPrank(_account);
+
+        asset.mint(_account, _amount);
+        asset.approve(address(vault), _amount);
+        uint256 shares = vault.deposit(_amount, _account);
+
+        vault.approve(address(yieldDca), shares);
+        yieldDca.topUp(shares, _id);
 
         vm.stopPrank();
     }

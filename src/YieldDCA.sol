@@ -9,8 +9,7 @@ import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
-import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
-
+import {AmountZero} from "./common/Errors.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
 
 /**
@@ -55,6 +54,7 @@ contract YieldDCA is ERC721, AccessControl {
     error DcaIntervalNotAllowed();
     error KeeperAddressZero();
     error AdminAddressZero();
+    error CallerNotTokenOwner();
 
     error DcaIntervalNotPassed();
     error DcaYieldZero();
@@ -65,7 +65,7 @@ contract YieldDCA is ERC721, AccessControl {
 
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
     event SwapperUpdated(address indexed admin, address newSwapper);
-    event Deposit(address indexed user, uint256 epoch, uint256 shares, uint256 principal);
+    event Deposit(address indexed user, uint256 indexed tokenId, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
 
@@ -118,7 +118,8 @@ contract YieldDCA is ERC721, AccessControl {
      * @dev See {IERC165-supportsInterface}.
      */
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
-        return interfaceId == type(ERC721).interfaceId || interfaceId == type(AccessControl).interfaceId;
+        return interfaceId == type(ERC721).interfaceId || interfaceId == type(AccessControl).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     function setSwapper(ISwapper _swapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -152,35 +153,56 @@ contract YieldDCA is ERC721, AccessControl {
         dcaInterval = _interval;
     }
 
-    function deposit(uint256 _shares, uint256 depositId) external returns (uint256 tokenId) {
-        DepositInfo storage deposit_ = deposits[depositId];
+    function deposit(uint256 _shares) external returns (uint256 tokenId) {
+        _checkAmount(_shares);
+        // TODO: require min deposit?
 
-        if (depositId != 0) {
-            require(ownerOf(depositId) == msg.sender, "You must own the NFT to deposit");
-            // check if the user has made a deposit previously
-            if (deposit_.epoch < currentEpoch) {
-                (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
+        tokenId = nextDepositId++;
+        _mint(msg.sender, tokenId);
 
-                deposit_.shares = shares;
-                deposit_.dcaAmountAtEpoch = dcaTokens;
-            }
-        } else {
-            tokenId = nextDepositId++;
-            _mint(msg.sender, tokenId);
-            deposit_ = deposits[tokenId];
+        uint256 principal = vault.convertToAssets(_shares);
+
+        DepositInfo storage deposit_ = deposits[tokenId];
+        uint256 currentEpoch_ = currentEpoch;
+
+        deposit_.shares = _shares;
+        deposit_.principal = principal;
+        deposit_.epoch = currentEpoch_;
+
+        totalPrincipalDeposited += principal;
+
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
+
+        emit Deposit(msg.sender, tokenId, _shares, principal, currentEpoch_);
+    }
+
+    function topUp(uint256 _shares, uint256 _tokenId) external {
+        // TODO: require min deposit?
+        _checkAmount(_shares);
+        _checkOwnership(_tokenId);
+
+        DepositInfo storage deposit_ = deposits[_tokenId];
+        uint256 currentEpoch_ = currentEpoch;
+
+        // if deposit is from a previous epoch, update the balances
+        if (deposit_.epoch < currentEpoch_) {
+            (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
+
+            deposit_.shares = shares;
+            deposit_.dcaAmountAtEpoch = dcaTokens;
         }
 
         uint256 principal = vault.convertToAssets(_shares);
 
         deposit_.shares += _shares;
         deposit_.principal += principal;
-        deposit_.epoch = currentEpoch;
+        deposit_.epoch = currentEpoch_;
 
         totalPrincipalDeposited += principal;
 
         vault.safeTransferFrom(msg.sender, address(this), _shares);
 
-        emit Deposit(msg.sender, currentEpoch, _shares, principal);
+        emit Deposit(msg.sender, _tokenId, _shares, principal, currentEpoch_);
     }
 
     function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
@@ -189,22 +211,40 @@ contract YieldDCA is ERC721, AccessControl {
 
         uint256 yieldInShares = calculateCurrentYieldInShares();
 
-        // this check will also prevent reentrancy when calling sapper.execute
         if (yieldInShares == 0) revert DcaYieldZero();
 
         vault.redeem(yieldInShares, address(this), address(this));
 
         uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
+
+        // TODO: require yield above min?
+
         uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin, _swapData);
         uint256 dcaPrice = amountOut.divWadDown(yield);
         uint256 sharePrice = yield.divWadDown(yieldInShares);
+        uint256 currentEpoch_ = currentEpoch;
 
-        epochDetails[currentEpoch] = EpochInfo({dcaPrice: dcaPrice, sharePrice: sharePrice});
+        epochDetails[currentEpoch_] = EpochInfo({dcaPrice: dcaPrice, sharePrice: sharePrice});
 
         currentEpoch++;
         currentEpochTimestamp = block.timestamp;
 
-        emit DCAExecuted(currentEpoch - 1, yield, amountOut, dcaPrice, sharePrice);
+        emit DCAExecuted(currentEpoch_, yield, amountOut, dcaPrice, sharePrice);
+    }
+
+    function _buyDcaToken(uint256 _amountIn, uint256 _dcaAmountOutMin, bytes calldata _swapData)
+        internal
+        returns (uint256)
+    {
+        uint256 balanceBefore = dcaToken.balanceOf(address(this));
+
+        swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin, _swapData);
+
+        uint256 balanceAfter = dcaToken.balanceOf(address(this));
+
+        if (dcaToken.balanceOf(address(this)) < balanceBefore + _dcaAmountOutMin) revert DcaAmountReceivedTooLow();
+
+        return balanceAfter - balanceBefore;
     }
 
     // if 0 is passed only dca is withdrawn
@@ -266,21 +306,6 @@ contract YieldDCA is ERC721, AccessControl {
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
 
-    function _buyDcaToken(uint256 _amountIn, uint256 _dcaAmountOutMin, bytes calldata _swapData)
-        internal
-        returns (uint256)
-    {
-        uint256 balanceBefore = dcaToken.balanceOf(address(this));
-
-        swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin, _swapData);
-
-        uint256 balanceAfter = dcaToken.balanceOf(address(this));
-
-        if (dcaToken.balanceOf(address(this)) < balanceBefore + _dcaAmountOutMin) revert DcaAmountReceivedTooLow();
-
-        return balanceAfter - balanceBefore;
-    }
-
     function _calculateBalances(DepositInfo memory _deposit)
         internal
         view
@@ -309,5 +334,13 @@ contract YieldDCA is ERC721, AccessControl {
                 dcaTokens += usersYield * epoch.dcaPrice / 1e18;
             }
         }
+    }
+
+    function _checkOwnership(uint256 _tokenId) internal view {
+        if (ownerOf(_tokenId) != msg.sender) revert CallerNotTokenOwner();
+    }
+
+    function _checkAmount(uint256 _amount) internal pure {
+        if (_amount == 0) revert AmountZero();
     }
 }

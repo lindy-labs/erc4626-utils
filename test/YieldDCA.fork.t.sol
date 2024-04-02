@@ -141,15 +141,15 @@ contract YieldDCATest is Test {
 
     // *** helper functions *** ///
 
-    function _depositIntoDca(address _account, uint256 _amount) public returns (uint256 shares) {
+    function _depositIntoDca(address _account, uint256 _amount) public returns (uint256 tokenId) {
         vm.startPrank(_account);
 
         deal(address(asset), _account, _amount);
         asset.approve(address(vault), _amount);
-        shares = vault.deposit(_amount, _account);
+        uint256 shares = vault.deposit(_amount, _account);
 
         vault.approve(address(yieldDca), shares);
-        yieldDca.deposit(shares, 0);
+        tokenId = yieldDca.deposit(shares);
 
         vm.stopPrank();
     }
