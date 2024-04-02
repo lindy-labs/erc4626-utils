@@ -186,7 +186,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         // if deposit is from a previous epoch, update the balances
         if (deposit_.epoch < currentEpoch_) {
-            (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_);
+            (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_, currentEpoch_);
 
             deposit_.shares = shares;
             deposit_.dcaAmountAtEpoch = dcaTokens;
@@ -251,13 +251,14 @@ contract YieldDCA is ERC721, AccessControl {
     // NOTE: uses around 1073k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
     function withdraw(uint256 _shares, uint256 _tokenId) external returns (uint256 principal, uint256 dcaAmount) {
         DepositInfo storage deposit_ = deposits[_tokenId];
+        uint256 currentEpoch_ = currentEpoch;
 
         if (deposit_.epoch == 0) revert NoDepositFound();
 
         require(ownerOf(_tokenId) == msg.sender, "You must own the NFT to withdraw");
 
         uint256 sharesRemaining;
-        (sharesRemaining, dcaAmount) = _calculateBalances(deposit_);
+        (sharesRemaining, dcaAmount) = _calculateBalances(deposit_, currentEpoch_);
 
         if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
 
@@ -274,7 +275,7 @@ contract YieldDCA is ERC721, AccessControl {
             deposit_.principal -= principal;
             deposit_.shares = sharesRemaining - _shares;
             deposit_.dcaAmountAtEpoch = 0;
-            deposit_.epoch = currentEpoch;
+            deposit_.epoch = currentEpoch_;
         }
 
         uint256 sharesBalance = vault.balanceOf(address(this));
@@ -286,11 +287,11 @@ contract YieldDCA is ERC721, AccessControl {
         dcaAmount = dcaAmount > dcaBalance ? dcaBalance : dcaAmount;
         dcaToken.safeTransfer(msg.sender, dcaAmount);
 
-        emit Withdraw(msg.sender, currentEpoch, principal, _shares, dcaAmount);
+        emit Withdraw(msg.sender, currentEpoch_, principal, _shares, dcaAmount);
     }
 
     function balancesOf(uint256 _tokenId) public view returns (uint256 shares, uint256 dcaTokens) {
-        (shares, dcaTokens) = _calculateBalances(deposits[_tokenId]);
+        (shares, dcaTokens) = _calculateBalances(deposits[_tokenId], currentEpoch);
     }
 
     function calculateCurrentYield() public view returns (uint256) {
@@ -306,7 +307,7 @@ contract YieldDCA is ERC721, AccessControl {
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
 
-    function _calculateBalances(DepositInfo memory _deposit)
+    function _calculateBalances(DepositInfo memory _deposit, uint256 _epoch)
         internal
         view
         returns (uint256 shares, uint256 dcaTokens)
@@ -317,21 +318,21 @@ contract YieldDCA is ERC721, AccessControl {
         dcaTokens = _deposit.dcaAmountAtEpoch;
 
         // NOTE: one iteration costs around 4900 gas when called from a non-view function compared to 1000 gas when called from a view function
-        for (uint256 i = _deposit.epoch; i < currentEpoch; i++) {
-            EpochInfo memory epoch = epochDetails[i];
+        for (uint256 i = _deposit.epoch; i < _epoch; i++) {
+            EpochInfo memory epochInfo = epochDetails[i];
 
             unchecked {
                 // use plain arithmetic instead of FixedPointMathLib to lower gas costs
                 // since we are only working with yield, it is not realistic to expect values large enough to overflow on multiplication
-                uint256 sharesValue = shares * epoch.sharePrice / 1e18;
+                uint256 sharesValue = shares * epochInfo.sharePrice / 1e18;
 
                 if (sharesValue <= _deposit.principal) continue;
 
                 // cannot underflow because of the check above
                 uint256 usersYield = sharesValue - _deposit.principal;
 
-                shares -= usersYield * 1e18 / epoch.sharePrice;
-                dcaTokens += usersYield * epoch.dcaPrice / 1e18;
+                shares -= usersYield * 1e18 / epochInfo.sharePrice;
+                dcaTokens += usersYield * epochInfo.dcaPrice / 1e18;
             }
         }
     }
