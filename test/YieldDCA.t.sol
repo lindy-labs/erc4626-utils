@@ -508,7 +508,7 @@ contract YieldDCATest is Test {
         // send shares directly to the yieldDca contract
         vault.transfer(address(yieldDca), shares);
 
-        _shiftTime(yieldDca.dcaInterval() - 1);
+        _shiftTime(yieldDca.dcaInterval());
 
         assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
         assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
@@ -541,6 +541,21 @@ contract YieldDCATest is Test {
         assertApproxEqAbs(vault.totalAssets(), totalAssets.mulWadDown(0.9e18), 1);
 
         vm.expectRevert(YieldDCA.DcaYieldZero.selector);
+
+        vm.prank(keeper);
+        yieldDca.executeDCA(0, "");
+    }
+
+    function test_executeDCA_failsIfYieldIsBelowMin() public {
+        uint256 principal = 1 ether;
+        _depositIntoDca(alice, principal);
+
+        _shiftTime(yieldDca.dcaInterval());
+        swapper.setExchangeRate(2e18);
+
+        _addYield(yieldDca.minYieldPercentage() - 1);
+
+        vm.expectRevert(YieldDCA.DcaInsufficientYield.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -712,7 +727,6 @@ contract YieldDCATest is Test {
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
     }
 
-    // TODO: make this a fuzzing test?
     function test_executeDCA_oneDeposit200Epochs() public {
         /**
          * scenario:
@@ -1016,10 +1030,10 @@ contract YieldDCATest is Test {
         assertEq(_convertSharesToAssetsFor(bob), bobsPrincipal.mulWadDown(0.75e18), "aw: bob's principal");
         assertEq(dcaToken.balanceOf(bob), 0, "aw: bob's dca token balance");
 
-        // step 10 - 0.25 ether is left in the contract as yield
+        // step 10 - 0.25 ether is left in the contract as surplus yield
         assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
 
-        uint256 yieldInShares = yieldDca.calculateCurrentYieldInShares();
+        uint256 yieldInShares = yieldDca.getYieldInShares();
 
         assertEq(vault.balanceOf(address(yieldDca)), yieldInShares, "contract's balance");
         assertApproxEqAbs(vault.convertToAssets(yieldInShares), 0.25 ether, 5, "contract's assets");

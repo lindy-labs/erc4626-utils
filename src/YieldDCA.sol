@@ -56,6 +56,7 @@ contract YieldDCA is ERC721, AccessControl {
     error AdminAddressZero();
 
     error DcaIntervalNotPassed();
+    error DcaInsufficientYield();
     error DcaYieldZero();
     error NoPrincipalDeposited();
     error DcaAmountReceivedTooLow();
@@ -78,13 +79,15 @@ contract YieldDCA is ERC721, AccessControl {
     ISwapper public swapper;
 
     uint256 public dcaInterval = 2 weeks;
+    uint256 public minYieldPercentage = 0.001e18; // 0.1%
+
     uint256 public currentEpoch = 1; // starts from 1
     uint256 public currentEpochTimestamp = block.timestamp;
-    uint256 public totalPrincipalDeposited;
-
-    uint256 public nextDepositId = 1; // starts from 1
-    mapping(uint256 => DepositInfo) public deposits;
     mapping(uint256 => EpochInfo) public epochDetails;
+
+    uint256 public nextDepositId = 1;
+    uint256 public totalPrincipalDeposited;
+    mapping(uint256 => DepositInfo) public deposits;
 
     constructor(
         IERC20 _dcaToken,
@@ -203,10 +206,11 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
-        if (totalPrincipalDeposited == 0) revert NoPrincipalDeposited();
+        uint256 totalPrincipal = totalPrincipalDeposited;
+        if (totalPrincipal == 0) revert NoPrincipalDeposited();
         if (block.timestamp < currentEpochTimestamp + dcaInterval) revert DcaIntervalNotPassed();
 
-        uint256 yieldInShares = calculateCurrentYieldInShares();
+        uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal);
 
         if (yieldInShares == 0) revert DcaYieldZero();
 
@@ -214,7 +218,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
 
-        // TODO: require yield above min?
+        if (yield < totalPrincipal.mulWadDown(minYieldPercentage)) revert DcaInsufficientYield();
 
         uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin, _swapData);
         uint256 dcaPrice = amountOut.divWadDown(yield);
@@ -300,15 +304,19 @@ contract YieldDCA is ERC721, AccessControl {
         (shares, dcaTokens) = _calculateBalances(deposits[_tokenId], currentEpoch);
     }
 
-    function calculateCurrentYield() public view returns (uint256) {
+    function getYield() public view returns (uint256) {
         uint256 assets = vault.convertToAssets(vault.balanceOf(address(this)));
 
         return assets > totalPrincipalDeposited ? assets - totalPrincipalDeposited : 0;
     }
 
-    function calculateCurrentYieldInShares() public view returns (uint256) {
+    function getYieldInShares() public view returns (uint256) {
+        return _calculateCurrentYieldInShares(totalPrincipalDeposited);
+    }
+
+    function _calculateCurrentYieldInShares(uint256 _totalPrincipal) internal view returns (uint256) {
         uint256 balance = vault.balanceOf(address(this));
-        uint256 totalPrincipalInShares = vault.convertToShares(totalPrincipalDeposited);
+        uint256 totalPrincipalInShares = vault.convertToShares(_totalPrincipal);
 
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
