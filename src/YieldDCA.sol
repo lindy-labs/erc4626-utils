@@ -54,14 +54,13 @@ contract YieldDCA is ERC721, AccessControl {
     error DcaIntervalNotAllowed();
     error KeeperAddressZero();
     error AdminAddressZero();
-    error CallerNotTokenOwner();
 
     error DcaIntervalNotPassed();
     error DcaYieldZero();
-    error NoDepositFound();
     error NoPrincipalDeposited();
     error DcaAmountReceivedTooLow();
     error InsufficientSharesToWithdraw();
+    error CallerNotTokenOwner();
 
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
     event SwapperUpdated(address indexed admin, address newSwapper);
@@ -160,16 +159,15 @@ contract YieldDCA is ERC721, AccessControl {
         tokenId = nextDepositId++;
         _mint(msg.sender, tokenId);
 
+        uint256 currentEpoch_ = currentEpoch;
         uint256 principal = vault.convertToAssets(_shares);
 
-        DepositInfo storage deposit_ = deposits[tokenId];
-        uint256 currentEpoch_ = currentEpoch;
+        totalPrincipalDeposited += principal;
 
+        DepositInfo storage deposit_ = deposits[tokenId];
         deposit_.shares = _shares;
         deposit_.principal = principal;
         deposit_.epoch = currentEpoch_;
-
-        totalPrincipalDeposited += principal;
 
         vault.safeTransferFrom(msg.sender, address(this), _shares);
 
@@ -181,9 +179,12 @@ contract YieldDCA is ERC721, AccessControl {
         _checkAmount(_shares);
         _checkOwnership(_tokenId);
 
-        DepositInfo storage deposit_ = deposits[_tokenId];
         uint256 currentEpoch_ = currentEpoch;
+        uint256 principal = vault.convertToAssets(_shares);
 
+        totalPrincipalDeposited += principal;
+
+        DepositInfo storage deposit_ = deposits[_tokenId];
         // if deposit is from a previous epoch, update the balances
         if (deposit_.epoch < currentEpoch_) {
             (uint256 shares, uint256 dcaTokens) = _calculateBalances(deposit_, currentEpoch_);
@@ -192,13 +193,9 @@ contract YieldDCA is ERC721, AccessControl {
             deposit_.dcaAmountAtEpoch = dcaTokens;
         }
 
-        uint256 principal = vault.convertToAssets(_shares);
-
         deposit_.shares += _shares;
         deposit_.principal += principal;
         deposit_.epoch = currentEpoch_;
-
-        totalPrincipalDeposited += principal;
 
         vault.safeTransferFrom(msg.sender, address(this), _shares);
 
@@ -249,34 +246,14 @@ contract YieldDCA is ERC721, AccessControl {
 
     // if 0 is passed only dca is withdrawn
     // NOTE: uses around 1073k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
-    function withdraw(uint256 _shares, uint256 _tokenId) external returns (uint256 principal, uint256 dcaAmount) {
-        DepositInfo storage deposit_ = deposits[_tokenId];
+    function withdraw(uint256 _shares, uint256 _tokenId)
+        external
+        returns (uint256 principalWithdrawn, uint256 dcaAmount)
+    {
+        _checkOwnership(_tokenId);
+
         uint256 currentEpoch_ = currentEpoch;
-
-        if (deposit_.epoch == 0) revert NoDepositFound();
-
-        require(ownerOf(_tokenId) == msg.sender, "You must own the NFT to withdraw");
-
-        uint256 sharesRemaining;
-        (sharesRemaining, dcaAmount) = _calculateBalances(deposit_, currentEpoch_);
-
-        if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
-
-        principal = deposit_.principal.mulDivDown(_shares, sharesRemaining);
-
-        totalPrincipalDeposited -= principal;
-
-        if (_shares == sharesRemaining) {
-            // withadraw all
-            delete deposits[_tokenId];
-            _burn(_tokenId);
-        } else {
-            // withdraw partial
-            deposit_.principal -= principal;
-            deposit_.shares = sharesRemaining - _shares;
-            deposit_.dcaAmountAtEpoch = 0;
-            deposit_.epoch = currentEpoch_;
-        }
+        (principalWithdrawn, dcaAmount) = _processWithdrawal(_shares, _tokenId, currentEpoch_);
 
         uint256 sharesBalance = vault.balanceOf(address(this));
         // limit to available shares and dca tokens because of possible rounding errors
@@ -287,7 +264,36 @@ contract YieldDCA is ERC721, AccessControl {
         dcaAmount = dcaAmount > dcaBalance ? dcaBalance : dcaAmount;
         dcaToken.safeTransfer(msg.sender, dcaAmount);
 
-        emit Withdraw(msg.sender, currentEpoch_, principal, _shares, dcaAmount);
+        emit Withdraw(msg.sender, currentEpoch_, principalWithdrawn, _shares, dcaAmount);
+    }
+
+    function _processWithdrawal(uint256 _shares, uint256 _tokenId, uint256 _currentEpoch)
+        internal
+        returns (uint256 principalWithdrawn, uint256 dcaAmount)
+    {
+        DepositInfo storage deposit_ = deposits[_tokenId];
+        uint256 sharesRemaining;
+        (sharesRemaining, dcaAmount) = _calculateBalances(deposit_, _currentEpoch);
+
+        if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
+
+        if (_shares == sharesRemaining) {
+            // withadraw all
+            principalWithdrawn = deposit_.principal;
+
+            delete deposits[_tokenId];
+            _burn(_tokenId);
+        } else {
+            // withdraw partial
+            principalWithdrawn = deposit_.principal.mulDivDown(_shares, sharesRemaining);
+
+            deposit_.principal -= principalWithdrawn;
+            deposit_.shares = sharesRemaining - _shares;
+            deposit_.dcaAmountAtEpoch = 0;
+            deposit_.epoch = _currentEpoch;
+        }
+
+        totalPrincipalDeposited -= principalWithdrawn;
     }
 
     function balancesOf(uint256 _tokenId) public view returns (uint256 shares, uint256 dcaTokens) {

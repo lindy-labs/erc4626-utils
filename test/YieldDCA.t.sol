@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
+import {IERC721Errors} from "openzeppelin-contracts/interfaces/draft-IERC6093.sol";
 import {IERC721} from "openzeppelin-contracts/token/ERC721/IERC721.sol";
 import {IAccessControl} from "openzeppelin-contracts/access/IAccessControl.sol";
 
@@ -1240,8 +1241,17 @@ contract YieldDCATest is Test {
     // *** #withdraw *** //
 
     function test_withdraw_failsIfNoDepositWasMade() public {
-        vm.expectRevert(YieldDCA.NoDepositFound.selector);
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
         yieldDca.withdraw(0, 1);
+    }
+
+    function test_withdraw_failsIfNotOwner() public {
+        uint256 tokenId = _depositIntoDca(alice, 1 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(YieldDCA.CallerNotTokenOwner.selector));
+
+        vm.prank(bob);
+        yieldDca.withdraw(0, tokenId);
     }
 
     function test_withdraw_failsIfTryingToWithdrawMoreThanAvaiable() public {
@@ -1270,6 +1280,22 @@ contract YieldDCATest is Test {
         assertEq(dcaBalance, 0, "alice's dca balance");
         assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
+    }
+
+    function test_withdraw_burnsTokenIfWithdrawingAll() public {
+        uint256 principal = 1 ether;
+        uint256 tokenId = _depositIntoDca(alice, principal);
+
+        uint256 toWithdraw = _getSharesBalanceInDcaFor(tokenId);
+
+        assertEq(yieldDca.balanceOf(alice), 1, "bw: alice's nft balance");
+
+        vm.prank(alice);
+        yieldDca.withdraw(toWithdraw, tokenId);
+
+        assertEq(yieldDca.balanceOf(alice), 0, "aw: alice's nft balance");
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, tokenId));
+        yieldDca.ownerOf(tokenId);
     }
 
     function test_withdraw_withdrawsOnlySharesIfDcaTokensNotEarned() public {
@@ -1340,7 +1366,7 @@ contract YieldDCATest is Test {
         assertEq(vault.balanceOf(alice), toWithdraw, "alice's balance");
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "alice's dca balance");
 
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, tokenId));
         yieldDca.ownerOf(tokenId);
     }
 
