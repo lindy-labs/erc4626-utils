@@ -475,6 +475,43 @@ contract YieldDCATest is Test {
         yieldDca.topUp(shares, tokenId);
     }
 
+    // *** #canExecuteDCA *** //
+
+    function test_canExecuteDCA_returnsFalseIfNoPrincipalDeposited() public {
+        assertTrue(!yieldDca.canExecuteDCA());
+    }
+
+    function test_canExecuteDCA_returnsFalseIfNotEnoughTimePassed() public {
+        _depositIntoDca(alice, 1 ether);
+
+        _shiftTime(yieldDca.dcaInterval() - 1);
+
+        assertTrue(!yieldDca.canExecuteDCA());
+    }
+
+    function test_canExecuteDCA_returnsFalseIfYieldIsBelowMin() public {
+        _depositIntoDca(alice, 1 ether);
+
+        _shiftTime(yieldDca.dcaInterval());
+
+        _addYield(yieldDca.minYieldPercentage() - 1);
+
+        assertTrue(!yieldDca.canExecuteDCA());
+    }
+
+    function test_canExecuteDCA_returnsTrueIfAllConditionsMet() public {
+        // total pricipal deposited != 0
+        _depositIntoDca(alice, 1 ether);
+
+        // dca interval passed
+        _shiftTime(yieldDca.dcaInterval());
+
+        // yield >= min yield
+        _addYield(yieldDca.minYieldPercentage());
+
+        assertTrue(yieldDca.canExecuteDCA());
+    }
+
     // *** #executeDCA *** //
 
     function test_executeDCA_failsIfCallerIsNotKeeper() public {

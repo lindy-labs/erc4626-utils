@@ -155,6 +155,7 @@ contract YieldDCA is ERC721, AccessControl {
         dcaInterval = _interval;
     }
 
+    // TODO: support depositing wiht assets directly
     function deposit(uint256 _shares) external returns (uint256 tokenId) {
         _checkAmount(_shares);
         // TODO: require min deposit?
@@ -177,6 +178,7 @@ contract YieldDCA is ERC721, AccessControl {
         emit Deposit(msg.sender, tokenId, _shares, principal, currentEpoch_);
     }
 
+    // TODO: support depositing wiht assets directly
     function topUp(uint256 _shares, uint256 _tokenId) external {
         // TODO: require min deposit?
         _checkAmount(_shares);
@@ -203,6 +205,11 @@ contract YieldDCA is ERC721, AccessControl {
         vault.safeTransferFrom(msg.sender, address(this), _shares);
 
         emit Deposit(msg.sender, _tokenId, _shares, principal, currentEpoch_);
+    }
+
+    function canExecuteDCA() external view returns (bool) {
+        return totalPrincipalDeposited != 0 && block.timestamp >= currentEpochTimestamp + dcaInterval
+            && getYield() >= totalPrincipalDeposited.mulWadDown(minYieldPercentage);
     }
 
     function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
