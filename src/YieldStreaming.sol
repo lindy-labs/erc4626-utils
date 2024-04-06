@@ -4,12 +4,14 @@ pragma solidity ^0.8.19;
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
+import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import {StreamDoesNotExist} from "./common/Errors.sol";
 import {StreamingBase} from "./common/StreamingBase.sol";
 
+// TODO: update docs
 /**
  * @title YieldStreaming
  * @dev Manages yield streams between senders and receivers using ERC4626 tokens.
@@ -17,29 +19,36 @@ import {StreamingBase} from "./common/StreamingBase.sol";
  * facilitating the flow of yield from appreciating assets to designated beneficiaries.
  * It assumes ERC4626 tokens (vault tokens) appreciate over time, generating yield for their holders.
  */
-contract YieldStreaming is StreamingBase {
+contract YieldStreaming is StreamingBase, ERC721 {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
     using SafeERC20 for IERC20;
 
     error NoYieldToClaim();
     error LossToleranceExceeded();
+    error CallerNotOwner();
 
     event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
     event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
     event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
 
-    // receiver addresses to the number of shares they are entitled to as yield beneficiaries
+    // TODO: should rename this to streamId?
+    uint256 public nextTokenId = 1;
+
+    /// @dev receiver addresses to the number of shares they are entitled to as yield beneficiaries
     mapping(address => uint256) public receiverShares;
 
-    // receiver addresses to the total principal amount allocated, not claimable as yield
+    /// @dev receiver addresses to the total principal amount allocated, not claimable as yield
     mapping(address => uint256) public receiverTotalPrincipal;
 
-    // receiver addresses to the principal amount allocated from a specific address
-    mapping(address => mapping(address => uint256)) public receiverPrincipal;
+    // TODO: change name and update comment?
+    /// @dev receiver addresses to the principal amount allocated from a specific address
+    mapping(address => mapping(uint256 => uint256)) public receiverPrincipal;
 
-    constructor(IERC4626 _vault) {
+    mapping(uint256 => address) public tokenIdToReceiver;
+
+    constructor(IERC4626 _vault) ERC721("YieldStream", "YIELD") {
         _checkZeroAddress(address(_vault));
 
         token = address(_vault);
@@ -53,24 +62,58 @@ contract YieldStreaming is StreamingBase {
      * @param _receiver The address of the receiver.
      * @param _shares The number of shares to allocate for the yield stream.
      * @param _maxLossOnOpenTolerancePercent Maximum tolerated loss percentage for opening the stream.
-     * @return principal The amount of assets (tokens) allocated to the stream.
      */
     function openYieldStream(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
         public
-        returns (uint256 principal)
+        returns (uint256 tokenId)
     {
-        _checkZeroAddress(_receiver);
-        _checkOpenStreamToSelf(_receiver);
-        _checkBalance(msg.sender, _shares);
+        uint256 principal = previewOpenYieldStream(msg.sender, _receiver, _shares, _maxLossOnOpenTolerancePercent);
 
-        principal = _convertToAssets(_shares);
+        tokenId = nextTokenId++;
 
-        _checkImmediateLossOnOpen(_receiver, msg.sender, principal, _maxLossOnOpenTolerancePercent);
+        _mint(msg.sender, tokenId);
+        tokenIdToReceiver[tokenId] = _receiver;
 
         receiverShares[_receiver] += _shares;
         receiverTotalPrincipal[_receiver] += principal;
-        receiverPrincipal[_receiver][msg.sender] += principal;
+        receiverPrincipal[_receiver][tokenId] += principal;
 
+        // TODO: should add tokenId to event
+        emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
+
+        IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
+    }
+
+    // TODO: add comments
+    function previewOpenYieldStream(
+        address _streamer,
+        address _receiver,
+        uint256 _shares,
+        uint256 _maxLossOnOpenTolerancePercent
+    ) public view returns (uint256 principal) {
+        _checkZeroAddress(_receiver);
+        _checkOpenStreamToSelf(_receiver);
+        _checkBalance(_streamer, _shares);
+
+        principal = _convertToAssets(_shares);
+
+        _checkImmediateLossOnOpen(_receiver, principal, _maxLossOnOpenTolerancePercent);
+    }
+
+    // TODO: add comments
+    function topUpYieldStream(uint256 _shares, uint256 _tokenId) public returns (uint256 principal) {
+        _checkBalance(msg.sender, _shares);
+        _checkIsOwner(_tokenId);
+
+        address _receiver = tokenIdToReceiver[_tokenId];
+
+        principal = _convertToAssets(_shares);
+
+        receiverShares[_receiver] += _shares;
+        receiverTotalPrincipal[_receiver] += principal;
+        receiverPrincipal[_receiver][_tokenId] += principal;
+
+        // TODO: change event
         emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
@@ -88,7 +131,6 @@ contract YieldStreaming is StreamingBase {
      * @param v The recovery byte of the permit signature.
      * @param r The first 32 bytes of the permit signature.
      * @param s The second 32 bytes of the permit signature.
-     * @return principal The amount of assets (tokens) allocated to the stream.
      */
     function openYieldStreamUsingPermit(
         address _receiver,
@@ -98,50 +140,53 @@ contract YieldStreaming is StreamingBase {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public returns (uint256 principal) {
+    ) public returns (uint256 tokenId) {
         IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
-        principal = openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
+        tokenId = openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
     }
 
     /**
      * @dev Closes a yield stream for a specific receiver, recovering remaining shares allocated to them.
      * This action does not automatically claim any generated yield; it must be claimed by the receiver separately via `claimYield` or `claimYieldInShares`.
-     * @param _receiver The address of the receiver.
      * @return shares The number of shares recovered by closing the stream.
      */
-    function closeYieldStream(address _receiver) public returns (uint256 shares) {
+    function closeYieldStream(uint256 _tokenId) public returns (uint256 shares) {
+        _checkIsOwner(_tokenId);
+
+        address receiver = tokenIdToReceiver[_tokenId];
+
         uint256 principal;
-        (shares, principal) = _previewCloseYieldStream(_receiver, msg.sender);
+        (shares, principal) = _previewCloseYieldStream(receiver, _tokenId);
 
-        if (principal == 0) revert StreamDoesNotExist();
+        _burn(_tokenId);
 
-        // update state and transfer
-        receiverPrincipal[_receiver][msg.sender] = 0;
-        receiverTotalPrincipal[_receiver] -= principal;
-        receiverShares[_receiver] -= shares;
+        // update state and transfer shares
+        delete tokenIdToReceiver[_tokenId];
+        delete receiverPrincipal[receiver][_tokenId];
+        receiverTotalPrincipal[receiver] -= principal;
+        receiverShares[receiver] -= shares;
 
-        emit CloseYieldStream(msg.sender, _receiver, shares, principal);
+        // TODO: should add tokenId to event
+        emit CloseYieldStream(msg.sender, receiver, shares, principal);
 
         IERC20(token).safeTransfer(msg.sender, shares);
     }
 
     /**
      * @dev Provides a preview of the amount of shares that would be recovered by closing a yield stream for a specific receiver.
-     * @param _receiver The address of the receiver.
-     * @param _streamer The address of the streamer attempting to close the yield stream.
      * @return shares The number of shares that would be recovered by closing the stream.
      */
-    function previewCloseYieldStream(address _receiver, address _streamer) public view returns (uint256 shares) {
-        (shares,) = _previewCloseYieldStream(_receiver, _streamer);
+    function previewCloseYieldStream(uint256 _tokenId) public view returns (uint256 shares) {
+        (shares,) = _previewCloseYieldStream(tokenIdToReceiver[_tokenId], _tokenId);
     }
 
-    function _previewCloseYieldStream(address _receiver, address _streamer)
+    function _previewCloseYieldStream(address _receiver, uint256 _tokenId)
         internal
         view
         returns (uint256 shares, uint256 principal)
     {
-        principal = receiverPrincipal[_receiver][_streamer];
+        principal = receiverPrincipal[_receiver][_tokenId];
 
         if (principal == 0) return (0, 0);
 
@@ -234,15 +279,13 @@ contract YieldStreaming is StreamingBase {
         return currentValue < principal ? principal - currentValue : 0;
     }
 
-    function _checkImmediateLossOnOpen(
-        address _receiver,
-        address _streamer,
-        uint256 _principal,
-        uint256 _lossTolerancePercent
-    ) internal view {
+    function _checkImmediateLossOnOpen(address _receiver, uint256 _principal, uint256 _lossTolerancePercent)
+        internal
+        view
+    {
         // check wheather the streamer already has an existing stream/s open for receiver
         // if it does then we are considering this as a top up to an existing stream and ignore if there is a loss
-        if (receiverPrincipal[_receiver][_streamer] != 0) return;
+        // if (receiverPrincipal[_receiver][_tokenId] != 0) return;
 
         // when opening a new stream from sender, check if the receiver is in debt
         uint256 debt = debtFor(_receiver);
@@ -255,6 +298,10 @@ contract YieldStreaming is StreamingBase {
         uint256 lossOnOpen = debt.mulDivUp(_principal, receiverTotalPrincipal[_receiver] + _principal);
 
         if (lossOnOpen > _principal.mulWadUp(_lossTolerancePercent)) revert LossToleranceExceeded();
+    }
+
+    function _checkIsOwner(uint256 _tokenId) internal view {
+        if (ownerOf(_tokenId) != msg.sender) revert CallerNotOwner();
     }
 
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {
