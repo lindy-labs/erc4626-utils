@@ -19,10 +19,17 @@ import "../src/common/Errors.sol";
 contract YieldStreamingTests is Test {
     using FixedPointMathLib for uint256;
 
-    event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
+    event OpenYieldStream(
+        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    );
+    event TopUpYieldStream(
+        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    );
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
     event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
-    event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
+    event CloseYieldStream(
+        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    );
     event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
 
     YieldStreaming public yieldStreaming;
@@ -115,10 +122,12 @@ contract YieldStreamingTests is Test {
         uint256 shares = _depositToVault(alice, amount);
         _approveStreamHub(alice, shares);
 
+        uint256 tokenId = yieldStreaming.nextTokenId();
+
         vm.startPrank(alice);
 
         vm.expectEmit(true, true, true, true);
-        emit OpenYieldStream(alice, bob, shares, amount);
+        emit OpenYieldStream(tokenId, alice, bob, shares, amount);
 
         yieldStreaming.openYieldStream(bob, shares, 0);
     }
@@ -313,6 +322,20 @@ contract YieldStreamingTests is Test {
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares bob");
         assertEq(yieldStreaming.receiverTotalPrincipal(bob), amount, "principal bob");
         assertEq(yieldStreaming.receiverPrincipal(bob, tokenId), amount, "receiver principal  bob");
+    }
+
+    function test_topUpYieldStream_emitsEvent() public {
+        uint256 amount = 1e18;
+        uint256 shares = _depositToVault(alice, amount);
+        _approveStreamHub(alice, shares);
+
+        vm.startPrank(alice);
+        uint256 tokenId = yieldStreaming.openYieldStream(bob, shares / 2, 0);
+
+        vm.expectEmit(true, true, true, true);
+        emit TopUpYieldStream(tokenId, alice, bob, shares / 2, amount / 2);
+
+        yieldStreaming.topUpYieldStream(shares / 2, tokenId);
     }
 
     function test_topUpYieldStream_doesntAffectYieldAccrued() public {
@@ -794,7 +817,7 @@ contract YieldStreamingTests is Test {
         _approveStreamHub(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.openYieldStream(bob, shares, 0);
+        uint256 tokenId = yieldStreaming.openYieldStream(bob, shares, 0);
 
         // add 100% profit to vault
         _createProfitForVault(1e18);
@@ -803,7 +826,7 @@ contract YieldStreamingTests is Test {
         uint256 unlockedShares = shares - vault.convertToShares(yield);
 
         vm.expectEmit(true, true, true, true);
-        emit CloseYieldStream(alice, bob, unlockedShares, principal);
+        emit CloseYieldStream(tokenId, alice, bob, unlockedShares, principal);
 
         yieldStreaming.closeYieldStream(1);
     }

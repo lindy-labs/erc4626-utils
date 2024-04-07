@@ -14,7 +14,7 @@ import {StreamingBase} from "./common/StreamingBase.sol";
 // TODO: update docs
 /**
  * @title YieldStreaming
- * @dev Manages yield streams between senders and receivers using ERC4626 tokens.
+ * @dev Manages yield streams between senders and receivers using the underlying ERC4626 tokens.
  * This contract enables users to create, top-up, and close yield streams,
  * facilitating the flow of yield from appreciating assets to designated beneficiaries.
  * It assumes ERC4626 tokens (vault tokens) appreciate over time, generating yield for their holders.
@@ -28,10 +28,17 @@ contract YieldStreaming is StreamingBase, ERC721 {
     error LossToleranceExceeded();
     error CallerNotOwner();
 
-    event OpenYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
+    event OpenYieldStream(
+        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    );
+    event TopUpYieldStream(
+        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    );
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
     event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
-    event CloseYieldStream(address indexed streamer, address indexed receiver, uint256 shares, uint256 principal);
+    event CloseYieldStream(
+        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    );
 
     // TODO: should rename this to streamId?
     uint256 public nextTokenId = 1;
@@ -48,7 +55,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
 
     mapping(uint256 => address) public tokenIdToReceiver;
 
-    constructor(IERC4626 _vault) ERC721("YieldStream", "YIELD") {
+    constructor(IERC4626 _vault) ERC721("YieldStreaming", "YST") {
         _checkZeroAddress(address(_vault));
 
         token = address(_vault);
@@ -79,7 +86,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         receiverPrincipal[_receiver][tokenId] += principal;
 
         // TODO: should add tokenId to event
-        emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
+        emit OpenYieldStream(tokenId, msg.sender, _receiver, _shares, principal);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
     }
@@ -114,7 +121,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         receiverPrincipal[_receiver][_tokenId] += principal;
 
         // TODO: change event
-        emit OpenYieldStream(msg.sender, _receiver, _shares, principal);
+        emit TopUpYieldStream(_tokenId, msg.sender, _receiver, _shares, principal);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
     }
@@ -167,8 +174,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         receiverTotalPrincipal[receiver] -= principal;
         receiverShares[receiver] -= shares;
 
-        // TODO: should add tokenId to event
-        emit CloseYieldStream(msg.sender, receiver, shares, principal);
+        emit CloseYieldStream(_tokenId, msg.sender, receiver, shares, principal);
 
         IERC20(token).safeTransfer(msg.sender, shares);
     }
