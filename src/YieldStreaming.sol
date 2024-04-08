@@ -8,7 +8,6 @@ import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
-import {StreamDoesNotExist} from "./common/Errors.sol";
 import {StreamingBase} from "./common/StreamingBase.sol";
 
 // TODO: update docs
@@ -40,7 +39,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
 
-    // TODO: should rename this to streamId?
+    /// @dev identifier for the next token to be minted
     uint256 public nextTokenId = 1;
 
     /// @dev receiver addresses to the number of shares they are entitled to as yield beneficiaries
@@ -49,13 +48,15 @@ contract YieldStreaming is StreamingBase, ERC721 {
     /// @dev receiver addresses to the total principal amount allocated, not claimable as yield
     mapping(address => uint256) public receiverTotalPrincipal;
 
-    // TODO: change name and update comment?
-    /// @dev receiver addresses to the principal amount allocated from a specific address
+    /// @dev receiver addresses to the principal amount allocated from a specific stream
     mapping(address => mapping(uint256 => uint256)) public receiverPrincipal;
 
+    /// @dev token id to receiver
     mapping(uint256 => address) public tokenIdToReceiver;
 
-    constructor(IERC4626 _vault) ERC721("YieldStreaming", "YST") {
+    constructor(IERC4626 _vault)
+        ERC721(string.concat("Yield Streaming - ", _vault.name()), string.concat("YST-", _vault.symbol()))
+    {
         _checkZeroAddress(address(_vault));
 
         token = address(_vault);
@@ -85,7 +86,6 @@ contract YieldStreaming is StreamingBase, ERC721 {
         receiverTotalPrincipal[_receiver] += principal;
         receiverPrincipal[_receiver][tokenId] += principal;
 
-        // TODO: should add tokenId to event
         emit OpenYieldStream(tokenId, msg.sender, _receiver, _shares, principal);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
@@ -120,7 +120,6 @@ contract YieldStreaming is StreamingBase, ERC721 {
         receiverTotalPrincipal[_receiver] += principal;
         receiverPrincipal[_receiver][_tokenId] += principal;
 
-        // TODO: change event
         emit TopUpYieldStream(_tokenId, msg.sender, _receiver, _shares, principal);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
@@ -192,7 +191,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         view
         returns (uint256 shares, uint256 principal)
     {
-        principal = receiverPrincipal[_receiver][_tokenId];
+        principal = _getPrincipal(_receiver, _tokenId);
 
         if (principal == 0) return (0, 0);
 
@@ -285,22 +284,34 @@ contract YieldStreaming is StreamingBase, ERC721 {
         return currentValue < principal ? principal - currentValue : 0;
     }
 
+    /**
+     * @dev Retrieves the principal amount allocated to a specific stream.
+     * @param _tokenId The token ID of the stream.
+     * @return principal The principal amount allocated to the stream, in asset units.
+     */
+    function getPrincipal(uint256 _tokenId) public view returns (uint256) {
+        address receiver = tokenIdToReceiver[_tokenId];
+
+        return _getPrincipal(receiver, _tokenId);
+    }
+
+    function _getPrincipal(address _receiver, uint256 _tokenId) internal view returns (uint256) {
+        return receiverPrincipal[_receiver][_tokenId];
+    }
+
     function _checkImmediateLossOnOpen(address _receiver, uint256 _principal, uint256 _lossTolerancePercent)
         internal
         view
     {
-        // check wheather the streamer already has an existing stream/s open for receiver
-        // if it does then we are considering this as a top up to an existing stream and ignore if there is a loss
-        // if (receiverPrincipal[_receiver][_tokenId] != 0) return;
-
         // when opening a new stream from sender, check if the receiver is in debt
         uint256 debt = debtFor(_receiver);
 
         if (debt == 0) return;
 
-        // if the receiver is in debt, check if the sender is willing to take the immediate loss when opening a new stream
-        // the immediate loss is calculated as the percentage of the debt that the sender is taking as his share of the total principal allocated to the receiver
-        // acceptable loss is defined by the loss tolerance percentage configured for the contract
+        // if the receiver is in debt, check if the sender is willing to take the immediate loss when opening a new stream.
+        // the immediate loss is calculated as the percentage of the debt that the sender is taking as his share of the total principal allocated to the receiver.
+        // acceptable loss is defined by the loss tolerance percentage param passed to the open function.
+        // this loss occurs due to inability of the accounting logic to differentiate between pricipal amounts allocated from different streams to same receiver.
         uint256 lossOnOpen = debt.mulDivUp(_principal, receiverTotalPrincipal[_receiver] + _principal);
 
         if (lossOnOpen > _principal.mulWadUp(_lossTolerancePercent)) revert LossToleranceExceeded();

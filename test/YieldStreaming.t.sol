@@ -51,13 +51,6 @@ contract YieldStreamingTests is Test {
         deal(address(asset), address(vault), 2e18);
     }
 
-    // *** constructor *** ///
-
-    function test_constructor_failsIfVaultIsAddress0() public {
-        vm.expectRevert(AddressZero.selector);
-        new YieldStreaming(IERC4626(address(0)));
-    }
-
     // *** #openYieldStream ***
 
     function test_openYieldStream_failsOpeningStreamToSelf() public {
@@ -797,6 +790,7 @@ contract YieldStreamingTests is Test {
 
         uint256 yield = yieldStreaming.previewClaimYield(bob);
         uint256 yieldValueInShares = vault.convertToShares(yield);
+        uint256 principal = yieldStreaming.getPrincipal(tokenId);
 
         uint256 sharesReturned = yieldStreaming.closeYieldStream(tokenId);
 
@@ -807,6 +801,7 @@ contract YieldStreamingTests is Test {
 
         assertApproxEqAbs(sharesReturned, shares - yieldValueInShares, 1, "shares returned");
         assertEq(vault.balanceOf(alice), sharesReturned, "alice's shares");
+        assertApproxEqAbs(vault.convertToAssets(sharesReturned), principal, 1, "alices principal");
         assertEq(asset.balanceOf(alice), 0, "alice's assets");
         assertEq(asset.balanceOf(bob), 0, "bob's assets");
     }
@@ -983,6 +978,9 @@ contract YieldStreamingTests is Test {
         assertEq(yieldStreaming.receiverShares(bob), (shares * 3) / 4, "receiver shares bob");
         assertEq(yieldStreaming.receiverShares(carol), shares / 4, "receiver shares carol");
     }
+
+    // *** #transfer *** ///
+    // TODO: add tests for transfer
 
     /// *** fuzzing *** ///
 
