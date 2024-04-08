@@ -71,7 +71,8 @@ contract YieldStreaming is StreamingBase, ERC721 {
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of shares to allocate to the new yield stream. Shares represent a portion of the underlying ERC4626 vault tokens.
      * @param _maxLossOnOpenTolerancePercent The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream. This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
-     * @return tokenId The unique identifier for the newly opened yield stream, represented by an ERC721 token. This ID can be used for managing the stream or querying its properties.
+     * @return tokenId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
+     * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
     function openYieldStream(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
         public
@@ -151,12 +152,13 @@ contract YieldStreaming is StreamingBase, ERC721 {
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of ERC4626 vault shares to allocate to the new yield stream. These shares are transferred from the streamer to the contract as part of the stream setup.
-     * @param _maxLossOnOpenTolerancePercent The maximum loss percentage that the streamer is willing to tolerate upon opening the yield stream. This parameter is important for managing risk associated with the receiver being in debt.
+     * @param _maxLossOnOpenTolerancePercent The maximum loss percentage that the streamer is willing to tolerate upon opening the yield stream.
      * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
-     * @return tokenId The unique identifier for the newly opened yield stream, represented by an ERC721 token. This token encapsulates the stream's details and ownership, enabling further interactions and management.
+     * @return tokenId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
+     * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
     function openYieldStreamUsingPermit(
         address _receiver,
@@ -173,9 +175,15 @@ contract YieldStreaming is StreamingBase, ERC721 {
     }
 
     /**
-     * @dev Closes a yield stream for a specific receiver, recovering remaining shares allocated to them.
-     * This action does not automatically claim any generated yield; it must be claimed by the receiver separately via `claimYield` or `claimYieldInShares`.
-     * @return shares The number of shares recovered by closing the stream.
+     * @notice Closes an existing yield stream identified by the ERC721 token, returning the remaining shares to the streamer. Any outstanding yield is not automatically claimed.
+     * @dev This function allows the streamer to terminate an existing yield stream.
+     * Upon closure, the function calculates and returns the remaining shares to the streamer,
+     * after which the ERC721 token representing the yield stream is burned to ensure it cannot be reused or transferred.
+     * This action effectively removes the stream from the contract's tracking, settling any allocated principal and shares back to the streamer.
+     *
+     * @param _tokenId The unique identifier of the yield stream to be closed, represented by an ERC721 token. This token must be owned by the caller.
+     * @return shares The number of shares returned to the streamer upon closing the yield stream.
+     * This represents the balance of shares not attributed to generated yield, effectively the remaining principal.
      */
     function closeYieldStream(uint256 _tokenId) public returns (uint256 shares) {
         _checkIsOwner(_tokenId);
@@ -199,8 +207,11 @@ contract YieldStreaming is StreamingBase, ERC721 {
     }
 
     /**
-     * @dev Provides a preview of the amount of shares that would be recovered by closing a yield stream for a specific receiver.
-     * @return shares The number of shares that would be recovered by closing the stream.
+     * @notice Provides a preview of the shares that would be returned upon closing a yield stream identified by an ERC721 token.
+     * @dev This function calculates and returns the number of shares that would be credited back to the streamer upon closing the stream.
+     *
+     * @param _tokenId The unique identifier associated with an active yield stream.
+     * @return shares The estimated number of shares that would be returned to the streamer representing the principal in share terms.
      */
     function previewCloseYieldStream(uint256 _tokenId) public view returns (uint256 shares) {
         (shares,) = _previewCloseYieldStream(tokenIdToReceiver[_tokenId], _tokenId);
@@ -227,10 +238,14 @@ contract YieldStreaming is StreamingBase, ERC721 {
     }
 
     /**
-     * @dev Claims the yield generated from all streams for the caller and transfers it to the specified address.
-     * The yield is the difference between the current value of shares and the principal.
-     * @param _sendTo The address to receive the claimed yield.
-     * @return assets The total amount of assets (tokens) claimed as yield.
+     * @notice Claims the generated yield from all streams for the caller and transfers it to a specified address.
+     * @dev This function calculates the total yield generated for the caller across all yield streams where they are the designated receiver.
+     * This function redeems the shares representing the generated yield, converting them into the underlying asset and transferring the resultant assets to a specified address.
+     * Note that this function operates on all yield streams associated with the caller, aggregating the total yield available.
+     * Reverts if the total yield is zero or the receiver is currently in debt (i.e., the value of their allocated shares is less than the principal).
+     *
+     * @param _sendTo The address where the claimed yield should be sent. This can be the caller's address or another specified recipient.
+     * @return assets The total amount of assets claimed as yield realized from all streams.
      */
     function claimYield(address _sendTo) external returns (uint256 assets) {
         _checkZeroAddress(_sendTo);
@@ -247,9 +262,12 @@ contract YieldStreaming is StreamingBase, ERC721 {
     }
 
     /**
-     * @dev Calculates the yield available to be claimed by a given receiver, expressed in the vault's asset units.
-     * @param _receiver The address of the receiver for whom to calculate the yield.
-     * @return yield The calculated yield available for claim, in assets. Returns 0 if no yield or negative yield (receiver is in debt).
+     * @notice Provides an estimation of the yield available to be claimed by the specified receiver.
+     * @dev Calculates the total yield that can be claimed by the receiver across all their yield streams.
+     * The yield is determined by the difference between the current value of the shares allocated to the receiver and their total principal.
+     *
+     * @param _receiver The address of the receiver for whom the yield preview is being requested.
+     * @return yield The estimated amount of yield available to be claimed by the receiver, expressed in the underlying asset units.
      */
     function previewClaimYield(address _receiver) public view returns (uint256 yield) {
         uint256 principal = receiverTotalPrincipal[_receiver];
@@ -260,9 +278,16 @@ contract YieldStreaming is StreamingBase, ERC721 {
     }
 
     /**
-     * @dev Claims the yield generated from all streams for the caller and transfers it as shares to the specified address.
-     * @param _sendTo The address to receive the claimed yield in shares.
-     * @return shares The total number of shares claimed as yield.
+     * @notice Claims the generated yield from all streams for the caller and transfers it in shares to a specified address.
+     * @dev This function enables receivers to claim the yield generated across all their yield streams in the form of shares, rather than the underlying asset.
+     * It calculates the total yield in shares that the caller can claim, then transfers those shares to the specified address.
+     * The operation is based on the difference between the current share value allocated to the receiver and the total principal in share terms.
+     *
+     * Unlike `claimYield`, which redeems shares for the underlying asset and transfers the assets, `claimYieldInShares` directly transfers the shares,
+     * keeping the yield within the same asset class. This might be preferable for receivers looking to maintain their position in the underlying vault.
+     *
+     * @param _sendTo The address where the claimed yield shares should be sent. This can be the caller's address or another specified recipient.
+     * @return shares The total number of shares claimed as yield and transferred to the `_sendTo` address.
      */
     function claimYieldInShares(address _sendTo) external returns (uint256 shares) {
         _checkZeroAddress(_sendTo);
@@ -279,9 +304,12 @@ contract YieldStreaming is StreamingBase, ERC721 {
     }
 
     /**
-     * @dev Calculates the yield for a given receiver as claimable shares.
-     * @param _receiver The address of the receiver for whom to calculate the yield in shares.
-     * @return yieldInShares The calculated yield available for claim, in shares. Returns 0 if no yield or negative yield (receiver is in debt).
+     * @notice Provides an estimation of the yield available to be claimed by the specified receiver in share terms.
+     * @dev Calculates the total yield that can be claimed by the receiver across all their yield streams.
+     * The yield is determined by the difference between the current value of the shares allocated to the receiver and their total principal in share terms.
+     *
+     * @param _receiver The address of the receiver for whom the yield preview is being requested.
+     * @return yieldInShares The estimated amount of yield available to be claimed by the receiver, expressed in shares.
      */
     function previewClaimYieldInShares(address _receiver) public view returns (uint256 yieldInShares) {
         uint256 principalInShares = _convertToShares(receiverTotalPrincipal[_receiver]);
@@ -292,10 +320,14 @@ contract YieldStreaming is StreamingBase, ERC721 {
     }
 
     /**
-     * @dev Calculates the total debt for a given receiver, where debt is defined as the negative yield across all streams.
-     * A receiver is in debt if the total value of their streams is less than the principal allocated to them.
-     * @param _receiver The address of the receiver for whom to calculate the debt.
-     * @return The total calculated debt, in asset units. Returns 0 if there is no debt or if the yield is not negative.
+     * @notice Calculates the total debt for a given receiver across all yield streams.
+     * @dev  The debt is calculated by comparing the current total asset value of the receiver's shares against the total principal.
+     * If the asset value exceeds the principal, indicating a positive yield, the function returns zero, as there is no debt.
+     * Conversely, if the principal exceeds the asset value, the function returns the difference, quantifying the receiver's debt.
+     *
+     * @param _receiver The address of the receiver for whom the debt is being calculated.
+     * @return debt The total calculated debt for the receiver, expressed in the underlying asset units.
+     * If the receiver has no debt or a positive yield, the function returns zero.
      */
     function debtFor(address _receiver) public view returns (uint256) {
         uint256 principal = receiverTotalPrincipal[_receiver];
@@ -308,6 +340,12 @@ contract YieldStreaming is StreamingBase, ERC721 {
      * @dev Retrieves the principal amount allocated to a specific stream.
      * @param _tokenId The token ID of the stream.
      * @return principal The principal amount allocated to the stream, in asset units.
+     */
+    /**
+     * @notice Retrieves the principal amount allocated to a specific yield stream, identified by the ERC721 token ID.
+     *
+     * @param _tokenId The unique identifier of the yield stream for which the principal is being queried, represented by an ERC721 token.
+     * @return principal The principal amount in asset units initially allocated to the yield stream identified by the given token ID.
      */
     function getPrincipal(uint256 _tokenId) public view returns (uint256) {
         address receiver = tokenIdToReceiver[_tokenId];
