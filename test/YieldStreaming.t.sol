@@ -960,6 +960,10 @@ contract YieldStreamingTests is Test {
         assertEq(yieldStreaming.receiverTotalPrincipal(carol), bobsDeposit, "carol's total principal");
     }
 
+    function test_previewCloseYieldStream_returns0IfTokenDoesntExist() public {
+        assertEq(yieldStreaming.previewCloseYieldStream(1), 0);
+    }
+
     // *** #multicall *** ///
 
     function test_multicall_OpenMultipleYieldStreams() public {
