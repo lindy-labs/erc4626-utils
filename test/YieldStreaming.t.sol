@@ -63,15 +63,6 @@ contract YieldStreamingTests is Test {
         yieldStreaming.openYieldStream(alice, shares, 0);
     }
 
-    function test_openYieldStream_failsIfTransferExceedsAllowance() public {
-        uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
-
-        vm.startPrank(alice);
-        vm.expectRevert(TransferExceedsAllowance.selector);
-        yieldStreaming.openYieldStream(bob, shares + 1, 0);
-    }
-
     function test_openYieldStream_failsFor0Shares() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _approveStreamHub(alice, shares);

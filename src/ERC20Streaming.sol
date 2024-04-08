@@ -71,7 +71,7 @@ contract ERC20Streaming is StreamingBase {
     function openStream(address _receiver, uint256 _amount, uint256 _duration) public {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
-        _checkBalance(msg.sender, _amount);
+        _checkZeroAmount(_amount);
         _checkZeroDuration(_duration);
 
         uint256 streamId = getStreamId(msg.sender, _receiver);
@@ -133,7 +133,7 @@ contract ERC20Streaming is StreamingBase {
      */
     function topUpStream(address _receiver, uint256 _additionalAmount, uint256 _additionalDuration) public {
         _checkZeroAddress(_receiver);
-        _checkBalance(msg.sender, _additionalAmount);
+        _checkZeroAmount(_additionalAmount);
 
         Stream storage stream = streamById[getStreamId(msg.sender, _receiver)];
 

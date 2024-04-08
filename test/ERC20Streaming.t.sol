@@ -144,16 +144,6 @@ contract ERC20StreamingTest is Test {
         streaming.openStream(bob, 0, 1 days);
     }
 
-    function test_openStream_failsIfAmountIsGreaterThanAllowance() public {
-        uint256 shares = _depositToVault(alice, 1e18);
-
-        vm.startPrank(alice);
-        vault.approve(address(streaming), shares);
-
-        vm.expectRevert(TransferExceedsAllowance.selector);
-        streaming.openStream(bob, shares + 1, 1 days);
-    }
-
     function test_openStream_failsIfDurationIsZero() public {
         uint256 shares = _depositToVault(alice, 1e18);
 
@@ -471,17 +461,6 @@ contract ERC20StreamingTest is Test {
 
         vm.expectRevert(AmountZero.selector);
         streaming.topUpStream(bob, 0, 1 days);
-    }
-
-    function test_topUpStream_failsIfAmountIsGreaterThanAllowance() public {
-        uint256 shares = _depositToVault(alice, 1e18);
-        _openStream(alice, bob, shares, 1 days);
-
-        vm.startPrank(alice);
-        vault.approve(address(streaming), shares);
-
-        vm.expectRevert(TransferExceedsAllowance.selector);
-        streaming.topUpStream(bob, shares + 1, 1 days);
     }
 
     function test_topUpStream_failsIfReceiverIsZeroAddress() public {

@@ -78,7 +78,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         public
         returns (uint256 tokenId)
     {
-        uint256 principal = previewOpenYieldStream(msg.sender, _receiver, _shares, _maxLossOnOpenTolerancePercent);
+        uint256 principal = previewOpenYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
 
         tokenId = nextTokenId++;
 
@@ -96,21 +96,19 @@ contract YieldStreaming is StreamingBase, ERC721 {
 
     /**
      * @notice Provides a preview of the principal amount for opening yield stream and reverts if the operation would fail.
-     * @param _streamer The address of the streamer.
      * @param _receiver The address of the receiver.
      * @param _shares The number of shares involved in the operation.
      * @param _maxLossOnOpenTolerancePercent The maximum loss percentage tolerated by the sender.
      * @return principal The principal amount in asset units that would be allocated for the shares.
      */
-    function previewOpenYieldStream(
-        address _streamer,
-        address _receiver,
-        uint256 _shares,
-        uint256 _maxLossOnOpenTolerancePercent
-    ) public view returns (uint256 principal) {
+    function previewOpenYieldStream(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
+        public
+        view
+        returns (uint256 principal)
+    {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
-        _checkBalance(_streamer, _shares);
+        _checkZeroAmount(_shares);
 
         principal = _convertToAssets(_shares);
 
@@ -128,7 +126,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
      * @return principal The added principal amount in asset units.
      */
     function topUpYieldStream(uint256 _shares, uint256 _tokenId) public returns (uint256 principal) {
-        _checkBalance(msg.sender, _shares);
+        _checkZeroAmount(_shares);
         _checkIsOwner(_tokenId);
 
         address _receiver = tokenIdToReceiver[_tokenId];
