@@ -980,7 +980,32 @@ contract YieldStreamingTests is Test {
     }
 
     // *** #transfer *** ///
-    // TODO: add tests for transfer
+
+    function test_transfer() public {
+        uint256 principal = 1e18;
+        uint256 shares = _depositToVault(alice, principal);
+        _approveStreamHub(alice, shares);
+
+        vm.startPrank(alice);
+        yieldStreaming.openYieldStream(bob, shares, 0);
+
+        _createProfitForVault(0.5e18);
+
+        yieldStreaming.transferFrom(alice, carol, 1);
+        vm.stopPrank();
+
+        assertEq(yieldStreaming.balanceOf(alice), 0, "alice's nfts");
+        assertEq(yieldStreaming.balanceOf(carol), 1, "carol's nfts");
+        assertEq(yieldStreaming.ownerOf(1), carol, "owner");
+        assertEq(yieldStreaming.previewClaimYield(bob), 1e18 / 2, "bob's yield");
+
+        vm.prank(carol);
+        yieldStreaming.closeYieldStream(1);
+
+        assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(carol)), principal, 1, "carol's assets");
+        assertEq(yieldStreaming.balanceOf(carol), 0, "carol's nfts");
+        assertApproxEqAbs(yieldStreaming.previewClaimYield(bob), 1e18 / 2, 1, "bob's yield");
+    }
 
     /// *** fuzzing *** ///
 
