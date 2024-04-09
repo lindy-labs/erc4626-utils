@@ -22,6 +22,7 @@ contract ERC20Streaming is StreamingBase {
     error StreamExpired();
     error RatePerSecondDecreased();
     error NoTokensToClaim();
+    error StreamDoesNotExist();
 
     event OpenStream(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
     event Claim(address indexed streamer, address indexed receiver, uint256 claimed);

@@ -177,7 +177,7 @@ contract ERC20StreamingTest is Test {
     // *** #claim *** ///
 
     function test_claim_failsIfStreamDoesNotExist() public {
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(bob);
         streaming.claim(alice, bob);
     }
@@ -295,7 +295,7 @@ contract ERC20StreamingTest is Test {
     // *** #closeStream *** ///
 
     function test_closeStream_failsIfStreamDoesNotExist() public {
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(bob);
         streaming.closeStream(bob);
     }
@@ -344,7 +344,7 @@ contract ERC20StreamingTest is Test {
         vm.prank(alice);
         streaming.closeStream(bob);
 
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(alice);
         streaming.closeStream(bob);
     }
@@ -480,7 +480,7 @@ contract ERC20StreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(streaming), shares);
 
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         streaming.topUpStream(bob, shares, 1 days);
     }
 
@@ -780,7 +780,7 @@ contract ERC20StreamingTest is Test {
         assertEq(stream.lastClaimTime, block.timestamp, "carol's stream - lastClaimTime");
 
         vm.startPrank(alice);
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         streaming.closeStream(bob);
 
         streaming.closeStream(carol);
@@ -830,7 +830,7 @@ contract ERC20StreamingTest is Test {
         assertEq(vault.balanceOf(carol), claimFromAlice + claimFromBob, "carol's balance after claims");
 
         vm.prank(alice);
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         streaming.closeStream(carol);
 
         vm.prank(bob);

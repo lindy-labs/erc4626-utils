@@ -10,8 +10,6 @@ error AddressZero();
 // *** streaming errors *** ///
 
 error CannotOpenStreamToSelf();
-// TODO: consider moving this error
-error StreamDoesNotExist();
 
 // *** factory errors *** ///
 
