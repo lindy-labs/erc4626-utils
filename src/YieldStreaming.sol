@@ -116,33 +116,6 @@ contract YieldStreaming is StreamingBase, ERC721 {
     }
 
     /**
-     * @notice Adds additional shares to an existing yield stream, increasing the principal allocated to the receiver.
-     * @dev This function allows a streamer to add more shares to a yield stream represented by a specific ERC721 token.
-     * The additional shares increase the principal amount allocated to the receiver, potentially altering the yield generation rate of the stream.
-     * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
-     *
-     * @param _shares The number of additional shares to be added to the yield stream.
-     * @param _tokenId The unique identifier of the yield stream (ERC721 token) to be topped up.
-     * @return principal The added principal amount in asset units.
-     */
-    function topUpYieldStream(uint256 _shares, uint256 _tokenId) public returns (uint256 principal) {
-        _checkZeroAmount(_shares);
-        _checkIsOwner(_tokenId);
-
-        address _receiver = tokenIdToReceiver[_tokenId];
-
-        principal = _convertToAssets(_shares);
-
-        receiverShares[_receiver] += _shares;
-        receiverTotalPrincipal[_receiver] += principal;
-        receiverPrincipal[_receiver][_tokenId] += principal;
-
-        emit TopUpYieldStream(_tokenId, msg.sender, _receiver, _shares, principal);
-
-        IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
-    }
-
-    /**
      * @notice Opens a new yield stream with ERC4626 vault shares for a specified receiver using ERC20 permit for token allowance.
      * @dev This function allows the opening of a new yield stream without requiring a separate transaction for token allowance, using the ERC20 permit function.
      * It enables a seamless user experience by allowing token approval and yield stream creation in a single transaction.
@@ -170,6 +143,60 @@ contract YieldStreaming is StreamingBase, ERC721 {
         IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         tokenId = openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
+    }
+
+    /**
+     * @notice Adds additional shares to an existing yield stream, increasing the principal allocated to the receiver.
+     * @dev This function allows a streamer to add more shares to a yield stream represented by a specific ERC721 token.
+     * The additional shares increase the principal amount allocated to the receiver, potentially altering the yield generation rate of the stream.
+     * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
+     *
+     * @param _shares The number of additional shares to be added to the yield stream.
+     * @param _tokenId The unique identifier of the yield stream (ERC721 token) to be topped up.
+     * @return principal The added principal amount in asset units.
+     */
+    function topUpYieldStream(uint256 _shares, uint256 _tokenId) public returns (uint256 principal) {
+        _checkZeroAmount(_shares);
+        _checkIsOwner(_tokenId);
+
+        address _receiver = tokenIdToReceiver[_tokenId];
+
+        principal = _convertToAssets(_shares);
+
+        receiverShares[_receiver] += _shares;
+        receiverTotalPrincipal[_receiver] += principal;
+        receiverPrincipal[_receiver][_tokenId] += principal;
+
+        emit TopUpYieldStream(_tokenId, msg.sender, _receiver, _shares, principal);
+
+        IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
+    }
+
+    /**
+     * @notice Adds additional shares to an existing yield stream, increasing the principal allocated to the receiver using ERC20 permit for token allowance.
+     * @dev This function allows the streamer to add more shares to an existing yield stream without requiring a separate transaction for token allowance.
+     * It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
+     * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
+     *
+     * @param _shares The number of additional shares to be added to the yield stream.
+     * @param _tokenId The unique identifier of the yield stream (ERC721 token) to be topped up.
+     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param v The recovery byte of the signature, a part of the permit approval process.
+     * @param r The first 32 bytes of the signature, another component of the permit.
+     * @param s The second 32 bytes of the signature, completing the permit approval requirements.
+     * @return principal The added principal amount in asset units.
+     */
+    function topUpYieldStreamUsingPermit(
+        uint256 _shares,
+        uint256 _tokenId,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public returns (uint256 principal) {
+        IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+
+        principal = topUpYieldStream(_shares, _tokenId);
     }
 
     /**

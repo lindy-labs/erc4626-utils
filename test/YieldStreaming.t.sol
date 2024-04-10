@@ -56,7 +56,7 @@ contract YieldStreamingTests is Test {
     function test_openYieldStream_failsOpeningStreamToSelf() public {
         uint256 amount = 10e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         vm.expectRevert(CannotOpenStreamToSelf.selector);
@@ -65,7 +65,7 @@ contract YieldStreamingTests is Test {
 
     function test_openYieldStream_failsFor0Shares() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         vm.expectRevert(AmountZero.selector);
@@ -74,7 +74,7 @@ contract YieldStreamingTests is Test {
 
     function test_openYieldStream_failsIfReceiverIsAddress0() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         vm.expectRevert(AddressZero.selector);
@@ -85,7 +85,7 @@ contract YieldStreamingTests is Test {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
         uint256 streamHubShares = vault.balanceOf(address(yieldStreaming));
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares, 0);
@@ -104,7 +104,7 @@ contract YieldStreamingTests is Test {
     function test_openYieldStream_emitsEvent() public {
         uint256 amount = 4e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         uint256 tokenId = yieldStreaming.nextTokenId();
 
@@ -119,7 +119,7 @@ contract YieldStreamingTests is Test {
     function test_openYieldStream_toTwoAccountsAtTheSameTime() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 firstId = yieldStreaming.openYieldStream(bob, shares / 2, 0);
@@ -143,7 +143,7 @@ contract YieldStreamingTests is Test {
     function test_openYieldStream_failsIfClaimerIsInDebtAndLossIsAboveLossTolerancePercent() public {
         uint256 alicesDeposit = 1e18;
         uint256 alicesShares = _depositToVault(alice, alicesDeposit);
-        _approveStreamHub(alice, alicesShares);
+        _approveYieldStreaming(alice, alicesShares);
 
         // alice opens a stream to carol
         vm.prank(alice);
@@ -155,7 +155,7 @@ contract YieldStreamingTests is Test {
 
         uint256 bobsDeposit = 2e18;
         uint256 bobsShares = _depositToVault(bob, bobsDeposit);
-        _approveStreamHub(bob, bobsShares);
+        _approveYieldStreaming(bob, bobsShares);
 
         // debt for carol = 0.1e18
         // alice's principal = 1e18
@@ -174,7 +174,7 @@ contract YieldStreamingTests is Test {
     function test_openYieldStream_worksIfClaimerIsInDebtAndLossIsBelowLossTolerancePercent() public {
         uint256 alicesDeposit = 1e18;
         uint256 alicesShares = _depositToVault(alice, alicesDeposit);
-        _approveStreamHub(alice, alicesShares);
+        _approveYieldStreaming(alice, alicesShares);
 
         // alice opens a stream to carol
         vm.prank(alice);
@@ -186,7 +186,7 @@ contract YieldStreamingTests is Test {
 
         uint256 bobsPrincipal = 2e18;
         uint256 bobsShares = _depositToVault(bob, bobsPrincipal);
-        _approveStreamHub(bob, bobsShares);
+        _approveYieldStreaming(bob, bobsShares);
 
         // debt for carol = 0.1e18
         // alice's principal = 1e18
@@ -252,7 +252,7 @@ contract YieldStreamingTests is Test {
 
     function test_topUpYieldStream_failsIfAmountIs0() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares, 0);
@@ -263,7 +263,7 @@ contract YieldStreamingTests is Test {
 
     function test_topUpYieldStream_failsIfStreamDoesntExist() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         uint256 invalidTokenId = 2;
 
@@ -275,13 +275,13 @@ contract YieldStreamingTests is Test {
 
     function test_topUpYieldStream_failsIfCallerIsNotOwner() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares, 0);
 
         shares = _depositToVault(bob, 1e18);
-        _approveStreamHub(bob, shares);
+        _approveYieldStreaming(bob, shares);
 
         vm.startPrank(bob);
         vm.expectRevert(YieldStreaming.CallerNotOwner.selector);
@@ -291,7 +291,7 @@ contract YieldStreamingTests is Test {
     function test_topUpYieldStream_addsToExistingStream() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares / 2, 0);
@@ -311,7 +311,7 @@ contract YieldStreamingTests is Test {
     function test_topUpYieldStream_emitsEvent() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares / 2, 0);
@@ -324,7 +324,7 @@ contract YieldStreamingTests is Test {
 
     function test_topUpYieldStream_doesntAffectYieldAccrued() public {
         uint256 shares = _depositToVault(alice, 2e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares / 2, 0);
@@ -343,7 +343,7 @@ contract YieldStreamingTests is Test {
     function test_topUpYieldStream_affectsFutureYield() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares / 2, 0);
@@ -366,7 +366,7 @@ contract YieldStreamingTests is Test {
     function test_topUpYieldStream_worksWhenClaimerIsInDebtAndLossIsAboveLossTolerancePercent() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares / 2, 0);
@@ -382,11 +382,50 @@ contract YieldStreamingTests is Test {
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
     }
 
+    function test_topUpYieldStreamUsingPermit() public {
+        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
+        address dave = vm.addr(davesPrivateKey);
+
+        uint256 amount = 1 ether;
+        uint256 shares = _depositToVault(dave, amount);
+
+        _approveYieldStreaming(dave, shares / 2);
+
+        vm.prank(dave);
+        uint256 tokenId = yieldStreaming.openYieldStream(bob, shares / 2, 0);
+
+        uint256 nonce = vault.nonces(dave);
+        uint256 deadline = block.timestamp + 1 days;
+
+        bytes32 PERMIT_TYPEHASH =
+            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
+        // Sign the permit message
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            davesPrivateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    MockERC4626(address(vault)).DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(yieldStreaming), shares / 2, nonce, deadline))
+                )
+            )
+        );
+
+        // top up stream
+        vm.prank(dave);
+        yieldStreaming.topUpYieldStreamUsingPermit(shares / 2, tokenId, deadline, v, r, s);
+
+        assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
+        assertEq(yieldStreaming.receiverTotalPrincipal(bob), amount, "receiver total principal");
+        assertEq(yieldStreaming.receiverPrincipal(bob, tokenId), amount, "receiver principal");
+    }
+
     // *** #previewClaimYield *** ///
 
     function test_previewClaimYield_returns0IfNoYield() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -397,7 +436,7 @@ contract YieldStreamingTests is Test {
 
     function test_previewClaimYield_returns0IfVaultMadeLosses() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -412,7 +451,7 @@ contract YieldStreamingTests is Test {
     function test_previewClaimYield_returnsGeneratedYield() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -428,7 +467,7 @@ contract YieldStreamingTests is Test {
     function test_previewClaimYield_returnsGeneratedYieldIfStreamIsClosed() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         // depositor opens a stream to himself
@@ -452,7 +491,7 @@ contract YieldStreamingTests is Test {
     function test_previewClaimYield_returns0AfterClaimAndCloseStream() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         // depositor opens a stream to himself
@@ -490,7 +529,7 @@ contract YieldStreamingTests is Test {
     function test_claimYield_toClaimerAccount() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -508,7 +547,7 @@ contract YieldStreamingTests is Test {
     function test_claimYield_toAnotherAccount() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -525,7 +564,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYield_emitsEvent() public {
         uint256 shares = _depositToVault(alice, 3e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -545,7 +584,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYield_revertsToAddressIs0() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -560,7 +599,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYield_revertsIfNoYield() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -574,7 +613,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYield_revertsIfVaultMadeLosses() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -590,10 +629,10 @@ contract YieldStreamingTests is Test {
     function test_claimYield_claimsFromAllOpenedStreams() public {
         uint256 amount1 = 1e18;
         uint256 alicesShares = _depositToVault(alice, amount1);
-        _approveStreamHub(alice, alicesShares);
+        _approveYieldStreaming(alice, alicesShares);
         uint256 amount2 = 3e18;
         uint256 bobsShares = _depositToVault(bob, amount2);
-        _approveStreamHub(bob, bobsShares);
+        _approveYieldStreaming(bob, bobsShares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(carol, alicesShares, 0);
@@ -617,7 +656,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYieldInShares_toClaimerAccount() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -637,7 +676,7 @@ contract YieldStreamingTests is Test {
     function test_claimYieldInShares_toAnotherAccount() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -658,7 +697,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYieldInShares_emitsEvent() public {
         uint256 shares = _depositToVault(alice, 3e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -677,7 +716,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYieldInShares_revertsToAddressIs0() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -692,7 +731,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYieldInShares_revertsIfNoYield() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -706,7 +745,7 @@ contract YieldStreamingTests is Test {
 
     function test_claimYieldInShares_revertsIfVaultMadeLosses() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -722,10 +761,10 @@ contract YieldStreamingTests is Test {
     function test_claimYieldInShares_claimsFromAllOpenedStreams() public {
         uint256 amount1 = 1e18;
         uint256 alicesShares = _depositToVault(alice, amount1);
-        _approveStreamHub(alice, alicesShares);
+        _approveYieldStreaming(alice, alicesShares);
         uint256 amount2 = 3e18;
         uint256 bobsShares = _depositToVault(bob, amount2);
-        _approveStreamHub(bob, bobsShares);
+        _approveYieldStreaming(bob, bobsShares);
 
         vm.prank(alice);
         yieldStreaming.openYieldStream(carol, alicesShares, 0);
@@ -753,13 +792,13 @@ contract YieldStreamingTests is Test {
 
     function test_closeYieldStream_failsIfCallerIsNotOwner() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares, 0);
 
         shares = _depositToVault(bob, 1e18);
-        _approveStreamHub(bob, shares);
+        _approveYieldStreaming(bob, shares);
 
         vm.startPrank(bob);
 
@@ -769,7 +808,7 @@ contract YieldStreamingTests is Test {
 
     function test_closeYieldStream_burnsNftAndReturnsPrincipal() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares, 0);
@@ -800,7 +839,7 @@ contract YieldStreamingTests is Test {
     function test_closeYieldStream_emitsEvent() public {
         uint256 principal = 2e18;
         uint256 shares = _depositToVault(alice, principal);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares, 0);
@@ -819,7 +858,7 @@ contract YieldStreamingTests is Test {
 
     function test_closeYieldStream_continuesGeneratingYieldForReceiverUntilClaimed() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -857,7 +896,7 @@ contract YieldStreamingTests is Test {
     function test_closeYieldStream_worksIfVaultMadeLosses() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -876,7 +915,7 @@ contract YieldStreamingTests is Test {
 
     function test_closeYieldStream_failsIfStreamIsAlreadyClosed() public {
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares, 0);
@@ -892,7 +931,7 @@ contract YieldStreamingTests is Test {
     function test_closeYieldStream_doesntAffectOtherStreamsFromTheSameStreamer() public {
         uint256 amount = 1e18;
         uint256 shares = _depositToVault(alice, 1e18);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares / 2, 0);
@@ -920,11 +959,11 @@ contract YieldStreamingTests is Test {
     function test_closeYieldStream_doesntAffectOtherStreamFromTheAnotherStreamer() public {
         uint256 alicesDeposit = 1e18;
         uint256 alicesShares = _depositToVault(alice, alicesDeposit);
-        _approveStreamHub(alice, alicesShares);
+        _approveYieldStreaming(alice, alicesShares);
 
         uint256 bobsDeposit = 2e18;
         uint256 bobsShares = _depositToVault(bob, bobsDeposit);
-        _approveStreamHub(bob, bobsShares);
+        _approveYieldStreaming(bob, bobsShares);
 
         // alice opens a stream to carol
         vm.prank(alice);
@@ -979,7 +1018,7 @@ contract YieldStreamingTests is Test {
     function test_transfer() public {
         uint256 principal = 1e18;
         uint256 shares = _depositToVault(alice, principal);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
 
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
@@ -1007,7 +1046,7 @@ contract YieldStreamingTests is Test {
     function testFuzz_open_claim_close_stream(uint256 amount) public {
         amount = bound(amount, 10000, 1000 ether);
         uint256 shares = _depositToVault(alice, amount);
-        _approveStreamHub(alice, shares);
+        _approveYieldStreaming(alice, shares);
         vm.startPrank(alice);
 
         // open 10 streams
@@ -1059,17 +1098,17 @@ contract YieldStreamingTests is Test {
         vm.stopPrank();
     }
 
-    function _approveStreamHub(address _from, uint256 _shares) internal {
+    function _approveYieldStreaming(address _from, uint256 _shares) internal {
         vm.prank(_from);
         vault.approve(address(yieldStreaming), _shares);
     }
 
-    function _openYieldStream(address _from, address _to, uint256 _amount) internal {
+    function _openYieldStream(address _from, address _to, uint256 _amount) internal returns (uint256 tokenId) {
         uint256 shares = _depositToVault(_from, _amount);
-        _approveStreamHub(_from, shares);
+        _approveYieldStreaming(_from, shares);
 
         vm.prank(_from);
-        yieldStreaming.openYieldStream(_to, shares, 0);
+        return yieldStreaming.openYieldStream(_to, shares, 0);
     }
 
     function _createProfitForVault(int256 _profit) internal {
