@@ -43,8 +43,11 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     struct EpochInfo {
-        uint256 dcaPrice;
-        uint256 sharePrice;
+        // using uint128s to pack variables and save on sload since both values are always read together
+        // dcaPrice and sharePrice are in WAD and represet the result of dividing two uint256s
+        // using uint128s instead of uint256s can only lead to some insignificant precision loss in balances calculation
+        uint128 dcaPrice;
+        uint128 sharePrice;
     }
 
     error DcaTokenAddressZero();
@@ -155,7 +158,6 @@ contract YieldDCA is ERC721, AccessControl {
         dcaInterval = _interval;
     }
 
-    // TODO: support depositing wiht assets directly
     function deposit(uint256 _shares) external returns (uint256 tokenId) {
         _checkAmount(_shares);
         // TODO: require min deposit?
@@ -178,7 +180,6 @@ contract YieldDCA is ERC721, AccessControl {
         emit Deposit(msg.sender, tokenId, _shares, principal, currentEpoch_);
     }
 
-    // TODO: support depositing wiht assets directly
     function topUp(uint256 _shares, uint256 _tokenId) external {
         // TODO: require min deposit?
         _checkAmount(_shares);
@@ -232,7 +233,7 @@ contract YieldDCA is ERC721, AccessControl {
         uint256 sharePrice = yield.divWadDown(yieldInShares);
         uint256 currentEpoch_ = currentEpoch;
 
-        epochDetails[currentEpoch_] = EpochInfo({dcaPrice: dcaPrice, sharePrice: sharePrice});
+        epochDetails[currentEpoch_] = EpochInfo({dcaPrice: uint128(dcaPrice), sharePrice: uint128(sharePrice)});
 
         currentEpoch++;
         currentEpochTimestamp = block.timestamp;
@@ -256,7 +257,7 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     // if 0 is passed only dca is withdrawn
-    // NOTE: uses around 1073k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
+    // NOTE: uses around 610k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
     function withdraw(uint256 _shares, uint256 _tokenId)
         external
         returns (uint256 principalWithdrawn, uint256 dcaAmount)
@@ -328,7 +329,7 @@ contract YieldDCA is ERC721, AccessControl {
         return balance > totalPrincipalInShares ? balance - totalPrincipalInShares : 0;
     }
 
-    function _calculateBalances(DepositInfo memory _deposit, uint256 _epoch)
+    function _calculateBalances(DepositInfo memory _deposit, uint256 _latestEpoch)
         internal
         view
         returns (uint256 shares, uint256 dcaTokens)
@@ -337,23 +338,28 @@ contract YieldDCA is ERC721, AccessControl {
 
         shares = _deposit.shares;
         dcaTokens = _deposit.dcaAmountAtEpoch;
+        uint256 principal = _deposit.principal;
 
-        // NOTE: one iteration costs around 4900 gas when called from a non-view function compared to 1000 gas when called from a view function
-        for (uint256 i = _deposit.epoch; i < _epoch; i++) {
-            EpochInfo memory epochInfo = epochDetails[i];
+        // NOTE: one iteration costs around 2480 gas when called from a non-view function
+        for (uint256 i = _deposit.epoch; i < _latestEpoch;) {
+            EpochInfo memory info = epochDetails[i];
+            // save gas on sload
+            uint256 sharePrice = info.sharePrice;
 
             unchecked {
                 // use plain arithmetic instead of FixedPointMathLib to lower gas costs
                 // since we are only working with yield, it is not realistic to expect values large enough to overflow on multiplication
-                uint256 sharesValue = shares * epochInfo.sharePrice / 1e18;
+                uint256 sharesValue = shares * sharePrice / 1e18;
 
-                if (sharesValue <= _deposit.principal) continue;
+                if (sharesValue > principal) {
+                    // cannot underflow because of the check above
+                    uint256 usersYield = sharesValue - principal;
 
-                // cannot underflow because of the check above
-                uint256 usersYield = sharesValue - _deposit.principal;
+                    shares -= usersYield * 1e18 / sharePrice;
+                    dcaTokens += usersYield * info.dcaPrice / 1e18;
+                }
 
-                shares -= usersYield * 1e18 / epochInfo.sharePrice;
-                dcaTokens += usersYield * epochInfo.dcaPrice / 1e18;
+                i++;
             }
         }
     }
