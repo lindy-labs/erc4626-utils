@@ -911,6 +911,9 @@ contract YieldStreamingTests is Test {
         assertEq(asset.balanceOf(bob), 0, "bob's assets");
         assertEq(vault.balanceOf(alice), shares, "alice's shares");
         assertEq(asset.balanceOf(alice), 0, "alice's assets");
+        assertEq(yieldStreaming.receiverPrincipal(bob, 1), 0, "receiver principal");
+        assertEq(yieldStreaming.receiverShares(bob), 0, "receiver shares");
+        assertEq(yieldStreaming.receiverTotalPrincipal(bob), 0, "receiver total principal");
     }
 
     function test_closeYieldStream_failsIfStreamIsAlreadyClosed() public {
@@ -1082,7 +1085,7 @@ contract YieldStreamingTests is Test {
             yieldStreaming.closeYieldStream(tokenIds[i]);
         }
 
-        assertApproxEqRel(vault.convertToAssets(vault.balanceOf(alice)), amount, 0.005e18, "alice's pricipal");
+        assertApproxEqRel(vault.convertToAssets(vault.balanceOf(alice)), amount, 0.005e18, "alice's principal");
         assertEq(vault.balanceOf(address(yieldStreaming)), 0, "streamHub's shares");
     }
 

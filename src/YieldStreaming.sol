@@ -139,7 +139,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public returns (uint256 tokenId) {
+    ) external returns (uint256 tokenId) {
         IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         tokenId = openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
@@ -193,7 +193,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public returns (uint256 principal) {
+    ) external returns (uint256 principal) {
         IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         principal = topUpYieldStream(_shares, _tokenId);
@@ -210,7 +210,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
      * @return shares The number of shares returned to the streamer upon closing the yield stream.
      * This represents the balance of shares not attributed to generated yield, effectively the remaining principal.
      */
-    function closeYieldStream(uint256 _tokenId) public returns (uint256 shares) {
+    function closeYieldStream(uint256 _tokenId) external returns (uint256 shares) {
         _checkIsOwner(_tokenId);
 
         address receiver = tokenIdToReceiver[_tokenId];
@@ -254,11 +254,11 @@ contract YieldStreaming is StreamingBase, ERC721 {
         // asset amount of equivalent shares
         uint256 ask = _convertToShares(principal);
         uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
-        // the maximum amount of shares that can be attributed to the sender
+
+        // calculate the maximum amount of shares that can be attributed to the sender as a percentage of the sender's share of the total principal.
         uint256 have = receiverShares[_receiver].mulDivDown(principal, totalPrincipal);
 
-        // if there was a loss, return amount of shares as the percentage of the
-        // equivalent to the sender share of the total principal
+        // true if there was a loss (negative yield)
         shares = ask > have ? have : ask;
     }
 
@@ -372,7 +372,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
      * @param _tokenId The unique identifier of the yield stream for which the principal is being queried, represented by an ERC721 token.
      * @return principal The principal amount in asset units initially allocated to the yield stream identified by the given token ID.
      */
-    function getPrincipal(uint256 _tokenId) public view returns (uint256) {
+    function getPrincipal(uint256 _tokenId) external view returns (uint256) {
         address receiver = tokenIdToReceiver[_tokenId];
 
         return _getPrincipal(receiver, _tokenId);
@@ -394,7 +394,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         // if the receiver is in debt, check if the sender is willing to take the immediate loss when opening a new stream.
         // the immediate loss is calculated as the percentage of the debt that the sender is taking as his share of the total principal allocated to the receiver.
         // acceptable loss is defined by the loss tolerance percentage param passed to the open function.
-        // this loss occurs due to inability of the accounting logic to differentiate between pricipal amounts allocated from different streams to same receiver.
+        // this loss occurs due to inability of the accounting logic to differentiate between principal amounts allocated from different streams to same receiver.
         uint256 lossOnOpen = debt.mulDivUp(_principal, receiverTotalPrincipal[_receiver] + _principal);
 
         if (lossOnOpen > _principal.mulWadUp(_lossTolerancePercent)) revert LossToleranceExceeded();
