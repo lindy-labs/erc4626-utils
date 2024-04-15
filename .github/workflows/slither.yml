@@ -20,11 +20,12 @@ jobs:
       - uses: actions/setup-python@v3
 
       - name: Run Slither
-        uses: crytic/slither-action@v0.3.0
+        uses: crytic/slither-action@v0.3.2
         continue-on-error: true
         id: slither
         with:
           sarif: results.sarif
+          slither-args: --exclude 3-0-naming-convention
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
