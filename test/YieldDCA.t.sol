@@ -22,6 +22,7 @@ contract YieldDCATest is Test {
     using FixedPointMathLib for uint256;
 
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
+    event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
     event Deposit(address indexed user, uint256 indexed tokenId, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
@@ -223,7 +224,7 @@ contract YieldDCATest is Test {
         uint256 invalidInterval = yieldDca.MIN_DCA_INTERVAL() - 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.DcaIntervalNotAllowed.selector);
+        vm.expectRevert(YieldDCA.InvalidDcaInterval.selector);
         yieldDca.setDcaInterval(invalidInterval);
     }
 
@@ -231,8 +232,56 @@ contract YieldDCATest is Test {
         uint256 invalidInterval = yieldDca.MAX_DCA_INTERVAL() + 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.DcaIntervalNotAllowed.selector);
+        vm.expectRevert(YieldDCA.InvalidDcaInterval.selector);
         yieldDca.setDcaInterval(invalidInterval);
+    }
+
+    // *** #setMinYieldPerEpoch *** ///
+
+    function test_setMinYieldPerEpoch_failsIfCallerIsNotAdmin() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, alice, yieldDca.DEFAULT_ADMIN_ROLE()
+            )
+        );
+
+        vm.prank(alice);
+        yieldDca.setMinYieldPerEpoch(1e18);
+    }
+
+    function test_setMinYieldPerEpoch_updatesMinYieldPerEpoch() public {
+        uint256 newYield = 0.005e18;
+
+        vm.prank(admin);
+        yieldDca.setMinYieldPerEpoch(newYield);
+
+        assertEq(yieldDca.minYieldPerEpoch(), newYield);
+    }
+
+    function test_setMinYieldPerEpoch_failsIfNewMinYieldBelowLowerBound() public {
+        uint256 belowMin = yieldDca.MIN_YIELD_PER_EPOCH_LOWER_BOUND() - 1;
+
+        vm.prank(admin);
+        vm.expectRevert(YieldDCA.InvalidMinYieldPerEpoch.selector);
+        yieldDca.setMinYieldPerEpoch(belowMin);
+    }
+
+    function test_setMinYieldPerEpoch_failsIfNewMinYieldAboveUpperBound() public {
+        uint256 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
+
+        vm.prank(admin);
+        vm.expectRevert(YieldDCA.InvalidMinYieldPerEpoch.selector);
+        yieldDca.setMinYieldPerEpoch(aboveMax);
+    }
+
+    function test_setMinYieldPerEpoch_emitsEvent() public {
+        uint256 newYield = 0.01e18;
+
+        vm.expectEmit(true, true, true, true);
+        emit MinYieldPerEpochUpdated(admin, newYield);
+
+        vm.prank(admin);
+        yieldDca.setMinYieldPerEpoch(newYield);
     }
 
     // *** #deposit *** //

@@ -54,9 +54,10 @@ contract YieldDCA is ERC721, AccessControl {
     error VaultAddressZero();
     error SwapperAddressZero();
     error DcaTokenSameAsVaultAsset();
-    error DcaIntervalNotAllowed();
+    error InvalidDcaInterval();
     error KeeperAddressZero();
     error AdminAddressZero();
+    error InvalidMinYieldPerEpoch();
 
     error DcaIntervalNotPassed();
     error DcaInsufficientYield();
@@ -67,6 +68,7 @@ contract YieldDCA is ERC721, AccessControl {
     error CallerNotTokenOwner();
 
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
+    event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
     event Deposit(address indexed user, uint256 indexed tokenId, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
@@ -74,14 +76,16 @@ contract YieldDCA is ERC721, AccessControl {
 
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
-    uint256 public constant MIN_DCA_INTERVAL = 2 weeks;
+    uint256 public constant MIN_DCA_INTERVAL = 1 weeks;
     uint256 public constant MAX_DCA_INTERVAL = 10 weeks;
+    uint256 public constant MIN_YIELD_PER_EPOCH_LOWER_BOUND = 0.0001e18; // 0.01%
+    uint256 public constant MIN_YIELD_PER_EPOCH_UPPER_BOUND = 0.01e18; // 1%
 
     IERC20 public immutable dcaToken;
     IERC4626 public immutable vault;
     ISwapper public swapper;
 
-    /// @dev The interval between executing the DCA strategy (or epoch duration)
+    /// @dev The interval between executing the DCA strategy (epoch duration)
     uint256 public dcaInterval = 2 weeks;
     /// @dev The minimum yield required to execute the DCA strategy in an epoch
     uint256 public minYieldPerEpoch = 0.001e18; // 0.1%
@@ -154,9 +158,19 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function _setDcaInterval(uint256 _interval) internal {
-        if (_interval < MIN_DCA_INTERVAL || _interval > MAX_DCA_INTERVAL) revert DcaIntervalNotAllowed();
+        if (_interval < MIN_DCA_INTERVAL || _interval > MAX_DCA_INTERVAL) revert InvalidDcaInterval();
 
         dcaInterval = _interval;
+    }
+
+    function setMinYieldPerEpoch(uint256 _minYield) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_minYield < MIN_YIELD_PER_EPOCH_LOWER_BOUND || _minYield > MIN_YIELD_PER_EPOCH_UPPER_BOUND) {
+            revert InvalidMinYieldPerEpoch();
+        }
+
+        minYieldPerEpoch = _minYield;
+
+        emit MinYieldPerEpochUpdated(msg.sender, _minYield);
     }
 
     function deposit(uint256 _shares) external returns (uint256 tokenId) {
