@@ -43,7 +43,7 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     struct EpochInfo {
-        // using uint128s to pack variables and save on sload since both values are always read together
+        // using uint128s to pack variables and save on sstore/sload since both values are always written/read together
         // dcaPrice and sharePrice are in WAD and represet the result of dividing two uint256s
         // using uint128s instead of uint256s can only lead to some insignificant precision loss in balances calculation
         uint128 dcaPrice;
@@ -81,11 +81,13 @@ contract YieldDCA is ERC721, AccessControl {
     IERC4626 public immutable vault;
     ISwapper public swapper;
 
+    /// @dev The interval between executing the DCA strategy (or epoch duration)
     uint256 public dcaInterval = 2 weeks;
-    uint256 public minYieldPercentage = 0.001e18; // 0.1%
-
+    /// @dev The minimum yield required to execute the DCA strategy in an epoch
+    uint256 public minYieldPerEpoch = 0.001e18; // 0.1%
     uint256 public currentEpoch = 1; // starts from 1
     uint256 public currentEpochTimestamp = block.timestamp;
+
     mapping(uint256 => EpochInfo) public epochDetails;
 
     uint256 public nextDepositId = 1;
@@ -123,8 +125,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @dev See {IERC165-supportsInterface}.
      */
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
-        return interfaceId == type(ERC721).interfaceId || interfaceId == type(AccessControl).interfaceId
-            || super.supportsInterface(interfaceId);
+        return interfaceId == type(AccessControl).interfaceId || super.supportsInterface(interfaceId);
     }
 
     function setSwapper(ISwapper _swapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -160,7 +161,6 @@ contract YieldDCA is ERC721, AccessControl {
 
     function deposit(uint256 _shares) external returns (uint256 tokenId) {
         _checkAmount(_shares);
-        // TODO: require min deposit?
 
         tokenId = nextDepositId++;
         _mint(msg.sender, tokenId);
@@ -181,7 +181,6 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function topUp(uint256 _shares, uint256 _tokenId) external {
-        // TODO: require min deposit?
         _checkAmount(_shares);
         _checkOwnership(_tokenId);
 
@@ -210,7 +209,7 @@ contract YieldDCA is ERC721, AccessControl {
 
     function canExecuteDCA() external view returns (bool) {
         return totalPrincipalDeposited != 0 && block.timestamp >= currentEpochTimestamp + dcaInterval
-            && getYield() >= totalPrincipalDeposited.mulWadDown(minYieldPercentage);
+            && getYield() >= totalPrincipalDeposited.mulWadDown(minYieldPerEpoch);
     }
 
     function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
@@ -226,7 +225,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
 
-        if (yield < totalPrincipal.mulWadDown(minYieldPercentage)) revert DcaInsufficientYield();
+        if (yield < totalPrincipal.mulWadDown(minYieldPerEpoch)) revert DcaInsufficientYield();
 
         uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin, _swapData);
         uint256 dcaPrice = amountOut.divWadDown(yield);

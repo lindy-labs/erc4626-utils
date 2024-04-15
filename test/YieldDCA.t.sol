@@ -7,6 +7,7 @@ import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC721Errors} from "openzeppelin-contracts/interfaces/draft-IERC6093.sol";
 import {IERC721} from "openzeppelin-contracts/token/ERC721/IERC721.sol";
+import {IERC721Receiver} from "openzeppelin-contracts/token/ERC721/IERC721Receiver.sol";
 import {IAccessControl} from "openzeppelin-contracts/access/IAccessControl.sol";
 
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
@@ -70,19 +71,19 @@ contract YieldDCATest is Test {
         assertEq(asset.allowance(address(yieldDca), address(swapper)), type(uint256).max, "vault allowance");
     }
 
-    function test_constructor_dcaTokenZeroAddress() public {
+    function test_constructor_revertsIfDcaTokenZeroAddress() public {
         vm.expectRevert(YieldDCA.DcaTokenAddressZero.selector);
         yieldDca =
             new YieldDCA(IERC20(address(0)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
     }
 
-    function test_constructor_vaultZeroAddress() public {
+    function test_constructor_revertsIfVaultZeroAddress() public {
         vm.expectRevert(YieldDCA.VaultAddressZero.selector);
         yieldDca =
             new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(0)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
     }
 
-    function test_constructor_swapperZeroAddress() public {
+    function test_constructor_revertsIfSwapperZeroAddress() public {
         vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
         yieldDca = new YieldDCA(
             IERC20(address(dcaToken)),
@@ -94,28 +95,31 @@ contract YieldDCATest is Test {
         );
     }
 
-    function test_constructor_dcaTokenSameAsVaultAsset() public {
+    function test_constructor_revertsIfDcaTokenSameAsVaultAsset() public {
         vm.expectRevert(YieldDCA.DcaTokenSameAsVaultAsset.selector);
         yieldDca =
             new YieldDCA(IERC20(address(asset)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
     }
 
-    function test_constructor_keeperZeroAddress() public {
+    function test_constructor_revertsIfKeeperIsZeroAddress() public {
         vm.expectRevert(YieldDCA.KeeperAddressZero.selector);
         yieldDca = new YieldDCA(
             IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, address(0)
         );
     }
 
-    function test_constructor_adminZeroAddress() public {
+    function test_constructor_revertsIfAdminIsZeroAddress() public {
         vm.expectRevert(YieldDCA.AdminAddressZero.selector);
         yieldDca = new YieldDCA(
             IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, address(0), keeper
         );
     }
 
-    function test_supportsInterface_trueForIERC721() public {
-        assertTrue(yieldDca.supportsInterface(type(IERC721).interfaceId), "supports interface");
+    function test_supportsInterface() public {
+        assertTrue(yieldDca.supportsInterface(type(IERC721).interfaceId), "supports IERC721");
+        assertTrue(yieldDca.supportsInterface(type(IAccessControl).interfaceId), "supports AccessControl");
+
+        assertTrue(!yieldDca.supportsInterface(type(IERC721Receiver).interfaceId), "shouldn't support IERC721Receiver");
     }
 
     // *** #setSwapper *** //
@@ -494,7 +498,7 @@ contract YieldDCATest is Test {
 
         _shiftTime(yieldDca.dcaInterval());
 
-        _addYield(yieldDca.minYieldPercentage() - 1);
+        _addYield(yieldDca.minYieldPerEpoch() - 1);
 
         assertTrue(!yieldDca.canExecuteDCA());
     }
@@ -507,7 +511,7 @@ contract YieldDCATest is Test {
         _shiftTime(yieldDca.dcaInterval());
 
         // yield >= min yield
-        _addYield(yieldDca.minYieldPercentage());
+        _addYield(yieldDca.minYieldPerEpoch());
 
         assertTrue(yieldDca.canExecuteDCA());
     }
@@ -590,7 +594,7 @@ contract YieldDCATest is Test {
         _shiftTime(yieldDca.dcaInterval());
         swapper.setExchangeRate(2e18);
 
-        _addYield(yieldDca.minYieldPercentage() - 1);
+        _addYield(yieldDca.minYieldPerEpoch() - 1);
 
         vm.expectRevert(YieldDCA.DcaInsufficientYield.selector);
 
