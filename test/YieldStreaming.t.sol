@@ -62,6 +62,9 @@ contract YieldStreamingTests is Test {
 
         assertEq(yieldStreaming.name(), "Yield Streaming - Mock ERC4626", "name");
         assertEq(yieldStreaming.symbol(), "YST-mERC4626", "symbol");
+
+        // nft ids start from 1
+        assertEq(yieldStreaming.nextTokenId(), 1, "next token id");
     }
 
     // *** #openYieldStream *** ///
