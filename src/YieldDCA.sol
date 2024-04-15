@@ -59,7 +59,7 @@ contract YieldDCA is ERC721, AccessControl {
     error AdminAddressZero();
     error InvalidMinYieldPerEpoch();
 
-    error DcaIntervalNotPassed();
+    error DcaMinEpochDurationNotReached();
     error DcaInsufficientYield();
     error DcaYieldZero();
     error NoPrincipalDeposited();
@@ -76,8 +76,8 @@ contract YieldDCA is ERC721, AccessControl {
 
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
-    uint256 public constant MIN_DCA_INTERVAL = 1 weeks;
-    uint256 public constant MAX_DCA_INTERVAL = 10 weeks;
+    uint256 public constant MIN_DCA_INTERVAL_LOWER_BOUND = 1 weeks;
+    uint256 public constant MIN_DCA_INTERVAL_UPPER_BOUND = 10 weeks;
     uint256 public constant MIN_YIELD_PER_EPOCH_LOWER_BOUND = 0.0001e18; // 0.01%
     uint256 public constant MIN_YIELD_PER_EPOCH_UPPER_BOUND = 0.01e18; // 1%
 
@@ -85,8 +85,8 @@ contract YieldDCA is ERC721, AccessControl {
     IERC4626 public immutable vault;
     ISwapper public swapper;
 
-    /// @dev The interval between executing the DCA strategy (epoch duration)
-    uint256 public dcaInterval = 2 weeks;
+    /// @dev The minimum interval between executing the DCA strategy (epoch duration)
+    uint256 public minEpochDuration = 2 weeks;
     /// @dev The minimum yield required to execute the DCA strategy in an epoch
     uint256 public minYieldPerEpoch = 0.001e18; // 0.1%
     uint256 public currentEpoch = 1; // starts from 1
@@ -102,7 +102,7 @@ contract YieldDCA is ERC721, AccessControl {
         IERC20 _dcaToken,
         IERC4626 _vault,
         ISwapper _swapper,
-        uint256 _dcaInterval,
+        uint256 _minEpochDuration,
         address _admin,
         address _keeper
     ) ERC721("YieldDCA", "YDCA") {
@@ -117,7 +117,7 @@ contract YieldDCA is ERC721, AccessControl {
         vault = _vault;
         swapper = _swapper;
 
-        _setDcaInterval(_dcaInterval);
+        _setMinEpochDuration(_minEpochDuration);
 
         IERC20(vault.asset()).forceApprove(address(_swapper), type(uint256).max);
 
@@ -149,18 +149,20 @@ contract YieldDCA is ERC721, AccessControl {
         swapper = _swapper;
     }
 
-    function setDcaInterval(uint256 _interval) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setDcaInterval(_interval);
+    function setMinEpochDuration(uint256 _duration) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setMinEpochDuration(_duration);
 
-        emit DCAIntervalUpdated(msg.sender, _interval);
+        emit DCAIntervalUpdated(msg.sender, _duration);
 
-        dcaInterval = _interval;
+        minEpochDuration = _duration;
     }
 
-    function _setDcaInterval(uint256 _interval) internal {
-        if (_interval < MIN_DCA_INTERVAL || _interval > MAX_DCA_INTERVAL) revert InvalidDcaInterval();
+    function _setMinEpochDuration(uint256 _duration) internal {
+        if (_duration < MIN_DCA_INTERVAL_LOWER_BOUND || _duration > MIN_DCA_INTERVAL_UPPER_BOUND) {
+            revert InvalidDcaInterval();
+        }
 
-        dcaInterval = _interval;
+        minEpochDuration = _duration;
     }
 
     function setMinYieldPerEpoch(uint256 _minYield) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -222,14 +224,14 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function canExecuteDCA() external view returns (bool) {
-        return totalPrincipalDeposited != 0 && block.timestamp >= currentEpochTimestamp + dcaInterval
+        return totalPrincipalDeposited != 0 && block.timestamp >= currentEpochTimestamp + minEpochDuration
             && getYield() >= totalPrincipalDeposited.mulWadDown(minYieldPerEpoch);
     }
 
     function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
         uint256 totalPrincipal = totalPrincipalDeposited;
         if (totalPrincipal == 0) revert NoPrincipalDeposited();
-        if (block.timestamp < currentEpochTimestamp + dcaInterval) revert DcaIntervalNotPassed();
+        if (block.timestamp < currentEpochTimestamp + minEpochDuration) revert DcaMinEpochDurationNotReached();
 
         uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal);
 

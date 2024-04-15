@@ -180,7 +180,7 @@ contract YieldDCATest is Test {
 
         // dca - buy 1 DCA tokens for 0.5 yield
         newSwapper.setExchangeRate(2e18);
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -188,9 +188,9 @@ contract YieldDCATest is Test {
         assertApproxEqAbs(dcaToken.balanceOf(address(yieldDca)), 1e18, 5, "dca token balance");
     }
 
-    // *** #setDcaInterval *** //
+    // *** #setMinEpochDuration *** //
 
-    function test_setDcaInterval_failsIfCallerIsNotAdmin() public {
+    function test_setMinEpochDuration_failsIfCallerIsNotAdmin() public {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, alice, yieldDca.DEFAULT_ADMIN_ROLE()
@@ -198,42 +198,42 @@ contract YieldDCATest is Test {
         );
 
         vm.prank(alice);
-        yieldDca.setDcaInterval(1 weeks);
+        yieldDca.setMinEpochDuration(1 weeks);
     }
 
-    function test_setDcaInterval_updatesDcaInterval() public {
+    function test_setMinEpochDuration_updatesDcaInterval() public {
         uint256 newInterval = 2 weeks;
 
         vm.prank(admin);
-        yieldDca.setDcaInterval(newInterval);
+        yieldDca.setMinEpochDuration(newInterval);
 
-        assertEq(yieldDca.dcaInterval(), newInterval);
+        assertEq(yieldDca.minEpochDuration(), newInterval);
     }
 
-    function test_setDcaInterval_emitsEvent() public {
+    function test_setMinEpochDuration_emitsEvent() public {
         uint256 newInterval = 3 weeks;
 
         vm.expectEmit(true, true, true, true);
         emit DCAIntervalUpdated(admin, newInterval);
 
         vm.prank(admin);
-        yieldDca.setDcaInterval(newInterval);
+        yieldDca.setMinEpochDuration(newInterval);
     }
 
-    function test_setDcaInterval_failsIfIntervalIsLessThanMin() public {
-        uint256 invalidInterval = yieldDca.MIN_DCA_INTERVAL() - 1;
+    function test_setMinEpochDuration_failsIfIntervalIsBelowLowerBound() public {
+        uint256 invalidInterval = yieldDca.MIN_DCA_INTERVAL_LOWER_BOUND() - 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.InvalidDcaInterval.selector);
-        yieldDca.setDcaInterval(invalidInterval);
+        yieldDca.setMinEpochDuration(invalidInterval);
     }
 
-    function test_setDcaInterval_failsIfIntervalIsGreaterThanMax() public {
-        uint256 invalidInterval = yieldDca.MAX_DCA_INTERVAL() + 1;
+    function test_setMinEpochDuration_failsIfIntervalIsAboveUpperBound() public {
+        uint256 invalidInterval = yieldDca.MIN_DCA_INTERVAL_UPPER_BOUND() + 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.InvalidDcaInterval.selector);
-        yieldDca.setDcaInterval(invalidInterval);
+        yieldDca.setMinEpochDuration(invalidInterval);
     }
 
     // *** #setMinYieldPerEpoch *** ///
@@ -537,7 +537,7 @@ contract YieldDCATest is Test {
     function test_canExecuteDCA_returnsFalseIfNotEnoughTimePassed() public {
         _depositIntoDca(alice, 1 ether);
 
-        _shiftTime(yieldDca.dcaInterval() - 1);
+        _shiftTime(yieldDca.minEpochDuration() - 1);
 
         assertTrue(!yieldDca.canExecuteDCA());
     }
@@ -545,7 +545,7 @@ contract YieldDCATest is Test {
     function test_canExecuteDCA_returnsFalseIfYieldIsBelowMin() public {
         _depositIntoDca(alice, 1 ether);
 
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         _addYield(yieldDca.minYieldPerEpoch() - 1);
 
@@ -557,7 +557,7 @@ contract YieldDCATest is Test {
         _depositIntoDca(alice, 1 ether);
 
         // dca interval passed
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         // yield >= min yield
         _addYield(yieldDca.minYieldPerEpoch());
@@ -578,12 +578,12 @@ contract YieldDCATest is Test {
         yieldDca.executeDCA(0, "");
     }
 
-    function test_executeDCA_failsIfNotEnoughTimePassed() public {
+    function test_executeDCA_failsIfNotEnoughTimeHasPassed() public {
         _depositIntoDca(alice, 1 ether);
 
-        _shiftTime(yieldDca.dcaInterval() - 1);
+        _shiftTime(yieldDca.minEpochDuration() - 1);
 
-        vm.expectRevert(YieldDCA.DcaIntervalNotPassed.selector);
+        vm.expectRevert(YieldDCA.DcaMinEpochDurationNotReached.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -598,7 +598,7 @@ contract YieldDCATest is Test {
         // send shares directly to the yieldDca contract
         vault.transfer(address(yieldDca), shares);
 
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
         assertEq(yieldDca.totalPrincipalDeposited(), 0, "total principal deposited");
@@ -612,7 +612,7 @@ contract YieldDCATest is Test {
     function test_executeDCA_failsIfYieldIsZero() public {
         _depositIntoDca(alice, 1 ether);
 
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         vm.expectRevert(YieldDCA.DcaYieldZero.selector);
 
@@ -623,7 +623,7 @@ contract YieldDCATest is Test {
     function test_executeDCA_failsIfYieldIsNegative() public {
         _depositIntoDca(alice, 1 ether);
 
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         uint256 totalAssets = vault.totalAssets();
         // remove 10% of total assets
@@ -640,7 +640,7 @@ contract YieldDCATest is Test {
         uint256 principal = 1 ether;
         _depositIntoDca(alice, principal);
 
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
         swapper.setExchangeRate(2e18);
 
         _addYield(yieldDca.minYieldPerEpoch() - 1);
@@ -654,7 +654,7 @@ contract YieldDCATest is Test {
     function test_executeDCA_failsIfAmountReceivedIsBelowMin() public {
         _depositIntoDca(alice, 1 ether);
 
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
         _addYield(1e18);
 
         uint256 expectedToReceive = 2 ether;
@@ -689,7 +689,7 @@ contract YieldDCATest is Test {
         uint256 currentEpoch = yieldDca.currentEpoch();
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -729,7 +729,7 @@ contract YieldDCATest is Test {
         uint256 currentEpoch = yieldDca.currentEpoch();
         uint256 exchangeRate = 5e18;
         swapper.setExchangeRate(exchangeRate);
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         uint256 expectedYield = 0.5 ether + 1; // 1 is the rounding error
         uint256 expectedDcaAmount = expectedYield.mulWadDown(exchangeRate);
@@ -839,7 +839,7 @@ contract YieldDCATest is Test {
         for (uint256 i = 0; i < epochs; i++) {
             _addYield(yieldPerEpoch);
 
-            _shiftTime(yieldDca.dcaInterval());
+            _shiftTime(yieldDca.minEpochDuration());
 
             vm.prank(keeper);
             yieldDca.executeDCA(0, "");
@@ -879,7 +879,7 @@ contract YieldDCATest is Test {
         for (uint256 i = 0; i < epochs; i++) {
             _addYield(yieldPerEpoch);
 
-            _shiftTime(yieldDca.dcaInterval());
+            _shiftTime(yieldDca.minEpochDuration());
 
             vm.prank(keeper);
             yieldDca.executeDCA(0, "");
@@ -1408,7 +1408,7 @@ contract YieldDCATest is Test {
         uint256 tokenId = _depositIntoDca(alice, principal);
 
         _addYield(1e18);
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(1);
         assertEq(balance, shares, "alice's balance");
@@ -1639,7 +1639,7 @@ contract YieldDCATest is Test {
 
     function _executeDcaAtExchangeRate(uint256 _exchangeRate) internal {
         swapper.setExchangeRate(_exchangeRate);
-        _shiftTime(yieldDca.dcaInterval());
+        _shiftTime(yieldDca.minEpochDuration());
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
