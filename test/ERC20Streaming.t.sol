@@ -880,7 +880,7 @@ contract ERC20StreamingTest is Test {
         vm.startPrank(alice);
         streaming.closeStream(bob);
 
-        assertEq(vault.balanceOf(address(streaming)), 0, "streamHub's shares");
+        assertEq(vault.balanceOf(address(streaming)), 0, "contracts's shares");
         assertApproxEqAbs(vault.balanceOf(alice), shares / 2, sharesStreamedPerSecond, "alice's shares");
         assertApproxEqRel(vault.balanceOf(alice), shares / 2, 0.01e18, "alice's shares");
     }

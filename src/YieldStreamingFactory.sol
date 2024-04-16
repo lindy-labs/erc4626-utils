@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {StreamingFactoryBase} from "./common/StreamingFactoryBase.sol";
-import {YieldStreaming} from "./ERC4626StreamHub.sol";
+import {YieldStreaming} from "./YieldStreaming.sol";
 
 /**
  * @title YieldStreamingFactory

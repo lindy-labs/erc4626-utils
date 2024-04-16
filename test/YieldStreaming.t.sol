@@ -20,7 +20,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {YieldStreaming} from "../src/YieldStreaming.sol";
 import "../src/common/Errors.sol";
 
-contract YieldStreamingTests is Test {
+contract YieldStreamingTest is Test {
     using FixedPointMathLib for uint256;
 
     event OpenYieldStream(
@@ -49,7 +49,7 @@ contract YieldStreamingTests is Test {
         vault = new MockERC4626(MockERC20(address(asset)), "Mock ERC4626", "mERC4626");
         yieldStreaming = new YieldStreaming(IERC4626(address(vault)));
 
-        // make initial deposit to vault
+        // make initial deposit to the vault
         _depositToVault(address(this), 1e18);
         // double the vault funds so 1 share = 2 underlying asset
         deal(address(asset), address(vault), 2e18);
@@ -110,7 +110,7 @@ contract YieldStreamingTests is Test {
         assertEq(yieldStreaming.ownerOf(tokenId), alice, "owner of token");
         assertEq(yieldStreaming.balanceOf(alice), 1, "nft balance of alice");
 
-        assertEq(vault.balanceOf(address(yieldStreaming)), shares, "streamHub shares");
+        assertEq(vault.balanceOf(address(yieldStreaming)), shares, "contract's shares");
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
         assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "receiver total principal");
         assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal, "receiver principal");
@@ -256,7 +256,7 @@ contract YieldStreamingTests is Test {
         uint256 tokenId = yieldStreaming.openYieldStreamUsingPermit(bob, shares, 0, deadline, v, r, s);
 
         assertEq(tokenId, 1, "token id");
-        assertEq(vault.balanceOf(address(yieldStreaming)), shares, "streamHub shares");
+        assertEq(vault.balanceOf(address(yieldStreaming)), shares, "contract's shares");
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
         assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "receiver total principal");
         assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal, "receiver principal");
@@ -1178,10 +1178,12 @@ contract YieldStreamingTests is Test {
         }
 
         assertApproxEqRel(vault.convertToAssets(vault.balanceOf(alice)), _principal, 0.005e18, "alice's principal");
-        assertEq(vault.balanceOf(address(yieldStreaming)), 0, "streamHub's shares");
+        assertEq(vault.balanceOf(address(yieldStreaming)), 0, "contract's shares");
     }
 
     // *** helpers *** ///
+
+    // TODO: add common test file?
 
     function _depositToVault(address _from, uint256 _amount) internal returns (uint256 shares) {
         vm.startPrank(_from);
