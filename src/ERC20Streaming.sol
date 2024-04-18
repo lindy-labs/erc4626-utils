@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
+import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
-import "./common/Errors.sol";
-import {StreamingBase} from "./common/StreamingBase.sol";
+import {AddressZero, AmountZero, CannotOpenStreamToSelf} from "./common/Errors.sol";
 
 /**
  * @title This contract facilitates the streaming of ERC20 tokens with unique stream IDs per streamer-receiver pair.
  * @notice This contract allows users to open, top up, claim from, and close streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
  */
-contract ERC20Streaming is StreamingBase {
+contract ERC20Streaming is Multicall {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC20;
 
@@ -36,12 +36,14 @@ contract ERC20Streaming is StreamingBase {
         uint128 lastClaimTime;
     }
 
+    IERC20 public token;
+
     mapping(uint256 => Stream) public streamById;
 
     constructor(IERC20 _token) {
         _checkZeroAddress(address(_token));
 
-        token = address(_token);
+        token = _token;
     }
 
     /**
@@ -280,6 +282,18 @@ contract ERC20Streaming is StreamingBase {
         remaining = _stream.amount - streamed;
 
         return (remaining, streamed);
+    }
+
+    function _checkZeroAddress(address _receiver) internal pure {
+        if (_receiver == address(0)) revert AddressZero();
+    }
+
+    function _checkZeroAmount(uint256 _amount) internal pure {
+        if (_amount == 0) revert AmountZero();
+    }
+
+    function _checkOpenStreamToSelf(address _receiver) internal view {
+        if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
     }
 
     function _checkZeroDuration(uint256 _duration) internal pure {

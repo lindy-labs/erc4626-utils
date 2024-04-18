@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
+import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
-import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
-import {StreamingBase} from "./common/StreamingBase.sol";
+import {AddressZero, AmountZero, CannotOpenStreamToSelf} from "./common/Errors.sol";
 
 /**
  * @title YieldStreaming
@@ -17,10 +17,9 @@ import {StreamingBase} from "./common/StreamingBase.sol";
  * This approach enables users to create, top-up, transfer, and close yield streams as well as facilitating the flow of yield from appreciating assets to designated beneficiaries.
  * It leverages the ERC4626 standard for tokenized vault interactions, assuming that these tokens appreciate over time, generating yield for their holders.
  */
-contract YieldStreaming is StreamingBase, ERC721 {
+contract YieldStreaming is ERC721, Multicall {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
-    using SafeERC20 for IERC20;
 
     error NoYieldToClaim();
     error LossToleranceExceeded();
@@ -37,6 +36,9 @@ contract YieldStreaming is StreamingBase, ERC721 {
     event CloseYieldStream(
         uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
+
+    /// @dev underlying ERC4646 vault
+    IERC4626 public vault;
 
     /// @dev identifier for the next token to be minted
     uint256 public nextTokenId = 1;
@@ -58,7 +60,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
     {
         _checkZeroAddress(address(_vault));
 
-        token = address(_vault);
+        vault = _vault;
     }
 
     /**
@@ -91,7 +93,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
 
         emit OpenYieldStream(tokenId, msg.sender, _receiver, _shares, principal);
 
-        IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     /**
@@ -140,7 +142,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         bytes32 r,
         bytes32 s
     ) external returns (uint256 tokenId) {
-        IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         tokenId = openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
     }
@@ -169,7 +171,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
 
         emit TopUpYieldStream(_tokenId, msg.sender, _receiver, _shares, principal);
 
-        IERC20(token).safeTransferFrom(msg.sender, address(this), _shares);
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     /**
@@ -194,7 +196,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
         bytes32 r,
         bytes32 s
     ) external returns (uint256 principal) {
-        IERC2612(address(token)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         principal = topUpYieldStream(_shares, _tokenId);
     }
@@ -228,7 +230,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
 
         emit CloseYieldStream(_tokenId, msg.sender, receiver, shares, principal);
 
-        IERC20(token).safeTransfer(msg.sender, shares);
+        vault.safeTransfer(msg.sender, shares);
     }
 
     /**
@@ -281,7 +283,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
 
         receiverShares[msg.sender] -= yieldInShares;
 
-        assets = IERC4626(token).redeem(yieldInShares, _sendTo, address(this));
+        assets = vault.redeem(yieldInShares, _sendTo, address(this));
 
         emit ClaimYield(msg.sender, _sendTo, yieldInShares, assets);
     }
@@ -325,7 +327,7 @@ contract YieldStreaming is StreamingBase, ERC721 {
 
         emit ClaimYieldInShares(msg.sender, _sendTo, shares);
 
-        IERC20(token).safeTransfer(_sendTo, shares);
+        vault.safeTransfer(_sendTo, shares);
     }
 
     /**
@@ -400,15 +402,27 @@ contract YieldStreaming is StreamingBase, ERC721 {
         if (lossOnOpen > _principal.mulWadUp(_lossTolerancePercent)) revert LossToleranceExceeded();
     }
 
+    function _checkZeroAddress(address _address) internal pure {
+        if (_address == address(0)) revert AddressZero();
+    }
+
+    function _checkZeroAmount(uint256 _amount) internal pure {
+        if (_amount == 0) revert AmountZero();
+    }
+
+    function _checkOpenStreamToSelf(address _receiver) internal view {
+        if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
+    }
+
     function _checkIsOwner(uint256 _tokenId) internal view {
         if (ownerOf(_tokenId) != msg.sender) revert CallerNotOwner();
     }
 
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {
-        return IERC4626(token).convertToAssets(_shares);
+        return vault.convertToAssets(_shares);
     }
 
     function _convertToShares(uint256 _assets) internal view returns (uint256) {
-        return IERC4626(token).convertToShares(_assets);
+        return vault.convertToShares(_assets);
     }
 }

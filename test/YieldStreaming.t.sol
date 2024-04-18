@@ -58,7 +58,7 @@ contract YieldStreamingTest is Test {
     // *** #constructor *** ///
 
     function test_constructor() public {
-        assertEq(yieldStreaming.token(), address(vault), "vault");
+        assertEq(address(yieldStreaming.vault()), address(vault), "vault");
 
         assertEq(yieldStreaming.name(), "Yield Streaming - Mock ERC4626", "name");
         assertEq(yieldStreaming.symbol(), "YST-mERC4626", "symbol");
