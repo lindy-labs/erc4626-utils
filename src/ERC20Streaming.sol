@@ -36,7 +36,7 @@ contract ERC20Streaming is Multicall {
         uint128 lastClaimTime;
     }
 
-    IERC20 public token;
+    IERC20 public immutable token;
 
     mapping(uint256 => Stream) public streamById;
 
