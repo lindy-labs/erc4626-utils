@@ -6,21 +6,20 @@ import "forge-std/Test.sol";
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
-import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
+import {TestCommon} from "./common/TestCommon.sol";
 import {ERC20Streaming} from "../src/ERC20Streaming.sol";
 
-contract ERC20StreamingTest is Test {
+contract ERC20StreamingTest is TestCommon {
     using FixedPointMathLib for uint256;
 
     ERC20Streaming public scEthStreaming;
     ERC20Streaming public scUsdcStreaming;
     IERC4626 public scEth;
     IERC20 public weth;
-    IERC4626 public scUsdc;
     IERC20 public usdc;
 
     address constant alice = address(0x06);
@@ -34,26 +33,21 @@ contract ERC20StreamingTest is Test {
 
         scEth = IERC4626(0x4c406C068106375724275Cbff028770C544a1333); // scETH mainnet address
         weth = IERC20(scEth.asset());
-        scUsdc = IERC4626(0x096697720056886b905D0DEB0f06AfFB8e4665E5); // scUSDC mainnet address
-        usdc = IERC20(scUsdc.asset());
 
         scEthStreaming = new ERC20Streaming(scEth);
-
-        // TODO: add test for USDC
-        scUsdcStreaming = new ERC20Streaming(scUsdc);
     }
 
     function test_openStream_claimTokens() public {
         uint256 duration = 2 days;
-        uint256 shares = _deposit(scEth, alice, 1 ether);
-        _approve(alice, shares, scEth, scEthStreaming);
+        uint256 shares = _depositToVault(scEth, alice, 1 ether);
+        _approve(scEth, address(scEthStreaming), alice, shares);
 
         vm.prank(alice);
         scEthStreaming.openStream(bob, shares, duration);
 
         assertEq(scEth.balanceOf(address(scEthStreaming)), shares, "contract shares");
 
-        _createProfitForVault(0.05e18, scEth); // 5%
+        _generateYield(scEth, 0.05e18); // 5%
 
         vm.warp(block.timestamp + duration / 2);
 
@@ -70,8 +64,8 @@ contract ERC20StreamingTest is Test {
 
     function test_closeStream() public {
         uint256 duration = 2 days;
-        uint256 shares = _deposit(scEth, alice, 1 ether);
-        _approve(alice, shares, scEth, scEthStreaming);
+        uint256 shares = _depositToVault(scEth, alice, 1 ether);
+        _approve(scEth, address(scEthStreaming), alice, shares);
 
         vm.prank(alice);
         scEthStreaming.openStream(bob, shares, duration);
@@ -93,26 +87,29 @@ contract ERC20StreamingTest is Test {
     }
 
     function test_openMultipleTokenStreams() public {
-        uint256 shares1 = _deposit(scEth, alice, 1 ether);
-        uint256 duration1 = 2 days;
-        uint256 shares2 = _deposit(scEth, bob, 2 ether);
-        uint256 duration2 = 4 days;
-        _approve(alice, shares1, scEth, scEthStreaming);
-        _approve(bob, shares2, scEth, scEthStreaming);
+        // alice and bob open streams to carol
+        // carol opens a stream to alice
+        uint256 alicesShares = _depositToVault(scEth, alice, 1 ether);
+        uint256 alicesDuration = 2 days;
+        uint256 bobsShares = _depositToVault(scEth, bob, 2 ether);
+        uint256 bobsDuration = 4 days;
+
+        _approve(scEth, address(scEthStreaming), alice, alicesShares);
+        _approve(scEth, address(scEthStreaming), bob, bobsShares);
 
         vm.prank(alice);
-        scEthStreaming.openStream(carol, shares1, duration1);
+        scEthStreaming.openStream(carol, alicesShares, alicesDuration);
         vm.prank(bob);
-        scEthStreaming.openStream(carol, shares2, duration2);
+        scEthStreaming.openStream(carol, bobsShares, bobsDuration);
 
         vm.warp(block.timestamp + 1 days);
 
-        uint256 shares3 = _deposit(scEth, carol, 3 ether);
-        uint256 duration3 = 6 days;
-        _approve(carol, shares3, scEth, scEthStreaming);
+        uint256 carolsShares = _depositToVault(scEth, carol, 3 ether);
+        uint256 carolsDuration = 6 days;
+        _approve(scEth, address(scEthStreaming), carol, carolsShares);
 
         vm.prank(carol);
-        scEthStreaming.openStream(alice, shares3, duration3);
+        scEthStreaming.openStream(alice, carolsShares, carolsDuration);
 
         vm.warp(block.timestamp + 1 days);
 
@@ -123,7 +120,7 @@ contract ERC20StreamingTest is Test {
 
         assertEq(scEth.balanceOf(alice), 0, "alice's shares");
         assertEq(scEth.balanceOf(bob), 0, "bob's shares");
-        assertApproxEqRel(scEth.balanceOf(carol), shares1 + shares2 / 2, 0.00001e18, "carol's shares");
+        assertApproxEqRel(scEth.balanceOf(carol), alicesShares + bobsShares / 2, 0.00001e18, "carol's shares");
 
         vm.prank(alice);
         scEthStreaming.claim(carol, alice);
@@ -135,38 +132,10 @@ contract ERC20StreamingTest is Test {
         scEthStreaming.closeStream(alice);
         vm.stopPrank();
 
-        assertApproxEqRel(scEth.balanceOf(alice), shares3 / 2, 0.00001e18, "alice's shares");
+        assertApproxEqRel(scEth.balanceOf(alice), carolsShares / 2, 0.00001e18, "alice's shares");
         assertEq(scEth.balanceOf(bob), 0, "bob's shares");
-        assertApproxEqRel(scEth.balanceOf(carol), shares1 + shares2 + shares3 / 2, 0.00001e18, "carol's shares");
-    }
-
-    /// *** helpers *** ///
-
-    function _deposit(IERC4626 _vault, address _from, uint256 _amount) internal returns (uint256 shares) {
-        vm.startPrank(_from);
-
-        IERC20 asset = IERC20(_vault.asset());
-
-        deal(address(asset), _from, _amount);
-        asset.approve(address(_vault), _amount);
-        shares = _vault.deposit(_amount, _from);
-
-        vm.stopPrank();
-    }
-
-    function _approve(address _from, uint256 _shares, IERC4626 _vault, ERC20Streaming _streaming) internal {
-        vm.prank(_from);
-        _vault.approve(address(_streaming), _shares);
-    }
-
-    function _createProfitForVault(int256 _profit, IERC4626 _vault) internal {
-        IERC20 asset = IERC20(_vault.asset());
-
-        uint256 balance = asset.balanceOf(address(_vault));
-        uint256 totalAssets = _vault.totalAssets();
-        uint256 endTotalAssets = totalAssets.mulWadDown(uint256(1e18 + _profit));
-        uint256 delta = endTotalAssets - totalAssets;
-
-        deal(address(asset), address(_vault), balance + delta);
+        assertApproxEqRel(
+            scEth.balanceOf(carol), alicesShares + bobsShares + carolsShares / 2, 0.00001e18, "carol's shares"
+        );
     }
 }

@@ -11,16 +11,15 @@ import {IERC721Receiver} from "openzeppelin-contracts/interfaces/IERC721Receiver
 import {IERC721} from "openzeppelin-contracts/interfaces/IERC721.sol";
 import {IERC721Metadata} from "openzeppelin-contracts/interfaces/IERC721Metadata.sol";
 import {IERC165} from "openzeppelin-contracts/interfaces/IERC165.sol";
-import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
-import {Ownable} from "openzeppelin-contracts/access/Ownable.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
-import {YieldStreaming} from "../src/YieldStreaming.sol";
-import "../src/common/Errors.sol";
+import {TestCommon} from "./common/TestCommon.sol";
+import {YieldStreaming} from "src/YieldStreaming.sol";
+import "src/common/Errors.sol";
 
-contract YieldStreamingTest is Test {
+contract YieldStreamingTest is TestCommon {
     using FixedPointMathLib for uint256;
 
     event OpenYieldStream(
@@ -164,7 +163,7 @@ contract YieldStreamingTest is Test {
         yieldStreaming.openYieldStream(carol, alicesShares, 0);
 
         // create 10% loss
-        _createProfitForVault(-0.1e18);
+        _generateYield(-0.1e18);
         assertEq(yieldStreaming.debtFor(carol), 0.1e18, "debt for carol");
 
         uint256 bobsPrincipal = 2e18;
@@ -195,7 +194,7 @@ contract YieldStreamingTest is Test {
         yieldStreaming.openYieldStream(carol, alicesShares, 0);
 
         // create 10% loss
-        _createProfitForVault(-0.1e18);
+        _generateYield(-0.1e18);
         assertEq(yieldStreaming.debtFor(carol), 0.1e18, "debt for carol");
 
         uint256 bobsPrincipal = 2e18;
@@ -334,7 +333,7 @@ contract YieldStreamingTest is Test {
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
-        _createProfitForVault(0.2e18);
+        _generateYield(0.2e18);
         uint256 yield = yieldStreaming.previewClaimYield(bob);
 
         // all the yield has been accrued
@@ -356,14 +355,14 @@ contract YieldStreamingTest is Test {
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
         // double the share price
-        _createProfitForVault(1e18);
+        _generateYield(1e18);
 
         assertEq(yieldStreaming.previewClaimYield(bob), principal / 2, "yield before top up");
 
         // top up stream with the remaining shares
         yieldStreaming.topUpYieldStream(shares / 2, tokenId);
 
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         // share price increased by 200% in total from the initial deposit
         // expected yield is 75% of that whole gain
@@ -378,7 +377,7 @@ contract YieldStreamingTest is Test {
         vm.startPrank(alice);
         uint256 tokenId = yieldStreaming.openYieldStream(bob, shares / 2, 0);
 
-        _createProfitForVault(-0.5e18);
+        _generateYield(-0.5e18);
 
         uint256 claimerDebt = yieldStreaming.debtFor(bob);
 
@@ -444,7 +443,7 @@ contract YieldStreamingTest is Test {
         uint256 totalAssets = vault.totalAssets();
 
         // create a 20% loss
-        _createProfitForVault(-0.2e18);
+        _generateYield(-0.2e18);
 
         assertApproxEqAbs(vault.totalAssets(), totalAssets.mulWadDown(0.8e18), 1, "vault no losses");
 
@@ -457,7 +456,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, principal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         assertEq(yieldStreaming.previewClaimYield(bob), principal / 2, "bob's yield");
     }
@@ -467,7 +466,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, 1e18);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 yieldFor = yieldStreaming.previewClaimYield(bob);
         uint256 alicesBalance = vault.balanceOf(alice);
@@ -487,7 +486,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, principal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 yieldFor = yieldStreaming.previewClaimYield(bob);
         uint256 alicesBalance = vault.balanceOf(alice);
@@ -508,7 +507,7 @@ contract YieldStreamingTest is Test {
         yieldStreaming.closeYieldStream(1);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield");
     }
@@ -520,7 +519,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, principal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         vm.prank(bob);
         yieldStreaming.claimYield(bob);
@@ -533,7 +532,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, 1e18);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 previewClaim = yieldStreaming.previewClaimYield(bob);
 
@@ -551,7 +550,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, 3e18);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 yield = yieldStreaming.previewClaimYield(bob);
         uint256 sharesRedeemed = vault.convertToShares(yield);
@@ -567,7 +566,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, 1e18);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         vm.expectRevert(AddressZero.selector);
         vm.prank(bob);
@@ -588,7 +587,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, 1e18);
 
         // create a 20% loss
-        _createProfitForVault(-0.2e18);
+        _generateYield(-0.2e18);
 
         vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
         vm.prank(bob);
@@ -609,7 +608,7 @@ contract YieldStreamingTest is Test {
         yieldStreaming.openYieldStream(carol, bobsShares, 0);
 
         // add 100% profit to vault
-        _createProfitForVault(1e18);
+        _generateYield(1e18);
 
         assertEq(yieldStreaming.previewClaimYield(carol), alicesPrincipal + bobsPrincipal, "carol's yield");
 
@@ -635,7 +634,7 @@ contract YieldStreamingTest is Test {
         yieldStreaming.openYieldStream(carol, bobsShares, 0);
 
         // add 100% profit to vault
-        _createProfitForVault(1e18);
+        _generateYield(1e18);
 
         assertEq(yieldStreaming.previewClaimYield(carol), alicesPrincipal + bobsPrincipal, "carol's expected yield");
 
@@ -665,7 +664,7 @@ contract YieldStreamingTest is Test {
         yieldStreaming.openYieldStream(carol, bobsShares, 0);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         assertEq(
             yieldStreaming.previewClaimYield(carol), (alicesPrincipal + bobsPrincipal) / 2, "carol's expected yield"
@@ -692,7 +691,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, principal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 expectedYieldInShares = vault.convertToShares(principal / 2);
 
@@ -710,7 +709,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, principal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 expectedYieldInShares = vault.convertToShares(principal / 2);
 
@@ -729,7 +728,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, principal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 expectedYieldInShares = yieldStreaming.previewClaimYieldInShares(bob);
 
@@ -744,7 +743,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, 1e18);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         vm.expectRevert(AddressZero.selector);
         vm.prank(bob);
@@ -765,7 +764,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, 1e18);
 
         // create a 20% loss
-        _createProfitForVault(-0.2e18);
+        _generateYield(-0.2e18);
 
         vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
         vm.prank(bob);
@@ -779,7 +778,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(bob, carol, bobsPrincipal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 expectedYield = alicesPrincipal / 2 + bobsPrincipal / 2;
         uint256 expectedYieldInShares = vault.convertToShares(expectedYield);
@@ -802,7 +801,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(bob, carol, bobsPrincipal);
 
         // add 100% profit to vault
-        _createProfitForVault(1e18);
+        _generateYield(1e18);
 
         uint256 expectedYieldInShares = vault.convertToShares(alicesPrincipal + bobsPrincipal);
         assertApproxEqAbs(
@@ -828,7 +827,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(bob, carol, bobsPrincipal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 expectedYieldInShares = vault.convertToShares((alicesPrincipal + bobsPrincipal) / 2);
         assertApproxEqAbs(
@@ -880,7 +879,7 @@ contract YieldStreamingTest is Test {
         assertEq(yieldStreaming.balanceOf(alice), 1, "alice's nfts before");
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 yield = yieldStreaming.previewClaimYield(bob);
         uint256 yieldValueInShares = vault.convertToShares(yield);
@@ -908,7 +907,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, principal);
 
         // add 100% profit to vault
-        _createProfitForVault(1e18);
+        _generateYield(1e18);
 
         uint256 yieldInShares = yieldStreaming.previewClaimYieldInShares(bob);
 
@@ -923,7 +922,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, 1e18);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 bobsYield = yieldStreaming.previewClaimYield(bob);
 
@@ -934,7 +933,7 @@ contract YieldStreamingTest is Test {
         assertEq(asset.balanceOf(bob), 0, "bob's assets after close");
 
         // add 50% profit to vault again
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 expectedYield = bobsYield + bobsYield.mulWadUp(0.5e18);
 
@@ -947,7 +946,7 @@ contract YieldStreamingTest is Test {
         assertApproxEqAbs(asset.balanceOf(bob), expectedYield, 1, "bob's assets after claim");
 
         // add 50% profit to vault again
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield after new profit");
     }
@@ -958,7 +957,7 @@ contract YieldStreamingTest is Test {
         _openYieldStream(alice, bob, principal);
 
         // create a 20% loss
-        _createProfitForVault(-0.2e18);
+        _generateYield(-0.2e18);
 
         vm.prank(alice);
         yieldStreaming.closeYieldStream(1);
@@ -995,7 +994,7 @@ contract YieldStreamingTest is Test {
         yieldStreaming.openYieldStream(carol, shares / 2, 0);
 
         // create a 20% profit
-        _createProfitForVault(0.2e18);
+        _generateYield(0.2e18);
 
         uint256 bobsYield = yieldStreaming.previewClaimYield(bob);
         uint256 carolsYield = yieldStreaming.previewClaimYield(carol);
@@ -1031,7 +1030,7 @@ contract YieldStreamingTest is Test {
         yieldStreaming.openYieldStream(carol, bobsShares, 0);
 
         // create a 20% profit
-        _createProfitForVault(0.2e18);
+        _generateYield(0.2e18);
 
         assertEq(
             yieldStreaming.receiverTotalPrincipal(carol), alicesPrincipal + bobsPrincipal, "carol's total principal"
@@ -1061,7 +1060,7 @@ contract YieldStreamingTest is Test {
         uint256 tokenId = _openYieldStream(alice, bob, principal);
 
         // add 50% profit to vault
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 yield = yieldStreaming.previewClaimYield(bob);
         uint256 yieldValueInShares = vault.convertToShares(yield);
@@ -1100,7 +1099,7 @@ contract YieldStreamingTest is Test {
         vm.startPrank(alice);
         yieldStreaming.openYieldStream(bob, shares, 0);
 
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         yieldStreaming.transferFrom(alice, carol, 1);
         vm.stopPrank();
@@ -1156,7 +1155,7 @@ contract YieldStreamingTest is Test {
 
         vm.stopPrank();
 
-        _createProfitForVault(0.5e18);
+        _generateYield(0.5e18);
 
         uint256 expectedYield = _principal.mulDivDown(0.5e18, 10e18);
 
@@ -1183,21 +1182,16 @@ contract YieldStreamingTest is Test {
 
     // *** helpers *** ///
 
-    // TODO: add common test file?
-
     function _depositToVault(address _from, uint256 _amount) internal returns (uint256 shares) {
-        vm.startPrank(_from);
-
-        deal(address(asset), _from, _amount);
-        asset.approve(address(vault), _amount);
-        shares = vault.deposit(_amount, _from);
-
-        vm.stopPrank();
+        shares = _depositToVault(IERC4626(address(vault)), _from, _amount);
     }
 
     function _approveYieldStreaming(address _from, uint256 _shares) internal {
-        vm.prank(_from);
-        vault.approve(address(yieldStreaming), _shares);
+        _approve(IERC4626(address(vault)), address(yieldStreaming), _from, _shares);
+    }
+
+    function _generateYield(int256 _yield) internal {
+        _generateYield(IERC4626(address(vault)), _yield);
     }
 
     function _openYieldStream(address _from, address _to, uint256 _amount) internal returns (uint256 tokenId) {
@@ -1205,10 +1199,6 @@ contract YieldStreamingTest is Test {
         _approveYieldStreaming(_from, shares);
 
         vm.prank(_from);
-        return yieldStreaming.openYieldStream(_to, shares, 0);
-    }
-
-    function _createProfitForVault(int256 _profit) internal {
-        deal(address(asset), address(vault), vault.totalAssets().mulWadDown(uint256(1e18 + _profit)));
+        tokenId = yieldStreaming.openYieldStream(_to, shares, 0);
     }
 }
