@@ -24,10 +24,10 @@ contract ERC20Streaming is Multicall {
     error NoTokensToClaim();
     error StreamDoesNotExist();
 
-    event OpenStream(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
+    event Open(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
     event Claim(address indexed streamer, address indexed receiver, uint256 claimed);
-    event CloseStream(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
-    event TopUpStream(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
+    event Close(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
+    event TopUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
 
     struct Stream {
         uint256 amount;
@@ -71,7 +71,7 @@ contract ERC20Streaming is Multicall {
      * @param _amount The number of tokens to stream
      * @param _duration The duration of the stream in seconds
      */
-    function openStream(address _receiver, uint256 _amount, uint256 _duration) public {
+    function open(address _receiver, uint256 _amount, uint256 _duration) public {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
         _checkZeroAmount(_amount);
@@ -87,7 +87,7 @@ contract ERC20Streaming is Multicall {
             }
 
             // if is expired, transfer unclaimed tokens to receiver & emit close event
-            emit CloseStream(msg.sender, _receiver, 0, stream.amount);
+            emit Close(msg.sender, _receiver, 0, stream.amount);
 
             IERC20(token).safeTransfer(_receiver, stream.amount);
         }
@@ -99,7 +99,7 @@ contract ERC20Streaming is Multicall {
         stream.startTime = uint128(block.timestamp);
         stream.lastClaimTime = uint128(block.timestamp);
 
-        emit OpenStream(msg.sender, _receiver, stream.amount, _duration);
+        emit Open(msg.sender, _receiver, stream.amount, _duration);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _amount);
     }
@@ -114,7 +114,7 @@ contract ERC20Streaming is Multicall {
      * @param _r Half of the ECDSA signature pair
      * @param _s Half of the ECDSA signature pair
      */
-    function openStreamUsingPermit(
+    function openUsingPermit(
         address _receiver,
         uint256 _amount,
         uint256 _duration,
@@ -125,7 +125,7 @@ contract ERC20Streaming is Multicall {
     ) external {
         IERC2612(address(token)).permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s);
 
-        openStream(_receiver, _amount, _duration);
+        open(_receiver, _amount, _duration);
     }
 
     /**
@@ -134,7 +134,7 @@ contract ERC20Streaming is Multicall {
      * @param _additionalAmount The additional number of tokens to add to the stream
      * @param _additionalDuration The additional duration to add to the stream in seconds
      */
-    function topUpStream(address _receiver, uint256 _additionalAmount, uint256 _additionalDuration) public {
+    function topUp(address _receiver, uint256 _additionalAmount, uint256 _additionalDuration) public {
         _checkZeroAddress(_receiver);
         _checkZeroAmount(_additionalAmount);
 
@@ -154,7 +154,7 @@ contract ERC20Streaming is Multicall {
 
         stream.ratePerSecond = newRatePerSecond;
 
-        emit TopUpStream(msg.sender, _receiver, _additionalAmount, _additionalDuration);
+        emit TopUp(msg.sender, _receiver, _additionalAmount, _additionalDuration);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _additionalAmount);
     }
@@ -169,7 +169,7 @@ contract ERC20Streaming is Multicall {
      * @param _r Half of the ECDSA signature pair
      * @param _s Half of the ECDSA signature pair
      */
-    function topUpStreamUsingPermit(
+    function topUpUsingPermit(
         address _receiver,
         uint256 _additionalAmount,
         uint256 _additionalDuration,
@@ -180,7 +180,7 @@ contract ERC20Streaming is Multicall {
     ) external {
         IERC2612(address(token)).permit(msg.sender, address(this), _additionalAmount, _deadline, _v, _r, _s);
 
-        topUpStream(_receiver, _additionalAmount, _additionalDuration);
+        topUp(_receiver, _additionalAmount, _additionalDuration);
     }
 
     /**
@@ -202,7 +202,7 @@ contract ERC20Streaming is Multicall {
             delete streamById[streamId];
 
             // emit with 0s to indicate that the stream was closed during the claim
-            emit CloseStream(_streamer, msg.sender, 0, 0);
+            emit Close(_streamer, msg.sender, 0, 0);
         } else {
             stream.lastClaimTime = uint128(block.timestamp);
             stream.amount -= claimed;
@@ -239,15 +239,15 @@ contract ERC20Streaming is Multicall {
      * @return remaining The number of tokens returned to the streamer
      * @return streamed The number of tokens transferred to the receiver
      */
-    function closeStream(address _receiver) external returns (uint256 remaining, uint256 streamed) {
+    function close(address _receiver) external returns (uint256 remaining, uint256 streamed) {
         uint256 streamId = getStreamId(msg.sender, _receiver);
         Stream memory stream = streamById[streamId];
 
-        (remaining, streamed) = _previewCloseStream(stream);
+        (remaining, streamed) = _previewClose(stream);
 
         delete streamById[streamId];
 
-        emit CloseStream(msg.sender, _receiver, remaining, streamed);
+        emit Close(msg.sender, _receiver, remaining, streamed);
 
         if (remaining != 0) IERC20(token).safeTransfer(msg.sender, remaining);
 
@@ -261,17 +261,17 @@ contract ERC20Streaming is Multicall {
      * @return remaining The number of tokens that would be returned to the streamer
      * @return streamed The number of tokens that would be transferred to the receiver
      */
-    function previewCloseStream(address _streamer, address _receiver)
+    function previewClose(address _streamer, address _receiver)
         public
         view
         returns (uint256 remaining, uint256 streamed)
     {
         Stream memory stream = streamById[getStreamId(_streamer, _receiver)];
 
-        return _previewCloseStream(stream);
+        return _previewClose(stream);
     }
 
-    function _previewCloseStream(Stream memory _stream) internal view returns (uint256 remaining, uint256 streamed) {
+    function _previewClose(Stream memory _stream) internal view returns (uint256 remaining, uint256 streamed) {
         _checkNonExistingStream(_stream);
 
         uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;

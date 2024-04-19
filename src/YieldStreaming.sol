@@ -135,7 +135,7 @@ contract YieldStreaming is ERC721, Multicall {
      * @return tokenId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
-    function openWithPermit(
+    function openUsingPermit(
         address _receiver,
         uint256 _shares,
         uint256 _maxLossOnOpenTolerancePercent,
@@ -190,7 +190,7 @@ contract YieldStreaming is ERC721, Multicall {
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return principal The added principal amount in asset units.
      */
-    function topUpWithPermit(uint256 _shares, uint256 _tokenId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+    function topUpUsingPermit(uint256 _shares, uint256 _tokenId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
         external
         returns (uint256 principal)
     {

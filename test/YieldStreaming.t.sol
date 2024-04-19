@@ -227,7 +227,7 @@ contract YieldStreamingTest is TestCommon {
         assertApproxEqAbs(bobsPrincipalAfterClose, bobsPrincipal - bobsLossOnOpen, 1, "bobs principal after close");
     }
 
-    function test_openWithPermit() public {
+    function test_openUsingPermit() public {
         uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
         address dave = vm.addr(davesPrivateKey);
 
@@ -252,7 +252,7 @@ contract YieldStreamingTest is TestCommon {
         );
 
         vm.prank(dave);
-        uint256 tokenId = yieldStreaming.openWithPermit(bob, shares, 0, deadline, v, r, s);
+        uint256 tokenId = yieldStreaming.openUsingPermit(bob, shares, 0, deadline, v, r, s);
 
         assertEq(tokenId, 1, "token id");
         assertEq(vault.balanceOf(address(yieldStreaming)), shares, "contract's shares");
@@ -389,7 +389,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.receiverPrincipal(bob, tokenId), principal / 2 + principal / 4, "receiver principal");
     }
 
-    function test_topUpWithPermit() public {
+    function test_topUpUsingPermit() public {
         uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
         address dave = vm.addr(davesPrivateKey);
 
@@ -421,7 +421,7 @@ contract YieldStreamingTest is TestCommon {
 
         // top up stream
         vm.prank(dave);
-        yieldStreaming.topUpWithPermit(shares / 2, tokenId, deadline, v, r, s);
+        yieldStreaming.topUpUsingPermit(shares / 2, tokenId, deadline, v, r, s);
 
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
         assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "receiver total principal");
