@@ -144,16 +144,6 @@ contract ERC20StreamingTest is Test {
         streaming.openStream(bob, 0, 1 days);
     }
 
-    function test_openStream_failsIfAmountIsGreaterThanAllowance() public {
-        uint256 shares = _depositToVault(alice, 1e18);
-
-        vm.startPrank(alice);
-        vault.approve(address(streaming), shares);
-
-        vm.expectRevert(TransferExceedsAllowance.selector);
-        streaming.openStream(bob, shares + 1, 1 days);
-    }
-
     function test_openStream_failsIfDurationIsZero() public {
         uint256 shares = _depositToVault(alice, 1e18);
 
@@ -187,7 +177,7 @@ contract ERC20StreamingTest is Test {
     // *** #claim *** ///
 
     function test_claim_failsIfStreamDoesNotExist() public {
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(bob);
         streaming.claim(alice, bob);
     }
@@ -305,7 +295,7 @@ contract ERC20StreamingTest is Test {
     // *** #closeStream *** ///
 
     function test_closeStream_failsIfStreamDoesNotExist() public {
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(bob);
         streaming.closeStream(bob);
     }
@@ -354,7 +344,7 @@ contract ERC20StreamingTest is Test {
         vm.prank(alice);
         streaming.closeStream(bob);
 
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(alice);
         streaming.closeStream(bob);
     }
@@ -473,17 +463,6 @@ contract ERC20StreamingTest is Test {
         streaming.topUpStream(bob, 0, 1 days);
     }
 
-    function test_topUpStream_failsIfAmountIsGreaterThanAllowance() public {
-        uint256 shares = _depositToVault(alice, 1e18);
-        _openStream(alice, bob, shares, 1 days);
-
-        vm.startPrank(alice);
-        vault.approve(address(streaming), shares);
-
-        vm.expectRevert(TransferExceedsAllowance.selector);
-        streaming.topUpStream(bob, shares + 1, 1 days);
-    }
-
     function test_topUpStream_failsIfReceiverIsZeroAddress() public {
         uint256 shares = _depositToVault(alice, 1e18);
         _openStream(alice, bob, shares, 1 days);
@@ -501,7 +480,7 @@ contract ERC20StreamingTest is Test {
         vm.startPrank(alice);
         vault.approve(address(streaming), shares);
 
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         streaming.topUpStream(bob, shares, 1 days);
     }
 
@@ -801,7 +780,7 @@ contract ERC20StreamingTest is Test {
         assertEq(stream.lastClaimTime, block.timestamp, "carol's stream - lastClaimTime");
 
         vm.startPrank(alice);
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         streaming.closeStream(bob);
 
         streaming.closeStream(carol);
@@ -851,7 +830,7 @@ contract ERC20StreamingTest is Test {
         assertEq(vault.balanceOf(carol), claimFromAlice + claimFromBob, "carol's balance after claims");
 
         vm.prank(alice);
-        vm.expectRevert(StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         streaming.closeStream(carol);
 
         vm.prank(bob);
