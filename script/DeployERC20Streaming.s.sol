@@ -23,7 +23,7 @@ contract DeployERC20Streaming is DeployScriptBase {
             )
         );
 
-        require(erc20Streaming.token() == vault, "incorrect vault set");
+        require(address(erc20Streaming.token()) == vault, "incorrect token set");
 
         vm.stopBroadcast();
     }

@@ -19,9 +19,9 @@ abstract contract StreamingFactoryBase {
     event Deployed(address indexed vault, address indexed deployed);
 
     /**
-     * @dev Creates a new ERC4626StreamHub instance.
+     * @dev Creates a new streaming contract instance.
      * @param _vault The address of the vault contract.
-     * @return deployed The address of the deployed ERC4626StreamHub instance.
+     * @return deployed The address of the deployed streaming contract instance.
      */
     function create(address _vault) public virtual returns (address deployed) {
         _checkZeroAddress(_vault);
@@ -38,18 +38,18 @@ abstract contract StreamingFactoryBase {
     }
 
     /**
-     * @dev Predicts the address of the deployed ERC4626StreamHub instance.
+     * @dev Predicts the address of the deployed streaming contract instance.
      * @param _vault The address of the vault contract.
-     * @return predicted The predicted address of the deployed ERC4626StreamHub instance.
+     * @return predicted The predicted address of the deployed streaming contract instance.
      */
     function predictDeploy(address _vault) public view returns (address predicted) {
         predicted = CREATE3.getDeployed(getSalt(_vault), address(this));
     }
 
     /**
-     * @dev Checks if an ERC4626StreamHub instance is deployed for the given vault contract address.
+     * @dev Checks if an streaming contract instance is deployed for the given vault contract address.
      * @param _vault The address of the vault contract.
-     * @return bool Returns true if an ERC4626StreamHub instance is deployed, false otherwise.
+     * @return bool Returns true if an streaming contract instance is deployed, false otherwise.
      */
     function isDeployed(address _vault) public view returns (bool) {
         return predictDeploy(_vault).code.length > 0;

@@ -23,7 +23,7 @@ contract DeployYieldStreaming is DeployScriptBase {
             )
         );
 
-        require(yieldStreaming.token() == vault, "incorrect vault set");
+        require(address(yieldStreaming.vault()) == vault, "incorrect vault set");
 
         vm.stopBroadcast();
     }

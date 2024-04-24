@@ -21,7 +21,7 @@ contract YieldStreamingFactoryTest is Test {
         assertEq(factory.deployedAddresses(0), address(deployed));
 
         // assert vault is set
-        assertEq(deployed.token(), address(vault), "vault");
+        assertEq(address(deployed.vault()), address(vault), "vault");
 
         // open yield stream to confirm correcntess
         asset.mint(address(this), 1 ether);
