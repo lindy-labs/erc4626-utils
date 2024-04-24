@@ -43,7 +43,7 @@ contract ERC20StreamingTest is TestCommon {
         _approve(scEth, address(scEthStreaming), alice, shares);
 
         vm.prank(alice);
-        scEthStreaming.openStream(bob, shares, duration);
+        scEthStreaming.open(bob, shares, duration);
 
         assertEq(scEth.balanceOf(address(scEthStreaming)), shares, "contract shares");
 
@@ -68,7 +68,7 @@ contract ERC20StreamingTest is TestCommon {
         _approve(scEth, address(scEthStreaming), alice, shares);
 
         vm.prank(alice);
-        scEthStreaming.openStream(bob, shares, duration);
+        scEthStreaming.open(bob, shares, duration);
 
         assertEq(scEth.balanceOf(address(scEthStreaming)), shares, "contract shares");
 
@@ -79,7 +79,7 @@ contract ERC20StreamingTest is TestCommon {
         assertApproxEqRel(previewClaim, shares / 2, 0.00001e18, "previewClaimShares");
 
         vm.prank(alice);
-        scEthStreaming.closeStream(bob);
+        scEthStreaming.close(bob);
 
         assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
         assertEq(scEth.balanceOf(alice), shares - previewClaim, "alice's shares");
@@ -98,9 +98,9 @@ contract ERC20StreamingTest is TestCommon {
         _approve(scEth, address(scEthStreaming), bob, bobsShares);
 
         vm.prank(alice);
-        scEthStreaming.openStream(carol, alicesShares, alicesDuration);
+        scEthStreaming.open(carol, alicesShares, alicesDuration);
         vm.prank(bob);
-        scEthStreaming.openStream(carol, bobsShares, bobsDuration);
+        scEthStreaming.open(carol, bobsShares, bobsDuration);
 
         vm.warp(block.timestamp + 1 days);
 
@@ -109,7 +109,7 @@ contract ERC20StreamingTest is TestCommon {
         _approve(scEth, address(scEthStreaming), carol, carolsShares);
 
         vm.prank(carol);
-        scEthStreaming.openStream(alice, carolsShares, carolsDuration);
+        scEthStreaming.open(alice, carolsShares, carolsDuration);
 
         vm.warp(block.timestamp + 1 days);
 
@@ -129,7 +129,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.startPrank(carol);
         scEthStreaming.claim(bob, carol);
-        scEthStreaming.closeStream(alice);
+        scEthStreaming.close(alice);
         vm.stopPrank();
 
         assertApproxEqRel(scEth.balanceOf(alice), carolsShares / 2, 0.00001e18, "alice's shares");

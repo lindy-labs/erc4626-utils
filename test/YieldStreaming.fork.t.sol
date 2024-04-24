@@ -42,12 +42,12 @@ contract YieldStreamingTest is TestCommon {
         scUsdcYield = new YieldStreaming(scUsdc);
     }
 
-    function test_openYieldStream() public {
+    function test_open() public {
         uint256 shares = _depositToVault(scEth, alice, 1 ether);
         _approve(scEth, address(scEthYield), alice, shares);
 
         vm.prank(alice);
-        scEthYield.openYieldStream(bob, shares, 0);
+        scEthYield.open(bob, shares, 0);
 
         assertEq(scEth.balanceOf(address(scEthYield)), shares, "contract's balance");
         assertEq(scEthYield.receiverShares(bob), shares, "receiverShares");
@@ -67,7 +67,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(weth.balanceOf(bob), expectedYield, "bob's balance");
     }
 
-    function test_openYieldStream_toMultipleReceivers() public {
+    function test_open_toMultipleReceivers() public {
         // alice opens yield streams to bob and carol
         // principal = 3000 USDC
         uint256 shares = _depositToVault(scUsdc, alice, 3000e6);
@@ -77,8 +77,8 @@ contract YieldStreamingTest is TestCommon {
         uint256 carolsShares = shares - bobsShares;
 
         vm.startPrank(alice);
-        scUsdcYield.openYieldStream(bob, bobsShares, 0);
-        scUsdcYield.openYieldStream(carol, carolsShares, 0);
+        scUsdcYield.open(bob, bobsShares, 0);
+        scUsdcYield.open(carol, carolsShares, 0);
         vm.stopPrank();
 
         assertEq(scUsdc.balanceOf(address(scUsdcYield)), shares, "contract's balance");
@@ -111,7 +111,7 @@ contract YieldStreamingTest is TestCommon {
         assertApproxEqAbs(usdc.balanceOf(carol), carolsExpectedYield, 1, "carol's balance");
 
         vm.prank(alice);
-        scUsdcYield.closeYieldStream(1);
+        scUsdcYield.close(1);
 
         _generateYield(scUsdc, 0.05e18); // 5%
 
@@ -126,7 +126,7 @@ contract YieldStreamingTest is TestCommon {
         _approve(scEth, address(scEthYield), alice, shares);
 
         vm.prank(alice);
-        scEthYield.openYieldStream(bob, shares, 0);
+        scEthYield.open(bob, shares, 0);
 
         _generateYield(scEth, 0.05e18); // 5%
 
@@ -144,7 +144,7 @@ contract YieldStreamingTest is TestCommon {
         _approve(scEth, address(scEthYield), alice, topUpShares);
 
         vm.prank(alice);
-        scEthYield.topUpYieldStream(topUpShares, 1);
+        scEthYield.topUp(1, topUpShares);
 
         assertEq(scEthYield.previewClaimYield(bob), 0, "yield not 0 immediately after topUp");
         assertEq(scEthYield.receiverShares(bob), sharesBeforeTopUp + topUpShares, "receiverShares");
@@ -156,19 +156,19 @@ contract YieldStreamingTest is TestCommon {
         assertApproxEqAbs(scEthYield.previewClaimYield(bob), expectedYield, 1, "yield after topUp");
     }
 
-    function test_openYieldStream_fromTwoAccountsToSameReceiver() public {
+    function test_open_fromTwoAccountsToSameReceiver() public {
         // alice and bob open yield streams to carol
         uint256 alicesPrincipal = 1 ether;
         uint256 alicesShares = _depositToVault(scEth, alice, alicesPrincipal);
         _approve(scEth, address(scEthYield), alice, alicesShares);
         vm.prank(alice);
-        scEthYield.openYieldStream(carol, alicesShares, 0);
+        scEthYield.open(carol, alicesShares, 0);
 
         uint256 bobsPrincipal = 2 ether;
         uint256 bobsShares = _depositToVault(scEth, bob, bobsPrincipal);
         _approve(scEth, address(scEthYield), bob, bobsShares);
         vm.prank(bob);
-        scEthYield.openYieldStream(carol, bobsShares, 0);
+        scEthYield.open(carol, bobsShares, 0);
 
         assertEq(scEth.balanceOf(address(scEthYield)), alicesShares + bobsShares, "contract's balance");
         assertEq(scEthYield.receiverShares(carol), alicesShares + bobsShares, "receiverShares");
@@ -191,13 +191,13 @@ contract YieldStreamingTest is TestCommon {
         assertApproxEqAbs(weth.balanceOf(carol), expectedYield, 1, "carol's assets");
     }
 
-    function test_closeYieldStream() public {
+    function test_close() public {
         uint256 principal = 1 ether;
         uint256 shares = _depositToVault(scEth, alice, principal);
         _approve(scEth, address(scEthYield), alice, shares);
 
         vm.prank(alice);
-        scEthYield.openYieldStream(bob, shares, 0);
+        scEthYield.open(bob, shares, 0);
 
         assertEq(scEth.balanceOf(address(scEthYield)), shares, "contract's balance");
         assertEq(scEthYield.receiverShares(bob), shares, "receiverShares");
@@ -206,7 +206,7 @@ contract YieldStreamingTest is TestCommon {
         _generateYield(scEth, 0.05e18); // 5%
 
         vm.prank(alice);
-        scEthYield.closeYieldStream(1);
+        scEthYield.close(1);
 
         uint256 expectedShares = scEth.convertToShares(principal);
         assertApproxEqAbs(scEth.balanceOf(alice), expectedShares, 1, "alice's shares after close");
@@ -230,21 +230,21 @@ contract YieldStreamingTest is TestCommon {
         assertEq(weth.balanceOf(bob), expectedYield, "bob's balance");
     }
 
-    function test_closeYieldStream_fromTwoAccountsToSameReceiver() public {
+    function test_close_fromTwoAccountsToSameReceiver() public {
         // alice and bob open yield streams to carol
         uint256 alicesPrincipal = 1 ether;
         uint256 alicesShares = _depositToVault(scEth, alice, alicesPrincipal);
         _approve(scEth, address(scEthYield), alice, alicesShares);
 
         vm.prank(alice);
-        scEthYield.openYieldStream(carol, alicesShares, 0);
+        scEthYield.open(carol, alicesShares, 0);
 
         uint256 bobsDepositAmount = 2 ether;
         uint256 bobsShares = _depositToVault(scEth, bob, bobsDepositAmount);
         _approve(scEth, address(scEthYield), bob, bobsShares);
 
         vm.prank(bob);
-        scEthYield.openYieldStream(carol, bobsShares, 0);
+        scEthYield.open(carol, bobsShares, 0);
 
         uint256 profitPct = 0.05e18; // 5%
         uint256 expectedYield = (alicesPrincipal + bobsDepositAmount).mulWadDown(profitPct);
@@ -252,7 +252,7 @@ contract YieldStreamingTest is TestCommon {
         _generateYield(scEth, int256(profitPct));
 
         vm.prank(alice);
-        scEthYield.closeYieldStream(1);
+        scEthYield.close(1);
 
         vm.prank(carol);
         scEthYield.claimYield(carol);

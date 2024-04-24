@@ -25,35 +25,35 @@ contract YieldStreaming is ERC721, Multicall {
     error LossToleranceExceeded();
     error CallerNotOwner();
 
-    event OpenYieldStream(
-        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    event Open(
+        uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
-    event TopUpYieldStream(
-        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    event TopUp(
+        uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
     event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
     event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
-    event CloseYieldStream(
-        uint256 indexed tokenId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+    event Close(
+        uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
 
     /// @dev underlying ERC4646 vault
     IERC4626 public immutable vault;
 
-    /// @dev identifier for the next token to be minted
-    uint256 public nextTokenId = 1;
+    /// @dev identifier for the next new stream (ERC721 token ID)
+    uint256 public nextStreamId = 1;
 
     /// @dev receiver addresses to the number of shares they are entitled to as yield beneficiaries
     mapping(address => uint256) public receiverShares;
 
-    /// @dev receiver addresses to the total principal amount allocated, not claimable as yield
+    /// @dev receiver addresses to the total principal amount allocated, ie not claimable as yield
     mapping(address => uint256) public receiverTotalPrincipal;
 
-    /// @dev receiver addresses to the principal amount allocated from a specific stream
+    /// @dev receiver addresses to streamId to principal amount allocated
     mapping(address => mapping(uint256 => uint256)) public receiverPrincipal;
 
     /// @dev token id to receiver
-    mapping(uint256 => address) public tokenIdToReceiver;
+    mapping(uint256 => address) public streamIdToReceiver;
 
     constructor(IERC4626 _vault)
         ERC721(string.concat("Yield Streaming - ", _vault.name()), string.concat("YST-", _vault.symbol()))
@@ -68,30 +68,32 @@ contract YieldStreaming is ERC721, Multicall {
      * @dev When a new stream is opened, an ERC721 token is minted to the streamer, uniquely identifying the stream.
      * This token represents the ownership of the yield stream and can be held, transferred, or utilized in other contracts.
      * The function calculates the principal amount based on the shares provided, updating the total principal allocated to the receiver.
-     * If the receiver is in debt (where the total value of their streams is less than the allocated principal), the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
+     * If the receiver is in debt (where the total value of their streams is less than the allocated principal),
+     * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of shares to allocate to the new yield stream. Shares represent a portion of the underlying ERC4626 vault tokens.
-     * @param _maxLossOnOpenTolerancePercent The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream. This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
-     * @return tokenId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
+     * @param _maxLossOnOpenTolerancePercent The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
+     * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
+     * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
-    function openYieldStream(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
+    function open(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
         public
-        returns (uint256 tokenId)
+        returns (uint256 streamId)
     {
-        uint256 principal = previewOpenYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
+        uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerancePercent);
 
-        tokenId = nextTokenId++;
+        streamId = nextStreamId++;
 
-        _mint(msg.sender, tokenId);
-        tokenIdToReceiver[tokenId] = _receiver;
+        _mint(msg.sender, streamId);
+        streamIdToReceiver[streamId] = _receiver;
 
         receiverShares[_receiver] += _shares;
         receiverTotalPrincipal[_receiver] += principal;
-        receiverPrincipal[_receiver][tokenId] += principal;
+        receiverPrincipal[_receiver][streamId] += principal;
 
-        emit OpenYieldStream(tokenId, msg.sender, _receiver, _shares, principal);
+        emit Open(streamId, msg.sender, _receiver, _shares, principal);
 
         vault.safeTransferFrom(msg.sender, address(this), _shares);
     }
@@ -103,7 +105,7 @@ contract YieldStreaming is ERC721, Multicall {
      * @param _maxLossOnOpenTolerancePercent The maximum loss percentage tolerated by the sender.
      * @return principal The principal amount in asset units that would be allocated for the shares.
      */
-    function previewOpenYieldStream(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
+    function previewOpen(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
         public
         view
         returns (uint256 principal)
@@ -130,10 +132,10 @@ contract YieldStreaming is ERC721, Multicall {
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
-     * @return tokenId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
+     * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
-    function openYieldStreamUsingPermit(
+    function openUsingPermit(
         address _receiver,
         uint256 _shares,
         uint256 _maxLossOnOpenTolerancePercent,
@@ -141,10 +143,10 @@ contract YieldStreaming is ERC721, Multicall {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external returns (uint256 tokenId) {
+    ) external returns (uint256 streamId) {
         IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
-        tokenId = openYieldStream(_receiver, _shares, _maxLossOnOpenTolerancePercent);
+        streamId = open(_receiver, _shares, _maxLossOnOpenTolerancePercent);
     }
 
     /**
@@ -153,23 +155,23 @@ contract YieldStreaming is ERC721, Multicall {
      * The additional shares increase the principal amount allocated to the receiver, potentially altering the yield generation rate of the stream.
      * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
      *
+     * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _shares The number of additional shares to be added to the yield stream.
-     * @param _tokenId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @return principal The added principal amount in asset units.
      */
-    function topUpYieldStream(uint256 _shares, uint256 _tokenId) public returns (uint256 principal) {
+    function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
         _checkZeroAmount(_shares);
-        _checkIsOwner(_tokenId);
+        _checkIsOwner(_streamId);
 
-        address _receiver = tokenIdToReceiver[_tokenId];
+        address _receiver = streamIdToReceiver[_streamId];
 
         principal = _convertToAssets(_shares);
 
         receiverShares[_receiver] += _shares;
         receiverTotalPrincipal[_receiver] += principal;
-        receiverPrincipal[_receiver][_tokenId] += principal;
+        receiverPrincipal[_receiver][_streamId] += principal;
 
-        emit TopUpYieldStream(_tokenId, msg.sender, _receiver, _shares, principal);
+        emit TopUp(_streamId, msg.sender, _receiver, _shares, principal);
 
         vault.safeTransferFrom(msg.sender, address(this), _shares);
     }
@@ -180,25 +182,21 @@ contract YieldStreaming is ERC721, Multicall {
      * It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
      * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
      *
+     * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _shares The number of additional shares to be added to the yield stream.
-     * @param _tokenId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return principal The added principal amount in asset units.
      */
-    function topUpYieldStreamUsingPermit(
-        uint256 _shares,
-        uint256 _tokenId,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external returns (uint256 principal) {
+    function topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+        external
+        returns (uint256 principal)
+    {
         IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
-        principal = topUpYieldStream(_shares, _tokenId);
+        principal = topUp(_streamId, _shares);
     }
 
     /**
@@ -208,27 +206,27 @@ contract YieldStreaming is ERC721, Multicall {
      * after which the ERC721 token representing the yield stream is burned to ensure it cannot be reused or transferred.
      * This action effectively removes the stream from the contract's tracking, settling any allocated principal and shares back to the streamer.
      *
-     * @param _tokenId The unique identifier of the yield stream to be closed, represented by an ERC721 token. This token must be owned by the caller.
+     * @param _streamId The unique identifier of the yield stream to be closed, represented by an ERC721 token. This token must be owned by the caller.
      * @return shares The number of shares returned to the streamer upon closing the yield stream.
      * This represents the balance of shares not attributed to generated yield, effectively the remaining principal.
      */
-    function closeYieldStream(uint256 _tokenId) external returns (uint256 shares) {
-        _checkIsOwner(_tokenId);
+    function close(uint256 _streamId) external returns (uint256 shares) {
+        _checkIsOwner(_streamId);
 
-        address receiver = tokenIdToReceiver[_tokenId];
+        address receiver = streamIdToReceiver[_streamId];
 
         uint256 principal;
-        (shares, principal) = _previewCloseYieldStream(receiver, _tokenId);
+        (shares, principal) = _previewClose(_streamId, receiver);
 
-        _burn(_tokenId);
+        _burn(_streamId);
 
         // update state and transfer shares
-        delete tokenIdToReceiver[_tokenId];
-        delete receiverPrincipal[receiver][_tokenId];
+        delete streamIdToReceiver[_streamId];
+        delete receiverPrincipal[receiver][_streamId];
         receiverTotalPrincipal[receiver] -= principal;
         receiverShares[receiver] -= shares;
 
-        emit CloseYieldStream(_tokenId, msg.sender, receiver, shares, principal);
+        emit Close(_streamId, msg.sender, receiver, shares, principal);
 
         vault.safeTransfer(msg.sender, shares);
     }
@@ -237,19 +235,19 @@ contract YieldStreaming is ERC721, Multicall {
      * @notice Provides a preview of the shares that would be returned upon closing a yield stream identified by an ERC721 token.
      * @dev This function calculates and returns the number of shares that would be credited back to the streamer upon closing the stream.
      *
-     * @param _tokenId The unique identifier associated with an active yield stream.
+     * @param _streamId The unique identifier associated with an active yield stream.
      * @return shares The estimated number of shares that would be returned to the streamer representing the principal in share terms.
      */
-    function previewCloseYieldStream(uint256 _tokenId) public view returns (uint256 shares) {
-        (shares,) = _previewCloseYieldStream(tokenIdToReceiver[_tokenId], _tokenId);
+    function previewClose(uint256 _streamId) public view returns (uint256 shares) {
+        (shares,) = _previewClose(_streamId, streamIdToReceiver[_streamId]);
     }
 
-    function _previewCloseYieldStream(address _receiver, uint256 _tokenId)
+    function _previewClose(uint256 _streamId, address _receiver)
         internal
         view
         returns (uint256 shares, uint256 principal)
     {
-        principal = _getPrincipal(_receiver, _tokenId);
+        principal = _getPrincipal(_streamId, _receiver);
 
         if (principal == 0) return (0, 0);
 
@@ -365,23 +363,23 @@ contract YieldStreaming is ERC721, Multicall {
 
     /**
      * @dev Retrieves the principal amount allocated to a specific stream.
-     * @param _tokenId The token ID of the stream.
+     * @param _streamId The token ID of the stream.
      * @return principal The principal amount allocated to the stream, in asset units.
      */
     /**
      * @notice Retrieves the principal amount allocated to a specific yield stream, identified by the ERC721 token ID.
      *
-     * @param _tokenId The unique identifier of the yield stream for which the principal is being queried, represented by an ERC721 token.
+     * @param _streamId The unique identifier of the yield stream for which the principal is being queried, represented by an ERC721 token.
      * @return principal The principal amount in asset units initially allocated to the yield stream identified by the given token ID.
      */
-    function getPrincipal(uint256 _tokenId) external view returns (uint256) {
-        address receiver = tokenIdToReceiver[_tokenId];
+    function getPrincipal(uint256 _streamId) external view returns (uint256) {
+        address receiver = streamIdToReceiver[_streamId];
 
-        return _getPrincipal(receiver, _tokenId);
+        return _getPrincipal(_streamId, receiver);
     }
 
-    function _getPrincipal(address _receiver, uint256 _tokenId) internal view returns (uint256) {
-        return receiverPrincipal[_receiver][_tokenId];
+    function _getPrincipal(uint256 _streamId, address _receiver) internal view returns (uint256) {
+        return receiverPrincipal[_receiver][_streamId];
     }
 
     function _checkImmediateLossOnOpen(address _receiver, uint256 _principal, uint256 _lossTolerancePercent)
@@ -414,8 +412,8 @@ contract YieldStreaming is ERC721, Multicall {
         if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
     }
 
-    function _checkIsOwner(uint256 _tokenId) internal view {
-        if (ownerOf(_tokenId) != msg.sender) revert CallerNotOwner();
+    function _checkIsOwner(uint256 _streamId) internal view {
+        if (ownerOf(_streamId) != msg.sender) revert CallerNotOwner();
     }
 
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {

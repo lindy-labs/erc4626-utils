@@ -23,10 +23,10 @@ contract ERC20StreamingTest is TestCommon {
     address public bob = address(0x2);
     address public carol = address(0x3);
 
-    event OpenStream(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
+    event Open(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
     event Claim(address indexed streamer, address indexed receiver, uint256 claimed);
-    event CloseStream(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
-    event TopUpStream(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
+    event Close(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
+    event TopUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
 
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
@@ -49,7 +49,7 @@ contract ERC20StreamingTest is TestCommon {
         _approve(alice, shares);
 
         vm.prank(alice);
-        streaming.openStream(bob, shares, duration);
+        streaming.open(bob, shares, duration);
 
         assertEq(vault.balanceOf(alice), 0);
         assertEq(vault.balanceOf(bob), 0);
@@ -68,10 +68,10 @@ contract ERC20StreamingTest is TestCommon {
         _approve(alice, shares);
 
         vm.expectEmit(true, true, true, true);
-        emit OpenStream(alice, bob, shares, duration);
+        emit Open(alice, bob, shares, duration);
 
         vm.prank(alice);
-        streaming.openStream(bob, shares, duration);
+        streaming.open(bob, shares, duration);
     }
 
     function test_openStream_failsIfStreamAlreadyExists() public {
@@ -79,14 +79,14 @@ contract ERC20StreamingTest is TestCommon {
         _approve(alice, shares);
 
         vm.prank(alice);
-        streaming.openStream(bob, shares, 1 days);
+        streaming.open(bob, shares, 1 days);
 
         shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
         vm.expectRevert(ERC20Streaming.StreamAlreadyExists.selector);
         vm.prank(alice);
-        streaming.openStream(bob, shares, 1 days);
+        streaming.open(bob, shares, 1 days);
     }
 
     function test_openStream_worksIfExistingStreamHasExpiredAndIsNotClaimed() public {
@@ -95,7 +95,7 @@ contract ERC20StreamingTest is TestCommon {
         _approve(alice, shares);
 
         vm.prank(alice);
-        streaming.openStream(bob, shares, duration);
+        streaming.open(bob, shares, duration);
 
         uint256 shares2 = _depositToVault(alice, 3e18);
         uint256 duration2 = 2 days;
@@ -105,13 +105,13 @@ contract ERC20StreamingTest is TestCommon {
 
         // old stream is closed and new stream is opened
         vm.expectEmit(true, true, true, true);
-        emit CloseStream(alice, bob, 0, shares);
+        emit Close(alice, bob, 0, shares);
 
         vm.expectEmit(true, true, true, true);
-        emit OpenStream(alice, bob, shares2, duration2);
+        emit Open(alice, bob, shares2, duration2);
 
         vm.prank(alice);
-        streaming.openStream(bob, shares2, duration2);
+        streaming.open(bob, shares2, duration2);
 
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
         assertEq(vault.balanceOf(bob), shares, "receiver's balance");
@@ -124,7 +124,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert(AddressZero.selector);
         vm.prank(alice);
-        streaming.openStream(address(0), shares, 1 days);
+        streaming.open(address(0), shares, 1 days);
     }
 
     function test_openStream_failsIfAmountIsZero() public {
@@ -133,7 +133,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert(AmountZero.selector);
         vm.prank(alice);
-        streaming.openStream(bob, 0, 1 days);
+        streaming.open(bob, 0, 1 days);
     }
 
     function test_openStream_failsIfDurationIsZero() public {
@@ -142,7 +142,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert(ERC20Streaming.ZeroDuration.selector);
         vm.prank(alice);
-        streaming.openStream(bob, shares, 0);
+        streaming.open(bob, shares, 0);
     }
 
     function test_openStream_failsIfAmountIsGreaterThanBalance() public {
@@ -151,7 +151,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert();
         vm.prank(alice);
-        streaming.openStream(bob, shares + 1, 1 days);
+        streaming.open(bob, shares + 1, 1 days);
     }
 
     function test_openStream_failsIfReceiverIsSameAsCaller() public {
@@ -160,7 +160,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert(CannotOpenStreamToSelf.selector);
         vm.prank(alice);
-        streaming.openStream(alice, shares, 1 days);
+        streaming.open(alice, shares, 1 days);
     }
 
     // *** #claim *** ///
@@ -265,7 +265,7 @@ contract ERC20StreamingTest is TestCommon {
 
         // also emits closeStream if stream is complete
         vm.expectEmit(true, true, true, true);
-        emit CloseStream(alice, bob, 0, 0);
+        emit Close(alice, bob, 0, 0);
 
         vm.expectEmit(true, true, true, true);
         emit Claim(alice, bob, shares);
@@ -279,7 +279,7 @@ contract ERC20StreamingTest is TestCommon {
     function test_closeStream_failsIfStreamDoesNotExist() public {
         vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(bob);
-        streaming.closeStream(bob);
+        streaming.close(bob);
     }
 
     function test_closeStream_transfersUnclaimedAmountToReceiver() public {
@@ -289,7 +289,7 @@ contract ERC20StreamingTest is TestCommon {
         vm.warp(block.timestamp + 1 days + 1);
 
         vm.prank(alice);
-        streaming.closeStream(bob);
+        streaming.close(bob);
 
         assertEq(vault.balanceOf(address(streaming)), 0, "contract balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -310,21 +310,21 @@ contract ERC20StreamingTest is TestCommon {
         vm.warp(block.timestamp + duration + 1);
 
         vm.expectEmit(true, true, true, true);
-        emit CloseStream(alice, bob, 0, shares);
+        emit Close(alice, bob, 0, shares);
 
         vm.startPrank(alice);
-        streaming.closeStream(bob);
+        streaming.close(bob);
     }
 
     function test_closeStream_failsIfAlreadyClosed() public {
         _openStream(alice, bob, 1e18, 1 days);
 
         vm.prank(alice);
-        streaming.closeStream(bob);
+        streaming.close(bob);
 
         vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(alice);
-        streaming.closeStream(bob);
+        streaming.close(bob);
     }
 
     function test_closeStream_transfersRemainingUnclaimedAmountToReceiverAfterLastClaim() public {
@@ -343,10 +343,10 @@ contract ERC20StreamingTest is TestCommon {
         // around 1/4 should be claimable
         vm.warp(block.timestamp + 6 hours);
 
-        (uint256 remaining, uint256 unclaimed) = streaming.previewCloseStream(alice, bob);
+        (uint256 remaining, uint256 unclaimed) = streaming.previewClose(alice, bob);
 
         vm.prank(alice);
-        streaming.closeStream(bob);
+        streaming.close(bob);
 
         assertEq(vault.balanceOf(address(streaming)), 0, "contract balance");
         assertApproxEqRel(vault.balanceOf(alice), shares / 4, 0.0001e18, "alice's balance");
@@ -370,7 +370,7 @@ contract ERC20StreamingTest is TestCommon {
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance 1");
 
         vm.prank(alice);
-        streaming.closeStream(bob);
+        streaming.close(bob);
 
         assertEq(vault.balanceOf(address(streaming)), 0, "contract balance 2");
         assertApproxEqRel(vault.balanceOf(alice), shares / 2, 0.0001e18, "alice's balance 2");
@@ -392,7 +392,7 @@ contract ERC20StreamingTest is TestCommon {
         uint256 additionalDuration = 1 days;
         vm.startPrank(alice);
         vault.approve(address(streaming), shares);
-        streaming.topUpStream(bob, additionalShares, additionalDuration);
+        streaming.topUp(bob, additionalShares, additionalDuration);
 
         assertEq(vault.balanceOf(address(streaming)), shares + additionalShares, "contract balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -421,8 +421,8 @@ contract ERC20StreamingTest is TestCommon {
         vault.approve(address(streaming), shares);
 
         vm.expectEmit(true, true, true, true);
-        emit TopUpStream(alice, bob, additionalShares, additionalDuration);
-        streaming.topUpStream(bob, additionalShares, additionalDuration);
+        emit TopUp(alice, bob, additionalShares, additionalDuration);
+        streaming.topUp(bob, additionalShares, additionalDuration);
     }
 
     function test_topUpStream_failsIfSAmountIsZero() public {
@@ -433,7 +433,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert(AmountZero.selector);
         vm.prank(alice);
-        streaming.topUpStream(bob, 0, 1 days);
+        streaming.topUp(bob, 0, 1 days);
     }
 
     function test_topUpStream_failsIfReceiverIsZeroAddress() public {
@@ -444,7 +444,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert(AddressZero.selector);
         vm.prank(alice);
-        streaming.topUpStream(address(0), shares, 1 days);
+        streaming.topUp(address(0), shares, 1 days);
     }
 
     function test_topUpStream_failsIfStreamDoesNotExist() public {
@@ -453,7 +453,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
         vm.prank(alice);
-        streaming.topUpStream(bob, shares, 1 days);
+        streaming.topUp(bob, shares, 1 days);
     }
 
     function test_topUpStream_failsIfStreamIsExpired() public {
@@ -466,7 +466,7 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.expectRevert(ERC20Streaming.StreamExpired.selector);
         vm.prank(alice);
-        streaming.topUpStream(bob, shares, 1 days);
+        streaming.topUp(bob, shares, 1 days);
     }
 
     function test_topUpStream_worksAfterSomeSharesAreClaimed() public {
@@ -480,7 +480,7 @@ contract ERC20StreamingTest is TestCommon {
         shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
         vm.prank(alice);
-        streaming.topUpStream(bob, shares, 1 days);
+        streaming.topUp(bob, shares, 1 days);
 
         assertApproxEqRel(vault.balanceOf(address(streaming)), shares * 3 / 2, 0.0001e18, "contract balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -504,7 +504,7 @@ contract ERC20StreamingTest is TestCommon {
         shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
         vm.prank(alice);
-        streaming.topUpStream(bob, shares, 0);
+        streaming.topUp(bob, shares, 0);
 
         assertEq(vault.balanceOf(address(streaming)), shares * 2, "contract balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -520,7 +520,7 @@ contract ERC20StreamingTest is TestCommon {
         assertApproxEqRel(vault.balanceOf(bob), shares, 0.0001e18, "receiver balance");
 
         vm.prank(alice);
-        streaming.closeStream(bob);
+        streaming.close(bob);
 
         assertEq(vault.balanceOf(address(streaming)), 0, "contract balance");
         assertApproxEqRel(vault.balanceOf(alice), shares, 0.0001e18, "alice's balance");
@@ -539,7 +539,7 @@ contract ERC20StreamingTest is TestCommon {
 
         // top up with same amount of shares and 2x the initial duration will decrease the rate per second
         vm.expectRevert(ERC20Streaming.RatePerSecondDecreased.selector);
-        streaming.topUpStream(bob, shares, duration * 2);
+        streaming.topUp(bob, shares, duration * 2);
     }
 
     /// *** #openStreamUsingPermit *** ///
@@ -569,7 +569,7 @@ contract ERC20StreamingTest is TestCommon {
         );
 
         vm.prank(dave);
-        streaming.openStreamUsingPermit(alice, shares, duration, deadline, v, r, s);
+        streaming.openUsingPermit(alice, shares, duration, deadline, v, r, s);
 
         assertEq(vault.balanceOf(dave), 0, "dave's balance");
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
@@ -613,7 +613,7 @@ contract ERC20StreamingTest is TestCommon {
         );
 
         vm.prank(dave);
-        streaming.topUpStreamUsingPermit(bob, additionalShares, additionalDuration, deadline, v, r, s);
+        streaming.topUpUsingPermit(bob, additionalShares, additionalDuration, deadline, v, r, s);
 
         assertEq(vault.balanceOf(address(streaming)), shares + additionalShares, "contract balance");
         assertEq(vault.balanceOf(dave), 0, "dave's balance");
@@ -649,8 +649,8 @@ contract ERC20StreamingTest is TestCommon {
         _approve(alice, shares);
 
         bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeCall(streaming.openStream, (bob, shares / 2, duration));
-        data[1] = abi.encodeCall(streaming.openStream, (carol, shares / 2, duration));
+        data[0] = abi.encodeCall(streaming.open, (bob, shares / 2, duration));
+        data[1] = abi.encodeCall(streaming.open, (carol, shares / 2, duration));
 
         vm.prank(alice);
         streaming.multicall(data);
@@ -675,8 +675,8 @@ contract ERC20StreamingTest is TestCommon {
         vm.startPrank(alice);
         vault.approve(address(streaming), shares);
 
-        streaming.openStream(bob, bobsStreamShares, bobsStreamDuration);
-        streaming.openStream(carol, carolsStreamShares, carolsStreamDuration);
+        streaming.open(bob, bobsStreamShares, bobsStreamDuration);
+        streaming.open(carol, carolsStreamShares, carolsStreamDuration);
 
         vm.stopPrank();
 
@@ -744,9 +744,9 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.startPrank(alice);
         vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
-        streaming.closeStream(bob);
+        streaming.close(bob);
 
-        streaming.closeStream(carol);
+        streaming.close(carol);
 
         assertEq(vault.balanceOf(address(streaming)), 0, "contract balance");
         assertEq(vault.balanceOf(alice), shares - bobsClaim - carolsClaim, "alice's balance");
@@ -791,10 +791,10 @@ contract ERC20StreamingTest is TestCommon {
 
         vm.prank(alice);
         vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
-        streaming.closeStream(carol);
+        streaming.close(carol);
 
         vm.prank(bob);
-        streaming.closeStream(carol);
+        streaming.close(carol);
 
         assertEq(vault.balanceOf(address(streaming)), 0, "contract balance after closing");
         assertEq(vault.balanceOf(alice), 0, "alice's balance after closing");
@@ -817,7 +817,7 @@ contract ERC20StreamingTest is TestCommon {
         vm.startPrank(alice);
         vault.approve(address(streaming), shares);
 
-        streaming.openStream(bob, shares, _duration);
+        streaming.open(bob, shares, _duration);
 
         vm.stopPrank();
 
@@ -838,12 +838,14 @@ contract ERC20StreamingTest is TestCommon {
 
         // close streams
         vm.startPrank(alice);
-        streaming.closeStream(bob);
+        streaming.close(bob);
 
         assertEq(vault.balanceOf(address(streaming)), 0, "contracts's shares");
         assertApproxEqAbs(vault.balanceOf(alice), shares / 2, sharesStreamedPerSecond, "alice's shares");
         assertApproxEqRel(vault.balanceOf(alice), shares / 2, 0.01e18, "alice's shares");
     }
+
+    /// *** helpers *** ///
 
     function _depositToVault(address _account, uint256 _amount) internal returns (uint256 shares) {
         shares = _depositToVault(IERC4626(address(vault)), _account, _amount);
@@ -861,6 +863,6 @@ contract ERC20StreamingTest is TestCommon {
         _approve(_streamer, shares);
 
         vm.prank(_streamer);
-        streaming.openStream(_receiver, shares, _duration);
+        streaming.open(_receiver, shares, _duration);
     }
 }
