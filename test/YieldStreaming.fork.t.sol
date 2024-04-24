@@ -144,7 +144,7 @@ contract YieldStreamingTest is TestCommon {
         _approve(scEth, address(scEthYield), alice, topUpShares);
 
         vm.prank(alice);
-        scEthYield.topUp(topUpShares, 1);
+        scEthYield.topUp(1, topUpShares);
 
         assertEq(scEthYield.previewClaimYield(bob), 0, "yield not 0 immediately after topUp");
         assertEq(scEthYield.receiverShares(bob), sharesBeforeTopUp + topUpShares, "receiverShares");

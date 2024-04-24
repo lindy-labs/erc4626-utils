@@ -268,17 +268,19 @@ contract YieldStreamingTest is TestCommon {
 
         vm.prank(alice);
         vm.expectRevert(AmountZero.selector);
-        yieldStreaming.topUp(0, streamId);
+        yieldStreaming.topUp(streamId, 0);
     }
 
     function test_topUp_failsIfStreamDoesntExist() public {
         uint256 streamId = _openYieldStream(alice, bob, 1e18);
+        uint256 shares = _depositToVault(alice, 1e18);
+        _approveYieldStreaming(alice, shares);
 
         uint256 invalidTokenId = streamId + 1;
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, invalidTokenId));
-        yieldStreaming.topUp(1, invalidTokenId);
+        yieldStreaming.topUp(invalidTokenId, shares);
     }
 
     function test_topUp_failsIfCallerIsNotOwner() public {
@@ -287,9 +289,9 @@ contract YieldStreamingTest is TestCommon {
         uint256 shares = _depositToVault(carol, 1e18);
         _approveYieldStreaming(carol, shares);
 
-        vm.startPrank(carol);
+        vm.prank(carol);
         vm.expectRevert(YieldStreaming.CallerNotOwner.selector);
-        yieldStreaming.topUp(shares, streamId);
+        yieldStreaming.topUp(streamId, shares);
     }
 
     function test_topUp_addsToExistingStream() public {
@@ -305,7 +307,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.receiverPrincipal(bob, streamId), principal / 2, "receiver principal  bob");
 
         // top up stream
-        yieldStreaming.topUp(shares / 2, streamId);
+        yieldStreaming.topUp(streamId, shares / 2);
 
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares bob");
         assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "principal bob");
@@ -323,7 +325,7 @@ contract YieldStreamingTest is TestCommon {
         vm.expectEmit(true, true, true, true);
         emit TopUp(streamId, alice, bob, shares / 2, principal / 2);
 
-        yieldStreaming.topUp(shares / 2, streamId);
+        yieldStreaming.topUp(streamId, shares / 2);
     }
 
     function test_topUp_doesntAffectYieldAccrued() public {
@@ -340,7 +342,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.previewClaimYield(bob), yield, "yield before top up");
 
         // top up stream
-        yieldStreaming.open(bob, shares / 2, 0);
+        yieldStreaming.topUp(1, shares / 2);
 
         // yield should remain the same
         assertEq(yieldStreaming.previewClaimYield(bob), yield, "yield after top up");
@@ -360,7 +362,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.previewClaimYield(bob), principal / 2, "yield before top up");
 
         // top up stream with the remaining shares
-        yieldStreaming.topUp(shares / 2, streamId);
+        yieldStreaming.topUp(streamId, shares / 2);
 
         _generateYield(0.5e18);
 
@@ -382,7 +384,7 @@ contract YieldStreamingTest is TestCommon {
         uint256 claimerDebt = yieldStreaming.debtFor(bob);
 
         // top up stream with the remaining shares
-        yieldStreaming.topUp(shares / 2, streamId);
+        yieldStreaming.topUp(streamId, shares / 2);
 
         assertEq(yieldStreaming.debtFor(bob), claimerDebt, "claimer debt");
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
@@ -421,7 +423,7 @@ contract YieldStreamingTest is TestCommon {
 
         // top up stream
         vm.prank(dave);
-        yieldStreaming.topUpUsingPermit(shares / 2, streamId, deadline, v, r, s);
+        yieldStreaming.topUpUsingPermit(streamId, shares / 2, deadline, v, r, s);
 
         assertEq(yieldStreaming.receiverShares(bob), shares, "receiver shares");
         assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "receiver total principal");

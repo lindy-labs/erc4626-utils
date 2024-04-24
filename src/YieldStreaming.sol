@@ -40,16 +40,16 @@ contract YieldStreaming is ERC721, Multicall {
     /// @dev underlying ERC4646 vault
     IERC4626 public immutable vault;
 
-    /// @dev identifier for the next stream opened (ERC721 token ID)
+    /// @dev identifier for the next new stream (ERC721 token ID)
     uint256 public nextStreamId = 1;
 
     /// @dev receiver addresses to the number of shares they are entitled to as yield beneficiaries
     mapping(address => uint256) public receiverShares;
 
-    /// @dev receiver addresses to the total principal amount allocated, not claimable as yield
+    /// @dev receiver addresses to the total principal amount allocated, ie not claimable as yield
     mapping(address => uint256) public receiverTotalPrincipal;
 
-    /// @dev receiver addresses to the principal amount allocated from a specific stream
+    /// @dev receiver addresses to streamId to principal amount allocated
     mapping(address => mapping(uint256 => uint256)) public receiverPrincipal;
 
     /// @dev token id to receiver
@@ -155,11 +155,11 @@ contract YieldStreaming is ERC721, Multicall {
      * The additional shares increase the principal amount allocated to the receiver, potentially altering the yield generation rate of the stream.
      * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
      *
-     * @param _shares The number of additional shares to be added to the yield stream.
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
+     * @param _shares The number of additional shares to be added to the yield stream.
      * @return principal The added principal amount in asset units.
      */
-    function topUp(uint256 _shares, uint256 _streamId) public returns (uint256 principal) {
+    function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
         _checkZeroAmount(_shares);
         _checkIsOwner(_streamId);
 
@@ -182,21 +182,21 @@ contract YieldStreaming is ERC721, Multicall {
      * It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
      * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
      *
-     * @param _shares The number of additional shares to be added to the yield stream.
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
+     * @param _shares The number of additional shares to be added to the yield stream.
      * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return principal The added principal amount in asset units.
      */
-    function topUpUsingPermit(uint256 _shares, uint256 _streamId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+    function topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
         external
         returns (uint256 principal)
     {
         IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
-        principal = topUp(_shares, _streamId);
+        principal = topUp(_streamId, _shares);
     }
 
     /**
@@ -216,7 +216,7 @@ contract YieldStreaming is ERC721, Multicall {
         address receiver = streamIdToReceiver[_streamId];
 
         uint256 principal;
-        (shares, principal) = _previewClose(receiver, _streamId);
+        (shares, principal) = _previewClose(_streamId, receiver);
 
         _burn(_streamId);
 
@@ -239,15 +239,15 @@ contract YieldStreaming is ERC721, Multicall {
      * @return shares The estimated number of shares that would be returned to the streamer representing the principal in share terms.
      */
     function previewClose(uint256 _streamId) public view returns (uint256 shares) {
-        (shares,) = _previewClose(streamIdToReceiver[_streamId], _streamId);
+        (shares,) = _previewClose(_streamId, streamIdToReceiver[_streamId]);
     }
 
-    function _previewClose(address _receiver, uint256 _streamId)
+    function _previewClose(uint256 _streamId, address _receiver)
         internal
         view
         returns (uint256 shares, uint256 principal)
     {
-        principal = _getPrincipal(_receiver, _streamId);
+        principal = _getPrincipal(_streamId, _receiver);
 
         if (principal == 0) return (0, 0);
 
@@ -375,10 +375,10 @@ contract YieldStreaming is ERC721, Multicall {
     function getPrincipal(uint256 _streamId) external view returns (uint256) {
         address receiver = streamIdToReceiver[_streamId];
 
-        return _getPrincipal(receiver, _streamId);
+        return _getPrincipal(_streamId, receiver);
     }
 
-    function _getPrincipal(address _receiver, uint256 _streamId) internal view returns (uint256) {
+    function _getPrincipal(uint256 _streamId, address _receiver) internal view returns (uint256) {
         return receiverPrincipal[_receiver][_streamId];
     }
 
