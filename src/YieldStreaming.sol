@@ -38,7 +38,7 @@ contract YieldStreaming is ERC721, Multicall {
     );
 
     /// @dev underlying ERC4646 vault
-    IERC4626 public vault;
+    IERC4626 public immutable vault;
 
     /// @dev identifier for the next stream opened (ERC721 token ID)
     uint256 public nextStreamId = 1;
