@@ -8,7 +8,7 @@ import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
-import {AddressZero, AmountZero, CannotOpenStreamToSelf} from "./common/Errors.sol";
+import {AddressZero, AmountZero} from "./common/Errors.sol";
 
 /**
  * @title YieldStreaming
@@ -111,7 +111,6 @@ contract YieldStreaming is ERC721, Multicall {
         returns (uint256 principal)
     {
         _checkZeroAddress(_receiver);
-        _checkOpenStreamToSelf(_receiver);
         _checkZeroAmount(_shares);
 
         principal = _convertToAssets(_shares);
@@ -406,10 +405,6 @@ contract YieldStreaming is ERC721, Multicall {
 
     function _checkZeroAmount(uint256 _amount) internal pure {
         if (_amount == 0) revert AmountZero();
-    }
-
-    function _checkOpenStreamToSelf(address _receiver) internal view {
-        if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
     }
 
     function _checkIsOwner(uint256 _streamId) internal view {

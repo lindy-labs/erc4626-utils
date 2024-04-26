@@ -34,14 +34,14 @@ contract ERC20StreamingTest is TestCommon {
         streaming = new ERC20Streaming(IERC4626(address(vault)));
     }
 
-    // *** constructor *** ///
+    /// *** constructor *** ///
 
     function test_constructor_failsForAddress0() public {
         vm.expectRevert(AddressZero.selector);
         new ERC20Streaming(IERC4626(address(0)));
     }
 
-    // *** #openStream *** ///
+    /// *** #openStream *** ///
 
     function test_openStream_createsNewStream() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -158,12 +158,12 @@ contract ERC20StreamingTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(CannotOpenStreamToSelf.selector);
+        vm.expectRevert(ERC20Streaming.CannotOpenStreamToSelf.selector);
         vm.prank(alice);
         streaming.open(alice, shares, 1 days);
     }
 
-    // *** #claim *** ///
+    /// *** #claim *** ///
 
     function test_claim_failsIfStreamDoesNotExist() public {
         vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
@@ -274,7 +274,7 @@ contract ERC20StreamingTest is TestCommon {
         streaming.claim(alice, bob);
     }
 
-    // *** #closeStream *** ///
+    /// *** #closeStream *** ///
 
     function test_closeStream_failsIfStreamDoesNotExist() public {
         vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
@@ -377,7 +377,7 @@ contract ERC20StreamingTest is TestCommon {
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance 2");
     }
 
-    // *** #topUpStream *** ///
+    /// *** #topUpStream *** ///
 
     function test_topUpStream_addsAmountToStreamAndExtendsDuration() public {
         uint256 duration = 1 days;

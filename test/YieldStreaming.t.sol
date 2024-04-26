@@ -54,7 +54,7 @@ contract YieldStreamingTest is TestCommon {
         deal(address(asset), address(vault), 2e18);
     }
 
-    // *** #constructor *** ///
+    /// *** #constructor *** ///
 
     function test_constructor() public {
         assertEq(address(yieldStreaming.vault()), address(vault), "vault");
@@ -66,17 +66,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.nextStreamId(), 1, "next stream id");
     }
 
-    // *** #open *** ///
-
-    function test_open_failsOpeningStreamToSelf() public {
-        uint256 amount = 10e18;
-        uint256 shares = _depositToVault(alice, amount);
-        _approveYieldStreaming(alice, shares);
-
-        vm.startPrank(alice);
-        vm.expectRevert(CannotOpenStreamToSelf.selector);
-        yieldStreaming.open(alice, shares, 0);
-    }
+    /// *** #open *** ///
 
     function test_open_failsFor0Shares() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -261,7 +251,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal, "receiver principal");
     }
 
-    // *** #topUp *** ///
+    /// *** #topUp *** ///
 
     function test_topUp_failsIfAmountIs0() public {
         uint256 streamId = _openYieldStream(alice, bob, 1e18);
@@ -430,7 +420,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.receiverPrincipal(bob, streamId), principal, "receiver principal");
     }
 
-    // *** #previewClaimYield *** ///
+    /// *** #previewClaimYield *** ///
 
     function test_previewClaimYield_returns0IfNoYield() public {
         _openYieldStream(alice, bob, 1e18);
@@ -514,7 +504,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield");
     }
 
-    // *** #claimYield *** ///
+    /// *** #claimYield *** ///
 
     function test_claimYield_toSelf() public {
         uint256 principal = 1e18;
@@ -686,7 +676,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
     }
 
-    // *** #claimYieldInShares *** ///
+    /// *** #claimYieldInShares *** ///
 
     function test_claimYieldInShares_toSelf() public {
         uint256 principal = 2e18;
@@ -850,7 +840,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
     }
 
-    // *** #close *** ///
+    /// *** #close *** ///
 
     function test_close_failsIfCallerIsNotOwner() public {
         uint256 streamId = _openYieldStream(alice, bob, 1e18);
@@ -1050,7 +1040,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.receiverTotalPrincipal(carol), bobsPrincipal, "carol's total principal");
     }
 
-    // *** #previewClose *** ///
+    /// *** #previewClose *** ///
 
     function test_previewClose_returns0IfTokenDoesntExist() public {
         assertEq(yieldStreaming.previewClose(1), 0);
@@ -1070,7 +1060,7 @@ contract YieldStreamingTest is TestCommon {
         assertApproxEqAbs(yieldStreaming.previewClose(streamId), shares - yieldValueInShares, 1, "shares returned");
     }
 
-    // *** #multicall *** ///
+    /// *** #multicall *** ///
 
     function test_multicall_OpenMultipleYieldStreams() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -1089,7 +1079,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.receiverShares(carol), shares / 4, "receiver shares carol");
     }
 
-    // *** #transfer *** ///
+    /// *** #transfer *** ///
 
     function test_transfer() public {
         uint256 principal = 1e18;
@@ -1117,7 +1107,7 @@ contract YieldStreamingTest is TestCommon {
         assertApproxEqAbs(yieldStreaming.previewClaimYield(bob), 1e18 / 2, 1, "bob's yield");
     }
 
-    // *** #tokenUri *** ///
+    /// *** #tokenUri *** ///
 
     function test_tokenUri_returnsEmptyString() public {
         _openYieldStream(alice, bob, 1e18);
@@ -1125,7 +1115,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(yieldStreaming.tokenURI(1), "", "token uri not empty");
     }
 
-    // *** #supportsInterface *** ///
+    /// *** #supportsInterface *** ///
 
     function test_supportsInterface() public {
         assertTrue(yieldStreaming.supportsInterface(type(IERC721).interfaceId), "IERC721");
@@ -1180,7 +1170,7 @@ contract YieldStreamingTest is TestCommon {
         assertEq(vault.balanceOf(address(yieldStreaming)), 0, "contract's shares");
     }
 
-    // *** helpers *** ///
+    /// *** helpers *** ///
 
     function _depositToVault(address _from, uint256 _amount) internal returns (uint256 shares) {
         shares = _depositToVault(IERC4626(address(vault)), _from, _amount);
