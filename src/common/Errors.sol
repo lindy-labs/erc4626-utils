@@ -6,10 +6,6 @@ pragma solidity ^0.8.19;
 error AmountZero();
 error AddressZero();
 
-// *** streaming errors *** ///
-
-error CannotOpenStreamToSelf();
-
 // *** factory errors *** ///
 
 error AlreadyDeployed();

@@ -7,7 +7,7 @@ import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
-import {AddressZero, AmountZero, CannotOpenStreamToSelf} from "./common/Errors.sol";
+import {AddressZero, AmountZero} from "./common/Errors.sol";
 
 /**
  * @title This contract facilitates the streaming of ERC20 tokens with unique stream IDs per streamer-receiver pair.
@@ -18,6 +18,7 @@ contract ERC20Streaming is Multicall {
     using SafeERC20 for IERC20;
 
     error ZeroDuration();
+    error CannotOpenStreamToSelf();
     error StreamAlreadyExists();
     error StreamExpired();
     error RatePerSecondDecreased();
