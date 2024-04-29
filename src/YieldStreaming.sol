@@ -135,9 +135,7 @@ contract YieldStreaming is ERC721, Multicall {
         public
         returns (uint256 streamId)
     {
-        uint256 principal = _convertToAssets(_shares);
-
-        _canOpen(_receiver, _shares, principal, _maxLossOnOpenTolerancePercent);
+        uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerancePercent);
 
         streamId = _openStream(_receiver, _shares, principal);
 
