@@ -135,7 +135,6 @@ contract YieldStreaming is ERC721, Multicall {
         public
         returns (uint256 streamId)
     {
-        // uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerancePercent);
         uint256 principal = _convertToAssets(_shares);
 
         _canOpen(_receiver, _shares, principal, _maxLossOnOpenTolerancePercent);
@@ -406,26 +405,6 @@ contract YieldStreaming is ERC721, Multicall {
         (shares,) = _previewClose(_streamId, streamIdToReceiver[_streamId]);
     }
 
-    function _previewClose(uint256 _streamId, address _receiver)
-        internal
-        view
-        returns (uint256 shares, uint256 principal)
-    {
-        principal = _getPrincipal(_streamId, _receiver);
-
-        if (principal == 0) return (0, 0);
-
-        // asset amount of equivalent shares
-        uint256 ask = _convertToShares(principal);
-        uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
-
-        // calculate the maximum amount of shares that can be attributed to the sender as a percentage of the sender's share of the total principal.
-        uint256 have = receiverTotalShares[_receiver].mulDivDown(principal, totalPrincipal);
-
-        // true if there was a loss (negative yield)
-        shares = ask > have ? have : ask;
-    }
-
     /**
      * @notice Claims the generated yield from all streams for the caller and transfers it to a specified address.
      * @dev This function calculates the total yield generated for the caller across all yield streams where they are the designated receiver.
@@ -520,9 +499,10 @@ contract YieldStreaming is ERC721, Multicall {
      */
     function debtFor(address _receiver) public view returns (uint256) {
         uint256 principal = receiverTotalPrincipal[_receiver];
-        uint256 currentValue = _convertToAssets(receiverTotalShares[_receiver]);
+        uint256 shares = receiverTotalShares[_receiver];
+        uint256 sharePrice = _convertToAssets(shares).divWadUp(shares);
 
-        return currentValue < principal ? principal - currentValue : 0;
+        return _calculateDebt(principal, shares, sharePrice);
     }
 
     /**
@@ -540,10 +520,6 @@ contract YieldStreaming is ERC721, Multicall {
         address receiver = streamIdToReceiver[_streamId];
 
         return _getPrincipal(_streamId, receiver);
-    }
-
-    function _getPrincipal(uint256 _streamId, address _receiver) internal view returns (uint256) {
-        return receiverPrincipal[_receiver][_streamId];
     }
 
     // accounting logic for opening a new stream
@@ -569,6 +545,30 @@ contract YieldStreaming is ERC721, Multicall {
         receiverPrincipal[_receiver][_streamId] += _principal;
 
         emit TopUp(_streamId, msg.sender, _receiver, _shares, _principal);
+    }
+
+    function _previewClose(uint256 _streamId, address _receiver)
+        internal
+        view
+        returns (uint256 shares, uint256 principal)
+    {
+        principal = _getPrincipal(_streamId, _receiver);
+
+        if (principal == 0) return (0, 0);
+
+        // asset amount of equivalent shares
+        uint256 ask = _convertToShares(principal);
+        uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
+
+        // calculate the maximum amount of shares that can be attributed to the sender as a percentage of the sender's share of the total principal.
+        uint256 have = receiverTotalShares[_receiver].mulDivDown(principal, totalPrincipal);
+
+        // true if there was a loss (negative yield)
+        shares = ask > have ? have : ask;
+    }
+
+    function _getPrincipal(uint256 _streamId, address _receiver) internal view returns (uint256) {
+        return receiverPrincipal[_receiver][_streamId];
     }
 
     function _canOpen(address _receiver, uint256 _shares, uint256 _principal, uint256 _maxLossOnOpenTolerancePercent)
