@@ -8,7 +8,7 @@ import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 
 import "../src/common/Errors.sol";
 
-import {StreamingFactoryBase} from "../src/common/StreamingFactoryBase.sol";
+import {StreamsFactoryBase} from "../src/common/StreamsFactoryBase.sol";
 
 contract StreamingFactoryBaseTest is Test {
     FactoryHarness public factory;
@@ -80,7 +80,7 @@ contract StreamingFactoryBaseTest is Test {
     }
 }
 
-contract FactoryHarness is StreamingFactoryBase {
+contract FactoryHarness is StreamsFactoryBase {
     function _getCreationCode(address) internal pure override returns (bytes memory) {
         return abi.encodePacked(type(DeployMock).creationCode);
     }

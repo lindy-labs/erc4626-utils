@@ -16,10 +16,10 @@ import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {TestCommon} from "./common/TestCommon.sol";
-import {YieldStreaming} from "src/YieldStreaming.sol";
+import {YieldStreams} from "src/YieldStreams.sol";
 import "src/common/Errors.sol";
 
-contract YieldStreamingTest is TestCommon {
+contract YieldStreamsTest is TestCommon {
     using FixedPointMathLib for uint256;
 
     event Open(
@@ -35,7 +35,7 @@ contract YieldStreamingTest is TestCommon {
     );
     event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
 
-    YieldStreaming public yieldStreaming;
+    YieldStreams public ys;
     MockERC4626 public vault;
     MockERC20 public asset;
 
@@ -46,7 +46,7 @@ contract YieldStreamingTest is TestCommon {
     function setUp() public {
         asset = new MockERC20("Mock ERC20", "mERC20", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "Mock ERC4626", "mERC4626");
-        yieldStreaming = new YieldStreaming(IERC4626(address(vault)));
+        ys = new YieldStreams(IERC4626(address(vault)));
 
         // make initial deposit to the vault
         _depositToVault(address(this), 1e18);
@@ -57,16 +57,16 @@ contract YieldStreamingTest is TestCommon {
     /// *** #constructor *** ///
 
     function test_constructor() public {
-        assertEq(address(yieldStreaming.vault()), address(vault), "vault");
+        assertEq(address(ys.vault()), address(vault), "vault");
 
-        assertEq(yieldStreaming.name(), "Yield Streaming - Mock ERC4626", "name");
-        assertEq(yieldStreaming.symbol(), "YST-mERC4626", "symbol");
+        assertEq(ys.name(), "Yield Stream - Mock ERC4626", "name");
+        assertEq(ys.symbol(), "YS-mERC4626", "symbol");
 
         // nft ids start from 1
-        assertEq(yieldStreaming.nextStreamId(), 1, "next stream id");
-        assertEq(address(yieldStreaming.asset()), address(asset), "underlying asset");
+        assertEq(ys.nextStreamId(), 1, "next stream id");
+        assertEq(address(ys.asset()), address(asset), "underlying asset");
         // vault is not allowed to transfer assets by default
-        assertEq(asset.allowance(address(yieldStreaming), address(vault)), 0, "allowance");
+        assertEq(asset.allowance(address(ys), address(vault)), 0, "allowance");
     }
 
     /// *** #open *** ///
@@ -76,7 +76,7 @@ contract YieldStreamingTest is TestCommon {
 
         vm.startPrank(alice);
         vm.expectRevert(AmountZero.selector);
-        yieldStreaming.open(bob, 0, 0);
+        ys.open(bob, 0, 0);
     }
 
     function test_open_failsIfReceiverIsAddress0() public {
@@ -84,7 +84,7 @@ contract YieldStreamingTest is TestCommon {
 
         vm.startPrank(alice);
         vm.expectRevert(AddressZero.selector);
-        yieldStreaming.open(address(0), shares, 0);
+        ys.open(address(0), shares, 0);
     }
 
     function test_open_mintsNtfAndTransfersShares() public {
@@ -92,30 +92,30 @@ contract YieldStreamingTest is TestCommon {
         uint256 shares = _depositToVaultAndApprove(alice, principal);
 
         vm.startPrank(alice);
-        uint256 streamId = yieldStreaming.open(bob, shares, 0);
+        uint256 streamId = ys.open(bob, shares, 0);
 
         assertEq(streamId, 1, "stream id");
-        assertEq(yieldStreaming.nextStreamId(), 2, "next stream id");
-        assertEq(yieldStreaming.ownerOf(streamId), alice, "owner of token");
-        assertEq(yieldStreaming.balanceOf(alice), 1, "nft balance of alice");
+        assertEq(ys.nextStreamId(), 2, "next stream id");
+        assertEq(ys.ownerOf(streamId), alice, "owner of token");
+        assertEq(ys.balanceOf(alice), 1, "nft balance of alice");
 
-        assertEq(vault.balanceOf(address(yieldStreaming)), shares, "contract's shares");
-        assertEq(yieldStreaming.receiverTotalShares(bob), shares, "receiver shares");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "receiver total principal");
-        assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal, "receiver principal");
+        assertEq(vault.balanceOf(address(ys)), shares, "contract's shares");
+        assertEq(ys.receiverTotalShares(bob), shares, "receiver shares");
+        assertEq(ys.receiverTotalPrincipal(bob), principal, "receiver total principal");
+        assertEq(ys.receiverPrincipal(bob, 1), principal, "receiver principal");
     }
 
     function test_open_emitsEvent() public {
         uint256 principal = 4e18;
         uint256 shares = _depositToVaultAndApprove(alice, principal);
 
-        uint256 streamId = yieldStreaming.nextStreamId();
+        uint256 streamId = ys.nextStreamId();
 
         vm.expectEmit(true, true, true, true);
         emit Open(streamId, alice, bob, shares, principal);
 
         vm.prank(alice);
-        yieldStreaming.open(bob, shares, 0);
+        ys.open(bob, shares, 0);
     }
 
     function test_open_toTwoReceivers() public {
@@ -123,22 +123,22 @@ contract YieldStreamingTest is TestCommon {
         uint256 shares = _depositToVaultAndApprove(alice, principal);
 
         vm.startPrank(alice);
-        uint256 firstId = yieldStreaming.open(bob, shares / 2, 0);
-        uint256 secondId = yieldStreaming.open(carol, shares / 4, 0);
+        uint256 firstId = ys.open(bob, shares / 2, 0);
+        uint256 secondId = ys.open(carol, shares / 4, 0);
 
         assertEq(firstId, 1, "first id");
         assertEq(secondId, 2, "second id");
-        assertEq(yieldStreaming.nextStreamId(), 3, "next stream id");
+        assertEq(ys.nextStreamId(), 3, "next stream id");
 
         assertEq(vault.balanceOf(alice), shares / 4, "alice's shares");
 
-        assertEq(yieldStreaming.receiverTotalShares(bob), shares / 2, "receiver shares bob");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal / 2, "principal bob");
-        assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal / 2, "receiver principal  bob");
+        assertEq(ys.receiverTotalShares(bob), shares / 2, "receiver shares bob");
+        assertEq(ys.receiverTotalPrincipal(bob), principal / 2, "principal bob");
+        assertEq(ys.receiverPrincipal(bob, 1), principal / 2, "receiver principal  bob");
 
-        assertEq(yieldStreaming.receiverTotalShares(carol), shares / 4, "receiver shares carol");
-        assertEq(yieldStreaming.receiverTotalPrincipal(carol), principal / 4, "principal carol");
-        assertEq(yieldStreaming.receiverPrincipal(carol, 2), principal / 4, "receiver principal  carol");
+        assertEq(ys.receiverTotalShares(carol), shares / 4, "receiver shares carol");
+        assertEq(ys.receiverTotalPrincipal(carol), principal / 4, "principal carol");
+        assertEq(ys.receiverPrincipal(carol, 2), principal / 4, "receiver principal  carol");
     }
 
     function test_open_failsIfReceiverIsInDebtAndImmediateLossIsAboveLossTolerancePercent() public {
@@ -147,15 +147,15 @@ contract YieldStreamingTest is TestCommon {
 
         // alice opens a stream to carol
         vm.prank(alice);
-        yieldStreaming.open(carol, alicesShares, 0);
+        ys.open(carol, alicesShares, 0);
 
         // create 10% loss
         _generateYield(-0.1e18);
-        assertEq(yieldStreaming.debtFor(carol), 0.1e18, "debt for carol");
+        assertEq(ys.debtFor(carol), 0.1e18, "debt for carol");
 
         uint256 bobsPrincipal = 2e18;
         uint256 bobsShares = _depositToVault(bob, bobsPrincipal);
-        _approveYieldStreaming(bob, bobsShares);
+        _approveYieldStreamsContract(bob, bobsShares);
 
         // debt for carol = 0.1e18
         // alice's principal = 1e18
@@ -167,8 +167,8 @@ contract YieldStreamingTest is TestCommon {
         // bob opens a stream to carol
         uint256 toleratedLossOnOpenPct = 0.033e18; // 3.3%
         vm.prank(bob);
-        vm.expectRevert(YieldStreaming.LossToleranceExceeded.selector);
-        yieldStreaming.open(carol, bobsShares, toleratedLossOnOpenPct);
+        vm.expectRevert(YieldStreams.LossToleranceExceeded.selector);
+        ys.open(carol, bobsShares, toleratedLossOnOpenPct);
     }
 
     function test_open_worksIfReceiverIsInDebtAndLossIsBelowLossTolerancePercent() public {
@@ -177,15 +177,15 @@ contract YieldStreamingTest is TestCommon {
 
         // alice opens a stream to carol
         vm.prank(alice);
-        yieldStreaming.open(carol, alicesShares, 0);
+        ys.open(carol, alicesShares, 0);
 
         // create 10% loss
         _generateYield(-0.1e18);
-        assertEq(yieldStreaming.debtFor(carol), 0.1e18, "debt for carol");
+        assertEq(ys.debtFor(carol), 0.1e18, "debt for carol");
 
         uint256 bobsPrincipal = 2e18;
         uint256 bobsShares = _depositToVault(bob, bobsPrincipal);
-        _approveYieldStreaming(bob, bobsShares);
+        _approveYieldStreamsContract(bob, bobsShares);
 
         // debt for carol = 0.1e18
         // alice's principal = 1e18
@@ -197,9 +197,9 @@ contract YieldStreamingTest is TestCommon {
         // bob opens a stream to carol
         uint256 toleratedLossOnOpenPct = 0.034e18; // 3.4%
         vm.prank(bob);
-        uint256 streamId = yieldStreaming.open(carol, bobsShares, toleratedLossOnOpenPct);
+        uint256 streamId = ys.open(carol, bobsShares, toleratedLossOnOpenPct);
 
-        uint256 principalWithLoss = vault.convertToAssets(yieldStreaming.previewClose(2));
+        uint256 principalWithLoss = vault.convertToAssets(ys.previewClose(2));
         uint256 bobsLossOnOpen = bobsPrincipal - principalWithLoss;
 
         assertTrue(principalWithLoss < bobsPrincipal, "principal with loss > bobs deposit");
@@ -207,7 +207,7 @@ contract YieldStreamingTest is TestCommon {
         assertTrue(bobsLossOnOpen < bobsPrincipal.mulWadDown(toleratedLossOnOpenPct), "loss tolerance exceeded");
 
         vm.prank(bob);
-        yieldStreaming.close(streamId);
+        ys.close(streamId);
 
         uint256 bobsPrincipalAfterClose = vault.convertToAssets(vault.balanceOf(bob));
         assertApproxEqAbs(bobsPrincipalAfterClose, bobsPrincipal - bobsLossOnOpen, 1, "bobs principal after close");
@@ -232,19 +232,19 @@ contract YieldStreamingTest is TestCommon {
                 abi.encodePacked(
                     "\x19\x01",
                     MockERC4626(address(vault)).DOMAIN_SEPARATOR(),
-                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(yieldStreaming), shares, nonce, deadline))
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(ys), shares, nonce, deadline))
                 )
             )
         );
 
         vm.prank(dave);
-        uint256 streamId = yieldStreaming.openUsingPermit(bob, shares, 0, deadline, v, r, s);
+        uint256 streamId = ys.openUsingPermit(bob, shares, 0, deadline, v, r, s);
 
         assertEq(streamId, 1, "stream id");
-        assertEq(vault.balanceOf(address(yieldStreaming)), shares, "contract's shares");
-        assertEq(yieldStreaming.receiverTotalShares(bob), shares, "receiver shares");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "receiver total principal");
-        assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal, "receiver principal");
+        assertEq(vault.balanceOf(address(ys)), shares, "contract's shares");
+        assertEq(ys.receiverTotalShares(bob), shares, "receiver shares");
+        assertEq(ys.receiverTotalPrincipal(bob), principal, "receiver total principal");
+        assertEq(ys.receiverPrincipal(bob, 1), principal, "receiver principal");
     }
 
     /// *** #openWithAssets *** ///
@@ -255,7 +255,7 @@ contract YieldStreamingTest is TestCommon {
         // fails to deposit 0 amount to the vault
         vm.expectRevert("ZERO_SHARES");
         vm.prank(alice);
-        yieldStreaming.openWithAssets(bob, 0, 0);
+        ys.openWithAssets(bob, 0, 0);
     }
 
     function test_openWithAssets_failsIfReceiverIsAddress0() public {
@@ -264,40 +264,40 @@ contract YieldStreamingTest is TestCommon {
 
         // underflows when trying to transfer assets from address(0)
         vm.expectRevert();
-        yieldStreaming.openWithAssets(address(0), principal, 0);
+        ys.openWithAssets(address(0), principal, 0);
     }
 
     function test_openWithAssets_mintsNtfAndTransfersShares() public {
         uint256 principal = 1e18;
         _approveAssetsAndPreviewDeposit(alice, principal);
 
-        uint256 shares = yieldStreaming.previewOpenWithAssets(bob, principal, 0);
+        uint256 shares = ys.previewOpenWithAssets(bob, principal, 0);
         assertEq(shares, vault.convertToShares(principal), "preview open with assets");
 
         vm.prank(alice);
-        uint256 streamId = yieldStreaming.openWithAssets(bob, principal, 0);
+        uint256 streamId = ys.openWithAssets(bob, principal, 0);
 
         assertEq(streamId, 1, "stream id");
-        assertEq(yieldStreaming.nextStreamId(), 2, "next stream id");
-        assertEq(yieldStreaming.ownerOf(streamId), alice, "owner of token");
-        assertEq(yieldStreaming.balanceOf(alice), 1, "nft balance of alice");
+        assertEq(ys.nextStreamId(), 2, "next stream id");
+        assertEq(ys.ownerOf(streamId), alice, "owner of token");
+        assertEq(ys.balanceOf(alice), 1, "nft balance of alice");
 
-        assertEq(vault.balanceOf(address(yieldStreaming)), shares, "contract's shares");
-        assertEq(yieldStreaming.receiverTotalShares(bob), shares, "receiver shares");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "receiver total principal");
-        assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal, "receiver principal");
+        assertEq(vault.balanceOf(address(ys)), shares, "contract's shares");
+        assertEq(ys.receiverTotalShares(bob), shares, "receiver shares");
+        assertEq(ys.receiverTotalPrincipal(bob), principal, "receiver total principal");
+        assertEq(ys.receiverPrincipal(bob, 1), principal, "receiver principal");
     }
 
     function test_openWithAssets_emitsEvent() public {
         uint256 principal = 1e18;
         uint256 shares = _approveAssetsAndPreviewDeposit(alice, principal);
-        uint256 streamId = yieldStreaming.nextStreamId();
+        uint256 streamId = ys.nextStreamId();
 
         vm.expectEmit(true, true, true, true);
         emit Open(streamId, alice, bob, shares, principal);
 
         vm.prank(alice);
-        yieldStreaming.openWithAssets(bob, principal, 0);
+        ys.openWithAssets(bob, principal, 0);
     }
 
     function test_openWithAssets_toTwoReceivers() public {
@@ -305,24 +305,22 @@ contract YieldStreamingTest is TestCommon {
         _approveAssetsAndPreviewDeposit(alice, principal);
 
         vm.startPrank(alice);
-        uint256 firstId = yieldStreaming.openWithAssets(bob, principal / 2, 0);
-        uint256 secondId = yieldStreaming.openWithAssets(carol, principal / 4, 0);
+        uint256 firstId = ys.openWithAssets(bob, principal / 2, 0);
+        uint256 secondId = ys.openWithAssets(carol, principal / 4, 0);
 
         assertEq(firstId, 1, "first id");
         assertEq(secondId, 2, "second id");
-        assertEq(yieldStreaming.nextStreamId(), 3, "next stream id");
+        assertEq(ys.nextStreamId(), 3, "next stream id");
 
         assertEq(asset.balanceOf(alice), principal / 4, "alice's assets");
 
-        assertEq(yieldStreaming.receiverTotalShares(bob), vault.convertToShares(principal / 2), "receiver shares bob");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal / 2, "principal bob");
-        assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal / 2, "receiver principal  bob");
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(principal / 2), "receiver shares bob");
+        assertEq(ys.receiverTotalPrincipal(bob), principal / 2, "principal bob");
+        assertEq(ys.receiverPrincipal(bob, 1), principal / 2, "receiver principal  bob");
 
-        assertEq(
-            yieldStreaming.receiverTotalShares(carol), vault.convertToShares(principal / 4), "receiver shares carol"
-        );
-        assertEq(yieldStreaming.receiverTotalPrincipal(carol), principal / 4, "principal carol");
-        assertEq(yieldStreaming.receiverPrincipal(carol, 2), principal / 4, "receiver principal  carol");
+        assertEq(ys.receiverTotalShares(carol), vault.convertToShares(principal / 4), "receiver shares carol");
+        assertEq(ys.receiverTotalPrincipal(carol), principal / 4, "principal carol");
+        assertEq(ys.receiverPrincipal(carol, 2), principal / 4, "receiver principal  carol");
     }
 
     function test_openWithAssets_failsIfReceiverIsInDebtAndImmediateLossIsAboveLossTolerancePercent() public {
@@ -331,15 +329,15 @@ contract YieldStreamingTest is TestCommon {
 
         // alice opens a stream to carol
         vm.prank(alice);
-        yieldStreaming.openWithAssets(carol, principal, 0);
+        ys.openWithAssets(carol, principal, 0);
 
         // create 10% loss
         _generateYield(-0.1e18);
-        assertEq(yieldStreaming.debtFor(carol), 0.1e18, "debt for carol");
+        assertEq(ys.debtFor(carol), 0.1e18, "debt for carol");
 
         uint256 bobsPrincipal = 2e18;
         uint256 bobsShares = _depositToVault(bob, bobsPrincipal);
-        _approveYieldStreaming(bob, bobsShares);
+        _approveYieldStreamsContract(bob, bobsShares);
 
         // debt for carol = 0.1e18
         // alice's principal = 1e18
@@ -351,8 +349,8 @@ contract YieldStreamingTest is TestCommon {
         // bob opens a stream to carol
         uint256 toleratedLossOnOpenPct = 0.033e18; // 3.3%
         vm.prank(bob);
-        vm.expectRevert(YieldStreaming.LossToleranceExceeded.selector);
-        yieldStreaming.open(carol, bobsShares, toleratedLossOnOpenPct);
+        vm.expectRevert(YieldStreams.LossToleranceExceeded.selector);
+        ys.open(carol, bobsShares, toleratedLossOnOpenPct);
     }
 
     function test_openWithAssets_worksIfReceiverIsInDebtAndLossIsBelowLossTolerancePercent() public {
@@ -360,7 +358,7 @@ contract YieldStreamingTest is TestCommon {
 
         // create 10% loss
         _generateYield(-0.1e18);
-        assertEq(yieldStreaming.debtFor(carol), 0.1e18, "debt for carol");
+        assertEq(ys.debtFor(carol), 0.1e18, "debt for carol");
 
         uint256 bobsPrincipal = 2e18;
         _approveAssetsAndPreviewDeposit(bob, bobsPrincipal);
@@ -375,9 +373,9 @@ contract YieldStreamingTest is TestCommon {
         // bob opens a stream to carol
         uint256 toleratedLossOnOpenPct = 0.034e18; // 3.4%
         vm.prank(bob);
-        uint256 streamId = yieldStreaming.openWithAssets(carol, bobsPrincipal, toleratedLossOnOpenPct);
+        uint256 streamId = ys.openWithAssets(carol, bobsPrincipal, toleratedLossOnOpenPct);
 
-        uint256 principalWithLoss = vault.convertToAssets(yieldStreaming.previewClose(2));
+        uint256 principalWithLoss = vault.convertToAssets(ys.previewClose(2));
         uint256 bobsLossOnOpen = bobsPrincipal - principalWithLoss;
 
         assertTrue(principalWithLoss < bobsPrincipal, "principal with loss > bobs deposit");
@@ -385,7 +383,7 @@ contract YieldStreamingTest is TestCommon {
         assertTrue(bobsLossOnOpen < bobsPrincipal.mulWadDown(toleratedLossOnOpenPct), "loss tolerance exceeded");
 
         vm.prank(bob);
-        yieldStreaming.close(streamId);
+        ys.close(streamId);
 
         uint256 bobsPrincipalAfterClose = vault.convertToAssets(vault.balanceOf(bob));
         assertApproxEqAbs(bobsPrincipalAfterClose, bobsPrincipal - bobsLossOnOpen, 1, "bobs principal after close");
@@ -410,19 +408,19 @@ contract YieldStreamingTest is TestCommon {
                 abi.encodePacked(
                     "\x19\x01",
                     MockERC20(asset).DOMAIN_SEPARATOR(),
-                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(yieldStreaming), principal, nonce, deadline))
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(ys), principal, nonce, deadline))
                 )
             )
         );
 
         vm.prank(dave);
-        uint256 streamId = yieldStreaming.openWithAssetsUsingPermit(bob, principal, 0, deadline, v, r, s);
+        uint256 streamId = ys.openWithAssetsUsingPermit(bob, principal, 0, deadline, v, r, s);
 
         assertEq(streamId, 1, "stream id");
-        assertEq(vault.balanceOf(address(yieldStreaming)), vault.convertToShares(principal), "contract's shares");
-        assertEq(yieldStreaming.receiverTotalShares(bob), vault.convertToShares(principal), "receiver shares");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal, "receiver total principal");
-        assertEq(yieldStreaming.receiverPrincipal(bob, 1), principal, "receiver principal");
+        assertEq(vault.balanceOf(address(ys)), vault.convertToShares(principal), "contract's shares");
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(principal), "receiver shares");
+        assertEq(ys.receiverTotalPrincipal(bob), principal, "receiver total principal");
+        assertEq(ys.receiverPrincipal(bob, 1), principal, "receiver principal");
     }
 
     /// *** #topUp *** ///
@@ -433,7 +431,7 @@ contract YieldStreamingTest is TestCommon {
 
         vm.prank(alice);
         vm.expectRevert(AmountZero.selector);
-        yieldStreaming.topUp(streamId, 0);
+        ys.topUp(streamId, 0);
     }
 
     function test_topUp_failsIfStreamDoesntExist() public {
@@ -443,7 +441,7 @@ contract YieldStreamingTest is TestCommon {
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, invalidTokenId));
-        yieldStreaming.topUp(invalidTokenId, shares);
+        ys.topUp(invalidTokenId, shares);
     }
 
     function test_topUp_failsIfCallerIsNotOwner() public {
@@ -451,8 +449,8 @@ contract YieldStreamingTest is TestCommon {
         uint256 shares = _depositToVaultAndApprove(alice, 1e18);
 
         vm.prank(carol);
-        vm.expectRevert(YieldStreaming.CallerNotOwner.selector);
-        yieldStreaming.topUp(streamId, shares);
+        vm.expectRevert(YieldStreams.CallerNotOwner.selector);
+        ys.topUp(streamId, shares);
     }
 
     function test_topUp_addsToExistingStream() public {
@@ -465,14 +463,12 @@ contract YieldStreamingTest is TestCommon {
         vm.startPrank(alice);
 
         // top up stream
-        yieldStreaming.topUp(streamId, addedShares);
+        ys.topUp(streamId, addedShares);
 
         uint256 expectedPrincipal = principal + addedPrincipal;
-        assertEq(
-            yieldStreaming.receiverTotalShares(bob), vault.convertToShares(expectedPrincipal), "receiver shares bob"
-        );
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), expectedPrincipal, "principal bob");
-        assertEq(yieldStreaming.receiverPrincipal(bob, streamId), expectedPrincipal, "receiver principal  bob");
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(expectedPrincipal), "receiver shares bob");
+        assertEq(ys.receiverTotalPrincipal(bob), expectedPrincipal, "principal bob");
+        assertEq(ys.receiverPrincipal(bob, streamId), expectedPrincipal, "receiver principal  bob");
     }
 
     function test_topUp_emitsEvent() public {
@@ -485,26 +481,26 @@ contract YieldStreamingTest is TestCommon {
         emit TopUp(streamId, alice, bob, addedShares, addedPrincipal);
 
         vm.prank(alice);
-        yieldStreaming.topUp(streamId, addedShares);
+        ys.topUp(streamId, addedShares);
     }
 
     function test_topUp_doesntAffectYieldAccrued() public {
         uint256 streamId = _openYieldStream(alice, bob, 2e18);
 
         _generateYield(0.2e18);
-        uint256 yield = yieldStreaming.previewClaimYield(bob);
+        uint256 yield = ys.previewClaimYield(bob);
 
         // all the yield has been accrued
-        assertEq(yieldStreaming.previewClaimYield(bob), yield, "yield before top up");
+        assertEq(ys.previewClaimYield(bob), yield, "yield before top up");
 
         // top up stream
         uint256 addedShares = _depositToVaultAndApprove(alice, 1e18);
 
         vm.prank(alice);
-        yieldStreaming.topUp(streamId, addedShares);
+        ys.topUp(streamId, addedShares);
 
         // yield should remain the same
-        assertApproxEqAbs(yieldStreaming.previewClaimYield(bob), yield, 1, "yield after top up");
+        assertApproxEqAbs(ys.previewClaimYield(bob), yield, 1, "yield after top up");
     }
 
     function test_topUp_affectsFutureYield() public {
@@ -514,20 +510,20 @@ contract YieldStreamingTest is TestCommon {
         // double the share price
         _generateYield(1e18);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), principal, "yield before top up");
+        assertEq(ys.previewClaimYield(bob), principal, "yield before top up");
 
         // top up
         uint256 addedShares = _depositToVaultAndApprove(alice, 2e18);
 
         vm.prank(alice);
-        yieldStreaming.topUp(streamId, addedShares);
+        ys.topUp(streamId, addedShares);
 
         _generateYield(0.5e18);
 
         // share price increased by 200% in total from the initial deposit
         // expected yield is 75% of that whole gain
         // 1e18 * 2 + 2e18 * 0.5 = 3e18
-        assertEq(yieldStreaming.previewClaimYield(bob), 3e18, "yield after top up");
+        assertEq(ys.previewClaimYield(bob), 3e18, "yield after top up");
     }
 
     function test_topUp_worksWhenReceiverIsInDebt() public {
@@ -537,19 +533,19 @@ contract YieldStreamingTest is TestCommon {
 
         _generateYield(-0.5e18);
 
-        uint256 receiverDebt = yieldStreaming.debtFor(bob);
+        uint256 receiverDebt = ys.debtFor(bob);
 
         assertEq(receiverDebt, principal / 2, "receiver debt before top up");
 
         // top up stream
         uint256 addedShares = _depositToVaultAndApprove(alice, principal);
         vm.prank(alice);
-        yieldStreaming.topUp(streamId, addedShares);
+        ys.topUp(streamId, addedShares);
 
-        assertEq(yieldStreaming.debtFor(bob), receiverDebt, "receiver debt");
-        assertEq(yieldStreaming.receiverTotalShares(bob), shares + addedShares, "receiver shares");
-        assertEq(yieldStreaming.receiverPrincipal(bob, streamId), principal * 2, "receiver principal");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal * 2, "receiver total principal");
+        assertEq(ys.debtFor(bob), receiverDebt, "receiver debt");
+        assertEq(ys.receiverTotalShares(bob), shares + addedShares, "receiver shares");
+        assertEq(ys.receiverPrincipal(bob, streamId), principal * 2, "receiver principal");
+        assertEq(ys.receiverTotalPrincipal(bob), principal * 2, "receiver total principal");
     }
 
     function test_topUpUsingPermit() public {
@@ -576,20 +572,18 @@ contract YieldStreamingTest is TestCommon {
                 abi.encodePacked(
                     "\x19\x01",
                     MockERC4626(address(vault)).DOMAIN_SEPARATOR(),
-                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(yieldStreaming), addedShares, nonce, deadline))
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(ys), addedShares, nonce, deadline))
                 )
             )
         );
 
         // top up stream
         vm.prank(dave);
-        yieldStreaming.topUpUsingPermit(streamId, addedShares, deadline, v, r, s);
+        ys.topUpUsingPermit(streamId, addedShares, deadline, v, r, s);
 
-        assertEq(
-            yieldStreaming.receiverTotalShares(bob), vault.convertToShares(principal) + addedShares, "receiver shares"
-        );
-        assertEq(yieldStreaming.receiverPrincipal(bob, streamId), principal + addedPrincipal, "receiver principal");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal + addedPrincipal, "receiver total principal");
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(principal) + addedShares, "receiver shares");
+        assertEq(ys.receiverPrincipal(bob, streamId), principal + addedPrincipal, "receiver principal");
+        assertEq(ys.receiverTotalPrincipal(bob), principal + addedPrincipal, "receiver total principal");
     }
 
     /// *** #topUpWithAssets *** ///
@@ -600,7 +594,7 @@ contract YieldStreamingTest is TestCommon {
 
         vm.prank(alice);
         vm.expectRevert(AmountZero.selector);
-        yieldStreaming.topUpWithAssets(streamId, 0);
+        ys.topUpWithAssets(streamId, 0);
     }
 
     function test_topUpWithAssets_failsIfStreamDoesntExist() public {
@@ -613,7 +607,7 @@ contract YieldStreamingTest is TestCommon {
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, invalidTokenId));
-        yieldStreaming.topUpWithAssets(invalidTokenId, addedPrincipal);
+        ys.topUpWithAssets(invalidTokenId, addedPrincipal);
     }
 
     function test_topUpWithAssets_failsIfCallerIsNotOwner() public {
@@ -623,8 +617,8 @@ contract YieldStreamingTest is TestCommon {
         _approveAssetsAndPreviewDeposit(carol, addedPrincipal);
 
         vm.prank(carol);
-        vm.expectRevert(YieldStreaming.CallerNotOwner.selector);
-        yieldStreaming.topUp(streamId, addedPrincipal);
+        vm.expectRevert(YieldStreams.CallerNotOwner.selector);
+        ys.topUp(streamId, addedPrincipal);
     }
 
     function test_topUpWithAssets_addsToExistingStream() public {
@@ -635,16 +629,12 @@ contract YieldStreamingTest is TestCommon {
         _approveAssetsAndPreviewDeposit(alice, addedPrincipal);
 
         vm.prank(alice);
-        yieldStreaming.topUpWithAssets(streamId, addedPrincipal);
+        ys.topUpWithAssets(streamId, addedPrincipal);
 
         uint256 expectedTotalPrincipal = principal + addedPrincipal;
-        assertEq(
-            yieldStreaming.receiverTotalShares(bob),
-            vault.convertToShares(expectedTotalPrincipal),
-            "receiver shares bob"
-        );
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), expectedTotalPrincipal, "principal bob");
-        assertEq(yieldStreaming.receiverPrincipal(bob, streamId), expectedTotalPrincipal, "receiver principal  bob");
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(expectedTotalPrincipal), "receiver shares bob");
+        assertEq(ys.receiverTotalPrincipal(bob), expectedTotalPrincipal, "principal bob");
+        assertEq(ys.receiverPrincipal(bob, streamId), expectedTotalPrincipal, "receiver principal  bob");
     }
 
     function test_topUpWithAssets_emitsEvent() public {
@@ -657,7 +647,7 @@ contract YieldStreamingTest is TestCommon {
         emit TopUp(streamId, alice, bob, addedShares, addedPrincipal);
 
         vm.prank(alice);
-        yieldStreaming.topUpWithAssets(streamId, addedPrincipal);
+        ys.topUpWithAssets(streamId, addedPrincipal);
     }
 
     function test_topUpWithAssets_doesntAffectYieldAccrued() public {
@@ -665,7 +655,7 @@ contract YieldStreamingTest is TestCommon {
         uint256 streamId = _openYieldStream(alice, bob, 1e18);
 
         _generateYield(0.2e18);
-        uint256 yield = yieldStreaming.previewClaimYield(bob);
+        uint256 yield = ys.previewClaimYield(bob);
 
         // assert the yield is not 0
         assertEq(yield, principal.mulWadDown(0.2e18), "yield before top up");
@@ -675,10 +665,10 @@ contract YieldStreamingTest is TestCommon {
         _approveAssetsAndPreviewDeposit(alice, addedPrincipal);
 
         vm.prank(alice);
-        yieldStreaming.topUpWithAssets(streamId, addedPrincipal);
+        ys.topUpWithAssets(streamId, addedPrincipal);
 
         // yield should remain the same
-        assertApproxEqAbs(yieldStreaming.previewClaimYield(bob), yield, 1, "yield after top up");
+        assertApproxEqAbs(ys.previewClaimYield(bob), yield, 1, "yield after top up");
     }
 
     function test_topUpWithAssets_affectsFutureYield() public {
@@ -688,21 +678,21 @@ contract YieldStreamingTest is TestCommon {
         // double the share price
         _generateYield(1e18);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), principal, "yield before top up");
+        assertEq(ys.previewClaimYield(bob), principal, "yield before top up");
 
         // top up
         uint256 addedPrincipal = 2e18;
         _approveAssetsAndPreviewDeposit(alice, addedPrincipal);
 
         vm.prank(alice);
-        yieldStreaming.topUpWithAssets(streamId, addedPrincipal);
+        ys.topUpWithAssets(streamId, addedPrincipal);
 
         _generateYield(0.5e18);
 
         // share price increased by 200% in total from the initial deposit
         // expected yield is 75% of that whole gain
         // 1e18 * 2 + 2e18 * 0.5 = 3e18
-        assertEq(yieldStreaming.previewClaimYield(bob), 3e18, "yield after top up");
+        assertEq(ys.previewClaimYield(bob), 3e18, "yield after top up");
     }
 
     function test_topUpWithAssets_worksWhenReceiverIsInDebt() public {
@@ -712,7 +702,7 @@ contract YieldStreamingTest is TestCommon {
 
         _generateYield(-0.5e18);
 
-        uint256 receiverDebt = yieldStreaming.debtFor(bob);
+        uint256 receiverDebt = ys.debtFor(bob);
 
         assertEq(receiverDebt, principal / 2, "receiver debt before top up");
 
@@ -721,12 +711,12 @@ contract YieldStreamingTest is TestCommon {
         uint256 addedShares = _approveAssetsAndPreviewDeposit(alice, addedPrincipal);
 
         vm.prank(alice);
-        yieldStreaming.topUpWithAssets(streamId, addedPrincipal);
+        ys.topUpWithAssets(streamId, addedPrincipal);
 
-        assertEq(yieldStreaming.debtFor(bob), receiverDebt, "receiver debt after top up");
-        assertEq(yieldStreaming.receiverTotalShares(bob), shares + addedShares, "receiver shares");
-        assertEq(yieldStreaming.receiverPrincipal(bob, streamId), principal + addedPrincipal, "receiver principal");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), principal + addedPrincipal, "receiver total principal");
+        assertEq(ys.debtFor(bob), receiverDebt, "receiver debt after top up");
+        assertEq(ys.receiverTotalShares(bob), shares + addedShares, "receiver shares");
+        assertEq(ys.receiverPrincipal(bob, streamId), principal + addedPrincipal, "receiver principal");
+        assertEq(ys.receiverTotalPrincipal(bob), principal + addedPrincipal, "receiver total principal");
     }
 
     function test_topUpWithAssetsUsingPermit() public {
@@ -753,23 +743,19 @@ contract YieldStreamingTest is TestCommon {
                 abi.encodePacked(
                     "\x19\x01",
                     MockERC20(address(asset)).DOMAIN_SEPARATOR(),
-                    keccak256(
-                        abi.encode(PERMIT_TYPEHASH, dave, address(yieldStreaming), addedPrincipal, nonce, deadline)
-                    )
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(ys), addedPrincipal, nonce, deadline))
                 )
             )
         );
 
         // top up stream
         vm.prank(dave);
-        yieldStreaming.topUpWithAssetsUsingPermit(streamId, addedPrincipal, deadline, v, r, s);
+        ys.topUpWithAssetsUsingPermit(streamId, addedPrincipal, deadline, v, r, s);
 
         uint256 expectedTotalPrincipal = principal + addedPrincipal;
-        assertEq(
-            yieldStreaming.receiverTotalShares(bob), vault.convertToShares(expectedTotalPrincipal), "receiver shares"
-        );
-        assertEq(yieldStreaming.receiverPrincipal(bob, streamId), expectedTotalPrincipal, "receiver principal");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), expectedTotalPrincipal, "receiver total principal");
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(expectedTotalPrincipal), "receiver shares");
+        assertEq(ys.receiverPrincipal(bob, streamId), expectedTotalPrincipal, "receiver principal");
+        assertEq(ys.receiverTotalPrincipal(bob), expectedTotalPrincipal, "receiver total principal");
     }
 
     /// *** #previewClaimYield *** ///
@@ -778,7 +764,7 @@ contract YieldStreamingTest is TestCommon {
         _openYieldStream(alice, bob, 1e18);
 
         // no share price increase => no yield
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "yield");
+        assertEq(ys.previewClaimYield(bob), 0, "yield");
     }
 
     function test_previewClaimYield_returns0IfVaultMadeLosses() public {
@@ -792,7 +778,7 @@ contract YieldStreamingTest is TestCommon {
         assertApproxEqAbs(vault.totalAssets(), totalAssets.mulWadDown(0.8e18), 1, "vault no losses");
 
         // no share price increase => no yield
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "yield");
+        assertEq(ys.previewClaimYield(bob), 0, "yield");
     }
 
     function test_previewClaimYield_returnsGeneratedYield() public {
@@ -802,7 +788,7 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), principal / 2, "bob's yield");
+        assertEq(ys.previewClaimYield(bob), principal / 2, "bob's yield");
     }
 
     function test_previewClaimYield_returnsGeneratedYieldAfterStreamIsClosed() public {
@@ -812,14 +798,14 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        uint256 yieldFor = yieldStreaming.previewClaimYield(bob);
+        uint256 yieldFor = ys.previewClaimYield(bob);
         uint256 alicesBalance = vault.balanceOf(alice);
 
         assertEq(yieldFor, principal / 2, "bob's yield");
         assertEq(alicesBalance, 0, "alice's shares");
 
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
 
         assertEq(yieldFor, principal / 2, "bob's yield");
         assertEq(vault.balanceOf(alice), vault.convertToShares(principal), "alice's shares");
@@ -832,7 +818,7 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        uint256 yieldFor = yieldStreaming.previewClaimYield(bob);
+        uint256 yieldFor = ys.previewClaimYield(bob);
         uint256 alicesBalance = vault.balanceOf(alice);
 
         assertEq(yieldFor, principal / 2, "bob's yield");
@@ -841,19 +827,19 @@ contract YieldStreamingTest is TestCommon {
         vm.stopPrank();
 
         vm.prank(bob);
-        yieldStreaming.claimYield(bob);
+        ys.claimYield(bob);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield");
+        assertEq(ys.previewClaimYield(bob), 0, "bob's yield");
         assertApproxEqAbs(asset.balanceOf(bob), principal / 2, 1, "bob's assets");
         assertEq(vault.balanceOf(alice), 0, "alice's shares");
 
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
 
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield");
+        assertEq(ys.previewClaimYield(bob), 0, "bob's yield");
     }
 
     /// *** #claimYield *** ///
@@ -866,7 +852,7 @@ contract YieldStreamingTest is TestCommon {
         _generateYield(0.5e18);
 
         vm.prank(bob);
-        yieldStreaming.claimYield(bob);
+        ys.claimYield(bob);
 
         assertEq(vault.balanceOf(alice), 0, "alice's shares");
         assertApproxEqAbs(asset.balanceOf(bob), principal / 2, 1, "bob's assets");
@@ -878,10 +864,10 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        uint256 previewClaim = yieldStreaming.previewClaimYield(bob);
+        uint256 previewClaim = ys.previewClaimYield(bob);
 
         vm.prank(bob);
-        uint256 claimed = yieldStreaming.claimYield(carol);
+        uint256 claimed = ys.claimYield(carol);
 
         assertApproxEqAbs(claimed, previewClaim, 1, "claimed");
 
@@ -896,14 +882,14 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        uint256 yield = yieldStreaming.previewClaimYield(bob);
+        uint256 yield = ys.previewClaimYield(bob);
         uint256 sharesRedeemed = vault.convertToShares(yield);
 
         vm.expectEmit(true, true, true, true);
         emit ClaimYield(bob, carol, sharesRedeemed, yield);
 
         vm.prank(bob);
-        yieldStreaming.claimYield(carol);
+        ys.claimYield(carol);
     }
 
     function test_claimYield_revertsToAddressIs0() public {
@@ -914,17 +900,17 @@ contract YieldStreamingTest is TestCommon {
 
         vm.expectRevert(AddressZero.selector);
         vm.prank(bob);
-        yieldStreaming.claimYield(address(0));
+        ys.claimYield(address(0));
     }
 
     function test_claimYield_revertsIfNoYield() public {
         _openYieldStream(alice, bob, 1e18);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield != 0");
+        assertEq(ys.previewClaimYield(bob), 0, "bob's yield != 0");
 
-        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
+        vm.expectRevert(YieldStreams.NoYieldToClaim.selector);
         vm.prank(bob);
-        yieldStreaming.claimYield(bob);
+        ys.claimYield(bob);
     }
 
     function test_claimYield_revertsIfVaultMadeLosses() public {
@@ -933,9 +919,9 @@ contract YieldStreamingTest is TestCommon {
         // create a 20% loss
         _generateYield(-0.2e18);
 
-        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
+        vm.expectRevert(YieldStreams.NoYieldToClaim.selector);
         vm.prank(bob);
-        yieldStreaming.claimYield(bob);
+        ys.claimYield(bob);
     }
 
     function test_claimYield_claimsFromAllOpenedStreams() public {
@@ -948,14 +934,14 @@ contract YieldStreamingTest is TestCommon {
         // add 100% profit to vault
         _generateYield(1e18);
 
-        assertEq(yieldStreaming.previewClaimYield(carol), alicesPrincipal + bobsPrincipal, "carol's yield");
+        assertEq(ys.previewClaimYield(carol), alicesPrincipal + bobsPrincipal, "carol's yield");
 
         vm.prank(carol);
-        uint256 claimed = yieldStreaming.claimYield(carol);
+        uint256 claimed = ys.claimYield(carol);
 
         assertEq(claimed, alicesPrincipal + bobsPrincipal, "claimed");
         assertEq(asset.balanceOf(carol), claimed, "carol's assets");
-        assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
+        assertEq(ys.previewClaimYield(carol), 0, "carols's yield");
     }
 
     function test_claimYield_worksIfOneOfStreamsIsClosed() public {
@@ -968,18 +954,18 @@ contract YieldStreamingTest is TestCommon {
         // add 100% profit to vault
         _generateYield(1e18);
 
-        assertEq(yieldStreaming.previewClaimYield(carol), alicesPrincipal + bobsPrincipal, "carol's expected yield");
+        assertEq(ys.previewClaimYield(carol), alicesPrincipal + bobsPrincipal, "carol's expected yield");
 
         vm.prank(bob);
-        yieldStreaming.close(2);
+        ys.close(2);
 
         vm.prank(carol);
-        uint256 claimed = yieldStreaming.claimYield(carol);
+        uint256 claimed = ys.claimYield(carol);
 
         assertEq(claimed, alicesPrincipal + bobsPrincipal, "claimed");
         assertEq(asset.balanceOf(carol), claimed, "carol's assets");
         assertEq(vault.balanceOf(carol), 0, "carol's shares");
-        assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
+        assertEq(ys.previewClaimYield(carol), 0, "carols's yield");
     }
 
     function test_claimYield_worksIfAllStreamsAreClosed() public {
@@ -992,22 +978,20 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        assertEq(
-            yieldStreaming.previewClaimYield(carol), (alicesPrincipal + bobsPrincipal) / 2, "carol's expected yield"
-        );
+        assertEq(ys.previewClaimYield(carol), (alicesPrincipal + bobsPrincipal) / 2, "carol's expected yield");
 
         vm.prank(bob);
-        yieldStreaming.close(2);
+        ys.close(2);
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
 
         vm.prank(carol);
-        uint256 claimed = yieldStreaming.claimYield(carol);
+        uint256 claimed = ys.claimYield(carol);
 
         assertApproxEqAbs(claimed, (alicesPrincipal + bobsPrincipal) / 2, 1, "claimed");
         assertEq(asset.balanceOf(carol), claimed, "carol's assets");
         assertEq(vault.balanceOf(carol), 0, "carol's shares");
-        assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
+        assertEq(ys.previewClaimYield(carol), 0, "carols's yield");
     }
 
     /// *** #claimYieldInShares *** ///
@@ -1022,7 +1006,7 @@ contract YieldStreamingTest is TestCommon {
         uint256 expectedYieldInShares = vault.convertToShares(principal / 2);
 
         vm.prank(bob);
-        uint256 claimed = yieldStreaming.claimYieldInShares(bob);
+        uint256 claimed = ys.claimYieldInShares(bob);
 
         assertApproxEqAbs(claimed, expectedYieldInShares, 1, "bob's shares");
         assertEq(asset.balanceOf(bob), 0, "bob's assets");
@@ -1040,7 +1024,7 @@ contract YieldStreamingTest is TestCommon {
         uint256 expectedYieldInShares = vault.convertToShares(principal / 2);
 
         vm.prank(bob);
-        uint256 claimed = yieldStreaming.claimYieldInShares(carol);
+        uint256 claimed = ys.claimYieldInShares(carol);
 
         assertApproxEqAbs(claimed, expectedYieldInShares, 1, "claimed yield in shares");
         assertEq(vault.balanceOf(alice), 0, "alice's shares");
@@ -1056,13 +1040,13 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        uint256 expectedYieldInShares = yieldStreaming.previewClaimYieldInShares(bob);
+        uint256 expectedYieldInShares = ys.previewClaimYieldInShares(bob);
 
         vm.expectEmit(true, true, true, true);
         emit ClaimYieldInShares(bob, carol, expectedYieldInShares);
 
         vm.prank(bob);
-        yieldStreaming.claimYieldInShares(carol);
+        ys.claimYieldInShares(carol);
     }
 
     function test_claimYieldInShares_revertsToAddressIs0() public {
@@ -1073,17 +1057,17 @@ contract YieldStreamingTest is TestCommon {
 
         vm.expectRevert(AddressZero.selector);
         vm.prank(bob);
-        yieldStreaming.claimYieldInShares(address(0));
+        ys.claimYieldInShares(address(0));
     }
 
     function test_claimYieldInShares_revertsIfNoYield() public {
         _openYieldStream(alice, bob, 1e18);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield != 0");
+        assertEq(ys.previewClaimYield(bob), 0, "bob's yield != 0");
 
-        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
+        vm.expectRevert(YieldStreams.NoYieldToClaim.selector);
         vm.prank(bob);
-        yieldStreaming.claimYieldInShares(bob);
+        ys.claimYieldInShares(bob);
     }
 
     function test_claimYieldInShares_revertsIfVaultMadeLosses() public {
@@ -1092,9 +1076,9 @@ contract YieldStreamingTest is TestCommon {
         // create a 20% loss
         _generateYield(-0.2e18);
 
-        vm.expectRevert(YieldStreaming.NoYieldToClaim.selector);
+        vm.expectRevert(YieldStreams.NoYieldToClaim.selector);
         vm.prank(bob);
-        yieldStreaming.claimYield(bob);
+        ys.claimYield(bob);
     }
 
     function test_claimYieldInShares_claimsFromAllOpenedStreams() public {
@@ -1109,14 +1093,14 @@ contract YieldStreamingTest is TestCommon {
         uint256 expectedYield = alicesPrincipal / 2 + bobsPrincipal / 2;
         uint256 expectedYieldInShares = vault.convertToShares(expectedYield);
 
-        assertApproxEqAbs(yieldStreaming.previewClaimYieldInShares(carol), expectedYieldInShares, 1, "carol's yield");
+        assertApproxEqAbs(ys.previewClaimYieldInShares(carol), expectedYieldInShares, 1, "carol's yield");
 
         vm.prank(carol);
-        uint256 claimed = yieldStreaming.claimYieldInShares(carol);
+        uint256 claimed = ys.claimYieldInShares(carol);
 
         assertApproxEqAbs(claimed, expectedYieldInShares, 1, "claimed");
         assertEq(vault.balanceOf(carol), claimed, "carol's shares");
-        assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
+        assertEq(ys.previewClaimYield(carol), 0, "carols's yield");
         assertEq(asset.balanceOf(carol), 0, "carol's assets");
     }
 
@@ -1130,20 +1114,18 @@ contract YieldStreamingTest is TestCommon {
         _generateYield(1e18);
 
         uint256 expectedYieldInShares = vault.convertToShares(alicesPrincipal + bobsPrincipal);
-        assertApproxEqAbs(
-            yieldStreaming.previewClaimYieldInShares(carol), expectedYieldInShares, 1, "carol's expected yield"
-        );
+        assertApproxEqAbs(ys.previewClaimYieldInShares(carol), expectedYieldInShares, 1, "carol's expected yield");
 
         vm.prank(bob);
-        yieldStreaming.close(2);
+        ys.close(2);
 
         vm.prank(carol);
-        uint256 claimed = yieldStreaming.claimYieldInShares(carol);
+        uint256 claimed = ys.claimYieldInShares(carol);
 
         assertEq(claimed, expectedYieldInShares, "claimed");
         assertEq(asset.balanceOf(carol), 0, "carol's assets");
         assertEq(vault.balanceOf(carol), claimed, "carol's shares");
-        assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
+        assertEq(ys.previewClaimYield(carol), 0, "carols's yield");
     }
 
     function test_claimYieldInShares_worksIfAllStreamsAreClosed() public {
@@ -1156,22 +1138,20 @@ contract YieldStreamingTest is TestCommon {
         _generateYield(0.5e18);
 
         uint256 expectedYieldInShares = vault.convertToShares((alicesPrincipal + bobsPrincipal) / 2);
-        assertApproxEqAbs(
-            yieldStreaming.previewClaimYieldInShares(carol), expectedYieldInShares, 1, "carol's expected yield"
-        );
+        assertApproxEqAbs(ys.previewClaimYieldInShares(carol), expectedYieldInShares, 1, "carol's expected yield");
 
         vm.prank(bob);
-        yieldStreaming.close(2);
+        ys.close(2);
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
 
         vm.prank(carol);
-        uint256 claimed = yieldStreaming.claimYieldInShares(carol);
+        uint256 claimed = ys.claimYieldInShares(carol);
 
         assertApproxEqAbs(claimed, expectedYieldInShares, 1, "claimed");
         assertEq(asset.balanceOf(carol), 0, "carol's assets");
         assertEq(vault.balanceOf(carol), claimed, "carol's shares");
-        assertEq(yieldStreaming.previewClaimYield(carol), 0, "carols's yield");
+        assertEq(ys.previewClaimYield(carol), 0, "carols's yield");
     }
 
     /// *** #close *** ///
@@ -1180,11 +1160,11 @@ contract YieldStreamingTest is TestCommon {
         uint256 streamId = _openYieldStream(alice, bob, 1e18);
 
         uint256 bobsShares = _depositToVault(bob, 1e18);
-        _approveYieldStreaming(bob, bobsShares);
+        _approveYieldStreamsContract(bob, bobsShares);
 
         vm.startPrank(bob);
-        vm.expectRevert(YieldStreaming.CallerNotOwner.selector);
-        yieldStreaming.close(streamId);
+        vm.expectRevert(YieldStreams.CallerNotOwner.selector);
+        ys.close(streamId);
     }
 
     function test_close_failsIfTokenIdIsInvalid() public {
@@ -1194,7 +1174,7 @@ contract YieldStreamingTest is TestCommon {
 
         vm.startPrank(alice);
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, invalidId));
-        yieldStreaming.close(invalidId);
+        ys.close(invalidId);
     }
 
     function test_close_burnsNftAndReturnsPrincipal() public {
@@ -1202,23 +1182,23 @@ contract YieldStreamingTest is TestCommon {
         uint256 shares = vault.previewDeposit(principal);
         uint256 streamId = _openYieldStream(alice, bob, principal);
 
-        assertEq(yieldStreaming.balanceOf(alice), 1, "alice's nfts before");
+        assertEq(ys.balanceOf(alice), 1, "alice's nfts before");
 
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        uint256 yield = yieldStreaming.previewClaimYield(bob);
+        uint256 yield = ys.previewClaimYield(bob);
         uint256 yieldValueInShares = vault.convertToShares(yield);
 
-        assertEq(yieldStreaming.getPrincipal(streamId), principal, "principal");
+        assertEq(ys.getPrincipal(streamId), principal, "principal");
 
         vm.prank(alice);
-        uint256 sharesReturned = yieldStreaming.close(streamId);
+        uint256 sharesReturned = ys.close(streamId);
 
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, streamId));
-        yieldStreaming.ownerOf(streamId);
-        assertEq(yieldStreaming.balanceOf(alice), 0, "alice's nfts after");
-        assertEq(yieldStreaming.receiverPrincipal(bob, streamId), 0, "receiver principal");
+        ys.ownerOf(streamId);
+        assertEq(ys.balanceOf(alice), 0, "alice's nfts after");
+        assertEq(ys.receiverPrincipal(bob, streamId), 0, "receiver principal");
 
         assertApproxEqAbs(sharesReturned, shares - yieldValueInShares, 1, "shares returned");
         assertEq(vault.balanceOf(alice), sharesReturned, "alice's shares");
@@ -1240,7 +1220,7 @@ contract YieldStreamingTest is TestCommon {
         emit Close(1, alice, bob, shares, principal);
 
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
     }
 
     function test_close_continuesGeneratingYieldForReceiverUntilClaimed() public {
@@ -1249,12 +1229,12 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        uint256 bobsYield = yieldStreaming.previewClaimYield(bob);
+        uint256 bobsYield = ys.previewClaimYield(bob);
 
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
 
-        assertApproxEqAbs(yieldStreaming.previewClaimYield(bob), bobsYield, 1, "bob's yield after close");
+        assertApproxEqAbs(ys.previewClaimYield(bob), bobsYield, 1, "bob's yield after close");
         assertEq(asset.balanceOf(bob), 0, "bob's assets after close");
 
         // add 50% profit to vault again
@@ -1262,18 +1242,18 @@ contract YieldStreamingTest is TestCommon {
 
         uint256 expectedYield = bobsYield + bobsYield.mulWadUp(0.5e18);
 
-        assertApproxEqAbs(yieldStreaming.previewClaimYield(bob), expectedYield, 1, "bob's yield after profit");
+        assertApproxEqAbs(ys.previewClaimYield(bob), expectedYield, 1, "bob's yield after profit");
         assertEq(asset.balanceOf(bob), 0, "bob's assets after profit");
 
         vm.prank(bob);
-        yieldStreaming.claimYield(bob);
+        ys.claimYield(bob);
 
         assertApproxEqAbs(asset.balanceOf(bob), expectedYield, 1, "bob's assets after claim");
 
         // add 50% profit to vault again
         _generateYield(0.5e18);
 
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield after new profit");
+        assertEq(ys.previewClaimYield(bob), 0, "bob's yield after new profit");
     }
 
     function test_close_worksIfVaultMadeLosses() public {
@@ -1285,16 +1265,16 @@ contract YieldStreamingTest is TestCommon {
         _generateYield(-0.2e18);
 
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
 
         assertEq(vault.convertToAssets(shares), principal.mulWadUp(0.8e18), "shares value");
-        assertEq(yieldStreaming.previewClaimYield(bob), 0, "bob's yield");
+        assertEq(ys.previewClaimYield(bob), 0, "bob's yield");
         assertEq(asset.balanceOf(bob), 0, "bob's assets");
         assertEq(vault.balanceOf(alice), shares, "alice's shares");
         assertEq(asset.balanceOf(alice), 0, "alice's assets");
-        assertEq(yieldStreaming.receiverPrincipal(bob, 1), 0, "receiver principal");
-        assertEq(yieldStreaming.receiverTotalShares(bob), 0, "receiver shares");
-        assertEq(yieldStreaming.receiverTotalPrincipal(bob), 0, "receiver total principal");
+        assertEq(ys.receiverPrincipal(bob, 1), 0, "receiver principal");
+        assertEq(ys.receiverTotalShares(bob), 0, "receiver shares");
+        assertEq(ys.receiverTotalPrincipal(bob), 0, "receiver total principal");
     }
 
     function test_close_failsIfStreamIsAlreadyClosed() public {
@@ -1302,11 +1282,11 @@ contract YieldStreamingTest is TestCommon {
 
         // works
         vm.startPrank(alice);
-        yieldStreaming.close(streamId);
+        ys.close(streamId);
 
         // fails
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, streamId));
-        yieldStreaming.close(streamId);
+        ys.close(streamId);
     }
 
     function test_close_doesntAffectOtherStreamsFromTheSameStreamer() public {
@@ -1317,21 +1297,21 @@ contract YieldStreamingTest is TestCommon {
         // create a 20% profit
         _generateYield(0.2e18);
 
-        uint256 bobsYield = yieldStreaming.previewClaimYield(bob);
-        uint256 carolsYield = yieldStreaming.previewClaimYield(carol);
+        uint256 bobsYield = ys.previewClaimYield(bob);
+        uint256 carolsYield = ys.previewClaimYield(carol);
 
         assertTrue(bobsYield > 0, "bob's yield = 0");
         assertTrue(carolsYield > 0, "carol's yield = 0");
         assertEq(vault.balanceOf(alice), 0, "alice's shares != 0");
 
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
 
         assertApproxEqAbs(vault.balanceOf(alice), vault.convertToShares(principal), 1, "alice's principal");
         assertEq(asset.balanceOf(bob), 0, "bob's assets");
-        assertApproxEqAbs(yieldStreaming.previewClaimYield(bob), bobsYield, 1, "bob's yield");
+        assertApproxEqAbs(ys.previewClaimYield(bob), bobsYield, 1, "bob's yield");
         assertEq(asset.balanceOf(carol), 0, "carol's assets");
-        assertEq(yieldStreaming.previewClaimYield(carol), carolsYield, "carol's yield");
+        assertEq(ys.previewClaimYield(carol), carolsYield, "carol's yield");
     }
 
     function test_close_doesntAffectStreamsFromAnotherStreamer() public {
@@ -1344,26 +1324,24 @@ contract YieldStreamingTest is TestCommon {
         // create a 20% profit
         _generateYield(0.2e18);
 
-        assertEq(
-            yieldStreaming.receiverTotalPrincipal(carol), alicesPrincipal + bobsPrincipal, "carol's total principal"
-        );
+        assertEq(ys.receiverTotalPrincipal(carol), alicesPrincipal + bobsPrincipal, "carol's total principal");
 
-        uint256 carolsYield = yieldStreaming.previewClaimYield(carol);
+        uint256 carolsYield = ys.previewClaimYield(carol);
 
         vm.prank(alice);
-        yieldStreaming.close(1);
+        ys.close(1);
 
-        assertApproxEqAbs(yieldStreaming.previewClaimYield(carol), carolsYield, 1, "carol's yield");
+        assertApproxEqAbs(ys.previewClaimYield(carol), carolsYield, 1, "carol's yield");
         assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(alice)), alicesPrincipal, 2, "alice's shares value");
-        assertEq(yieldStreaming.receiverPrincipal(carol, 1), 0, "alice's principal");
-        assertEq(yieldStreaming.receiverPrincipal(carol, 2), bobsPrincipal, "bob's principal");
-        assertEq(yieldStreaming.receiverTotalPrincipal(carol), bobsPrincipal, "carol's total principal");
+        assertEq(ys.receiverPrincipal(carol, 1), 0, "alice's principal");
+        assertEq(ys.receiverPrincipal(carol, 2), bobsPrincipal, "bob's principal");
+        assertEq(ys.receiverTotalPrincipal(carol), bobsPrincipal, "carol's total principal");
     }
 
     /// *** #previewClose *** ///
 
     function test_previewClose_returns0IfTokenDoesntExist() public {
-        assertEq(yieldStreaming.previewClose(1), 0);
+        assertEq(ys.previewClose(1), 0);
     }
 
     function test_previewClose_returnsSharesToBeReturned() public {
@@ -1374,10 +1352,10 @@ contract YieldStreamingTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        uint256 yield = yieldStreaming.previewClaimYield(bob);
+        uint256 yield = ys.previewClaimYield(bob);
         uint256 yieldValueInShares = vault.convertToShares(yield);
 
-        assertApproxEqAbs(yieldStreaming.previewClose(streamId), shares - yieldValueInShares, 1, "shares returned");
+        assertApproxEqAbs(ys.previewClose(streamId), shares - yieldValueInShares, 1, "shares returned");
     }
 
     /// *** #multicall *** ///
@@ -1386,17 +1364,17 @@ contract YieldStreamingTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
 
         bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeWithSelector(YieldStreaming.open.selector, bob, (shares * 3) / 4, 0);
-        data[1] = abi.encodeWithSelector(YieldStreaming.open.selector, carol, shares / 4, 0);
+        data[0] = abi.encodeWithSelector(YieldStreams.open.selector, bob, (shares * 3) / 4, 0);
+        data[1] = abi.encodeWithSelector(YieldStreams.open.selector, carol, shares / 4, 0);
 
         vm.startPrank(alice);
-        vault.approve(address(yieldStreaming), shares);
-        yieldStreaming.multicall(data);
+        vault.approve(address(ys), shares);
+        ys.multicall(data);
         vm.stopPrank();
 
         assertEq(vault.balanceOf(alice), 0, "alice's shares");
-        assertEq(yieldStreaming.receiverTotalShares(bob), (shares * 3) / 4, "receiver shares bob");
-        assertEq(yieldStreaming.receiverTotalShares(carol), shares / 4, "receiver shares carol");
+        assertEq(ys.receiverTotalShares(bob), (shares * 3) / 4, "receiver shares bob");
+        assertEq(ys.receiverTotalShares(carol), shares / 4, "receiver shares carol");
     }
 
     /// *** #transfer *** ///
@@ -1404,27 +1382,27 @@ contract YieldStreamingTest is TestCommon {
     function test_transfer() public {
         uint256 principal = 1e18;
         uint256 shares = _depositToVault(alice, principal);
-        _approveYieldStreaming(alice, shares);
+        _approveYieldStreamsContract(alice, shares);
 
         vm.startPrank(alice);
-        yieldStreaming.open(bob, shares, 0);
+        ys.open(bob, shares, 0);
 
         _generateYield(0.5e18);
 
-        yieldStreaming.transferFrom(alice, carol, 1);
+        ys.transferFrom(alice, carol, 1);
         vm.stopPrank();
 
-        assertEq(yieldStreaming.balanceOf(alice), 0, "alice's nfts");
-        assertEq(yieldStreaming.balanceOf(carol), 1, "carol's nfts");
-        assertEq(yieldStreaming.ownerOf(1), carol, "owner");
-        assertEq(yieldStreaming.previewClaimYield(bob), 1e18 / 2, "bob's yield");
+        assertEq(ys.balanceOf(alice), 0, "alice's nfts");
+        assertEq(ys.balanceOf(carol), 1, "carol's nfts");
+        assertEq(ys.ownerOf(1), carol, "owner");
+        assertEq(ys.previewClaimYield(bob), 1e18 / 2, "bob's yield");
 
         vm.prank(carol);
-        yieldStreaming.close(1);
+        ys.close(1);
 
         assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(carol)), principal, 1, "carol's assets");
-        assertEq(yieldStreaming.balanceOf(carol), 0, "carol's nfts");
-        assertApproxEqAbs(yieldStreaming.previewClaimYield(bob), 1e18 / 2, 1, "bob's yield");
+        assertEq(ys.balanceOf(carol), 0, "carol's nfts");
+        assertApproxEqAbs(ys.previewClaimYield(bob), 1e18 / 2, 1, "bob's yield");
     }
 
     /// *** #tokenUri *** ///
@@ -1432,17 +1410,17 @@ contract YieldStreamingTest is TestCommon {
     function test_tokenUri_returnsEmptyString() public {
         _openYieldStream(alice, bob, 1e18);
 
-        assertEq(yieldStreaming.tokenURI(1), "", "token uri not empty");
+        assertEq(ys.tokenURI(1), "", "token uri not empty");
     }
 
     /// *** #supportsInterface *** ///
 
     function test_supportsInterface() public {
-        assertTrue(yieldStreaming.supportsInterface(type(IERC721).interfaceId), "IERC721");
-        assertTrue(yieldStreaming.supportsInterface(type(IERC721Metadata).interfaceId), "IERC721Metadata");
-        assertTrue(yieldStreaming.supportsInterface(type(IERC165).interfaceId), "IERC165");
+        assertTrue(ys.supportsInterface(type(IERC721).interfaceId), "IERC721");
+        assertTrue(ys.supportsInterface(type(IERC721Metadata).interfaceId), "IERC721Metadata");
+        assertTrue(ys.supportsInterface(type(IERC165).interfaceId), "IERC165");
 
-        assertTrue(!yieldStreaming.supportsInterface(type(IERC721Receiver).interfaceId), "IERC721Receiver");
+        assertTrue(!ys.supportsInterface(type(IERC721Receiver).interfaceId), "IERC721Receiver");
     }
 
     /// *** fuzzing *** ///
@@ -1450,7 +1428,7 @@ contract YieldStreamingTest is TestCommon {
     function testFuzz_open_claim_close_stream(uint256 _principal) public {
         _principal = bound(_principal, 10000, 1000 ether);
         uint256 shares = _depositToVault(alice, _principal);
-        _approveYieldStreaming(alice, shares);
+        _approveYieldStreamsContract(alice, shares);
         vm.startPrank(alice);
 
         // open 10 streams
@@ -1460,7 +1438,7 @@ contract YieldStreamingTest is TestCommon {
         for (uint256 i = 0; i < 10; i++) {
             // generate random receiver address
             receivers[i] = address(uint160(uint256(keccak256(abi.encodePacked(block.timestamp + i, block.prevrandao)))));
-            streamIds[i] = yieldStreaming.open(receivers[i], sharesToOpen, 0);
+            streamIds[i] = ys.open(receivers[i], sharesToOpen, 0);
         }
 
         vm.stopPrank();
@@ -1471,45 +1449,45 @@ contract YieldStreamingTest is TestCommon {
 
         // claim yield
         for (uint256 i = 0; i < 10; i++) {
-            assertEq(yieldStreaming.previewClaimYield(receivers[i]), expectedYield, "yield");
+            assertEq(ys.previewClaimYield(receivers[i]), expectedYield, "yield");
 
             vm.prank(receivers[i]);
-            yieldStreaming.claimYield(receivers[i]);
+            ys.claimYield(receivers[i]);
 
             assertApproxEqAbs(asset.balanceOf(receivers[i]), expectedYield, 3, "assets");
-            assertEq(yieldStreaming.previewClaimYield(receivers[i]), 0, "yield");
+            assertEq(ys.previewClaimYield(receivers[i]), 0, "yield");
         }
 
         // close streams
         vm.startPrank(alice);
         for (uint256 i = 0; i < 10; i++) {
-            yieldStreaming.close(streamIds[i]);
+            ys.close(streamIds[i]);
         }
 
         assertApproxEqRel(vault.convertToAssets(vault.balanceOf(alice)), _principal, 0.005e18, "alice's principal");
-        assertEq(vault.balanceOf(address(yieldStreaming)), 0, "contract's shares");
+        assertEq(vault.balanceOf(address(ys)), 0, "contract's shares");
     }
 
     /// *** helpers *** ///
 
     function _depositToVaultAndApprove(address _from, uint256 _amount) internal returns (uint256 shares) {
         shares = _depositToVault(_from, _amount);
-        _approveYieldStreaming(_from, shares);
+        _approveYieldStreamsContract(_from, shares);
     }
 
     function _depositToVault(address _from, uint256 _amount) internal returns (uint256 shares) {
         shares = _depositToVault(IERC4626(address(vault)), _from, _amount);
     }
 
-    function _approveYieldStreaming(address _from, uint256 _shares) internal {
-        _approve(IERC4626(address(vault)), address(yieldStreaming), _from, _shares);
+    function _approveYieldStreamsContract(address _from, uint256 _shares) internal {
+        _approve(IERC4626(address(vault)), address(ys), _from, _shares);
     }
 
     function _approveAssetsAndPreviewDeposit(address _owner, uint256 _amount) private returns (uint256 shares) {
         deal(address(asset), _owner, _amount);
 
         vm.prank(_owner);
-        asset.approve(address(yieldStreaming), _amount);
+        asset.approve(address(ys), _amount);
 
         shares = vault.previewDeposit(_amount);
     }
@@ -1520,9 +1498,9 @@ contract YieldStreamingTest is TestCommon {
 
     function _openYieldStream(address _from, address _to, uint256 _amount) internal returns (uint256 streamId) {
         uint256 shares = _depositToVault(_from, _amount);
-        _approveYieldStreaming(_from, shares);
+        _approveYieldStreamsContract(_from, shares);
 
         vm.prank(_from);
-        streamId = yieldStreaming.open(_to, shares, 0);
+        streamId = ys.open(_to, shares, 0);
     }
 }

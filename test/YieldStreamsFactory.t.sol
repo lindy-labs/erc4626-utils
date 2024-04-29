@@ -5,17 +5,17 @@ import "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 
-import {YieldStreamingFactory} from "../src/YieldStreamingFactory.sol";
-import {YieldStreaming} from "../src/YieldStreaming.sol";
+import {YieldStreamsFactory} from "../src/YieldStreamsFactory.sol";
+import {YieldStreams} from "../src/YieldStreams.sol";
 
-contract YieldStreamingFactoryTest is Test {
-    function test_create_deploysYieldStreamingInstance() public {
+contract YieldStreamsFactoryTest is Test {
+    function test_create_deploysYieldStreamsInstance() public {
         MockERC20 asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         MockERC4626 vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
 
-        YieldStreamingFactory factory = new YieldStreamingFactory();
+        YieldStreamsFactory factory = new YieldStreamsFactory();
 
-        YieldStreaming deployed = YieldStreaming(factory.create(address(vault)));
+        YieldStreams deployed = YieldStreams(factory.create(address(vault)));
 
         assertEq(factory.deployedCount(), 1);
         assertEq(factory.deployedAddresses(0), address(deployed));

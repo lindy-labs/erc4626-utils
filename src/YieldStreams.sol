@@ -12,13 +12,13 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {AddressZero, AmountZero} from "./common/Errors.sol";
 
 /**
- * @title YieldStreaming
- * @dev Manages yield streams between senders and receivers using ERC4626 tokens and incorporates ERC721 for stream identification and management.
+ * @title YieldStreams
+ * @dev Implements a yield streaming system where streams are represented as ERC721 tokens and uses ERC4626 vaults for yield generation.
  * Each yield stream is uniquely identified by an ERC721 token, allowing for transparent tracking and management of individual streams.
- * This approach enables users to create, top-up, transfer, and close yield streams as well as facilitating the flow of yield from appreciating assets to designated beneficiaries.
+ * This approach enables users to create, top-up, transfer, and close yield streams as well as facilitating the flow of yield from appreciating assets to designated beneficiaries (receivers).
  * It leverages the ERC4626 standard for tokenized vault interactions, assuming that these tokens appreciate over time, generating yield for their holders.
  */
-contract YieldStreaming is ERC721, Multicall {
+contract YieldStreams is ERC721, Multicall {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
     using SafeERC20 for IERC20;
@@ -102,12 +102,12 @@ contract YieldStreaming is ERC721, Multicall {
     mapping(uint256 => address) public streamIdToReceiver;
 
     /**
-     * @notice Creates a new YieldStreaming contract, initializing the ERC721 token with custom names and setting the vault address.
+     * @notice Creates a new YieldStreams contract, initializing the ERC721 token with custom names and setting the vault address.
      * @dev The constructor initializes an ERC721 token with a dynamic name and symbol derived from the underlying vault's characteristics.
      * @param _vault Address of the ERC4626 vault
      */
     constructor(IERC4626 _vault)
-        ERC721(string.concat("Yield Streaming - ", _vault.name()), string.concat("YST-", _vault.symbol()))
+        ERC721(string.concat("Yield Stream - ", _vault.name()), string.concat("YS-", _vault.symbol()))
     {
         _checkZeroAddress(address(_vault));
 
@@ -135,9 +135,7 @@ contract YieldStreaming is ERC721, Multicall {
         public
         returns (uint256 streamId)
     {
-        uint256 principal = _convertToAssets(_shares);
-
-        _canOpen(_receiver, _shares, principal, _maxLossOnOpenTolerancePercent);
+        uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerancePercent);
 
         streamId = _openStream(_receiver, _shares, principal);
 

@@ -13,7 +13,7 @@ import {AddressZero, AmountZero} from "./common/Errors.sol";
  * @title This contract facilitates the streaming of ERC20 tokens with unique stream IDs per streamer-receiver pair.
  * @notice This contract allows users to open, top up, claim from, and close streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
  */
-contract ERC20Streaming is Multicall {
+contract ERC20Streams is Multicall {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC20;
 

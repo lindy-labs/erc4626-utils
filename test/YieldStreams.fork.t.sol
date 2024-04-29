@@ -12,13 +12,13 @@ import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {TestCommon} from "./common/TestCommon.sol";
-import {YieldStreaming} from "src/YieldStreaming.sol";
+import {YieldStreams} from "src/YieldStreams.sol";
 
-contract YieldStreamingTest is TestCommon {
+contract YieldStreamsForkTest is TestCommon {
     using FixedPointMathLib for uint256;
 
-    YieldStreaming public scEthYield;
-    YieldStreaming public scUsdcYield;
+    YieldStreams public scEthYield;
+    YieldStreams public scUsdcYield;
     IERC4626 public scEth;
     IERC20 public weth;
     IERC4626 public scUsdc;
@@ -38,8 +38,8 @@ contract YieldStreamingTest is TestCommon {
         scUsdc = IERC4626(0x096697720056886b905D0DEB0f06AfFB8e4665E5); // scUSDC mainnet address
         usdc = IERC20(scUsdc.asset());
 
-        scEthYield = new YieldStreaming(scEth);
-        scUsdcYield = new YieldStreaming(scUsdc);
+        scEthYield = new YieldStreams(scEth);
+        scUsdcYield = new YieldStreams(scUsdc);
     }
 
     function test_open() public {

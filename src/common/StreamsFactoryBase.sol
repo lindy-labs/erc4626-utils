@@ -7,10 +7,10 @@ import {IERC20} from "openzeppelin-contracts/token/ERC20/IERC20.sol";
 import {AddressZero, AlreadyDeployed} from "./Errors.sol";
 
 /**
- * @title StreamingFactoryBase
+ * @title StreamsFactoryBase
  * @dev A base contract for creating and managing streaming contract instances.
  */
-abstract contract StreamingFactoryBase {
+abstract contract StreamsFactoryBase {
     /// @dev The addresses of deployed instances.
     address[] public deployedAddresses;
     /// @dev The number of deployed instances.

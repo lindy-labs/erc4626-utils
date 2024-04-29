@@ -11,16 +11,14 @@ import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {TestCommon} from "./common/TestCommon.sol";
-import {ERC20Streaming} from "../src/ERC20Streaming.sol";
+import {ERC20Streams} from "../src/ERC20Streams.sol";
 
-contract ERC20StreamingTest is TestCommon {
+contract ERC20StreamsTest is TestCommon {
     using FixedPointMathLib for uint256;
 
-    ERC20Streaming public scEthStreaming;
-    ERC20Streaming public scUsdcStreaming;
+    ERC20Streams public scEthStreaming;
     IERC4626 public scEth;
     IERC20 public weth;
-    IERC20 public usdc;
 
     address constant alice = address(0x06);
     address constant bob = address(0x07);
@@ -34,7 +32,7 @@ contract ERC20StreamingTest is TestCommon {
         scEth = IERC4626(0x4c406C068106375724275Cbff028770C544a1333); // scETH mainnet address
         weth = IERC20(scEth.asset());
 
-        scEthStreaming = new ERC20Streaming(scEth);
+        scEthStreaming = new ERC20Streams(scEth);
     }
 
     function test_openStream_claimTokens() public {

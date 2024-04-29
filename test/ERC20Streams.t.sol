@@ -10,14 +10,14 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import "./common/TestCommon.sol";
 import "src/common/Errors.sol";
-import {ERC20Streaming} from "src/ERC20Streaming.sol";
+import {ERC20Streams} from "src/ERC20Streams.sol";
 
-contract ERC20StreamingTest is TestCommon {
+contract ERC20StreamsTest is TestCommon {
     using FixedPointMathLib for uint256;
 
     MockERC20 public asset;
     MockERC4626 public vault;
-    ERC20Streaming public streaming;
+    ERC20Streams public streaming;
 
     address public alice = address(0x1);
     address public bob = address(0x2);
@@ -31,14 +31,14 @@ contract ERC20StreamingTest is TestCommon {
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
-        streaming = new ERC20Streaming(IERC4626(address(vault)));
+        streaming = new ERC20Streams(IERC4626(address(vault)));
     }
 
     /// *** constructor *** ///
 
     function test_constructor_failsForAddress0() public {
         vm.expectRevert(AddressZero.selector);
-        new ERC20Streaming(IERC4626(address(0)));
+        new ERC20Streams(IERC4626(address(0)));
     }
 
     /// *** #openStream *** ///
@@ -55,7 +55,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(bob), 0);
         assertEq(vault.balanceOf(address(streaming)), shares);
 
-        ERC20Streaming.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
+        ERC20Streams.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
         assertEq(stream.amount, shares, "stream amount");
         assertEq(stream.ratePerSecond, shares.divWadUp(duration), "stream rate per second");
         assertEq(stream.startTime, block.timestamp, "stream start time");
@@ -84,7 +84,7 @@ contract ERC20StreamingTest is TestCommon {
         shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(ERC20Streaming.StreamAlreadyExists.selector);
+        vm.expectRevert(ERC20Streams.StreamAlreadyExists.selector);
         vm.prank(alice);
         streaming.open(bob, shares, 1 days);
     }
@@ -140,7 +140,7 @@ contract ERC20StreamingTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(ERC20Streaming.ZeroDuration.selector);
+        vm.expectRevert(ERC20Streams.ZeroDuration.selector);
         vm.prank(alice);
         streaming.open(bob, shares, 0);
     }
@@ -158,7 +158,7 @@ contract ERC20StreamingTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(ERC20Streaming.CannotOpenStreamToSelf.selector);
+        vm.expectRevert(ERC20Streams.CannotOpenStreamToSelf.selector);
         vm.prank(alice);
         streaming.open(alice, shares, 1 days);
     }
@@ -166,7 +166,7 @@ contract ERC20StreamingTest is TestCommon {
     /// *** #claim *** ///
 
     function test_claim_failsIfStreamDoesNotExist() public {
-        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streams.StreamDoesNotExist.selector);
         vm.prank(bob);
         streaming.claim(alice, bob);
     }
@@ -184,7 +184,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(bob), shares, "receiver balance");
 
         // assert stream is deleted
-        ERC20Streaming.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
+        ERC20Streams.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
         assertEq(stream.amount, 0, "amount");
         assertEq(stream.ratePerSecond, 0, "ratePerSecond");
         assertEq(stream.startTime, 0, "startTime");
@@ -243,7 +243,7 @@ contract ERC20StreamingTest is TestCommon {
         assertApproxEqRel(vault.balanceOf(address(streaming)), shares / 2, 0.0001e18, "contract balance");
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance");
 
-        vm.expectRevert(ERC20Streaming.NoTokensToClaim.selector);
+        vm.expectRevert(ERC20Streams.NoTokensToClaim.selector);
         vm.prank(bob);
         streaming.claim(alice, bob);
 
@@ -277,7 +277,7 @@ contract ERC20StreamingTest is TestCommon {
     /// *** #closeStream *** ///
 
     function test_closeStream_failsIfStreamDoesNotExist() public {
-        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streams.StreamDoesNotExist.selector);
         vm.prank(bob);
         streaming.close(bob);
     }
@@ -296,7 +296,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(bob), shares, "receiver balance");
 
         // assert stream is deleted
-        ERC20Streaming.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
+        ERC20Streams.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
         assertEq(stream.amount, 0, "amount");
         assertEq(stream.ratePerSecond, 0, "ratePerSecond");
         assertEq(stream.startTime, 0, "startTime");
@@ -322,7 +322,7 @@ contract ERC20StreamingTest is TestCommon {
         vm.prank(alice);
         streaming.close(bob);
 
-        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streams.StreamDoesNotExist.selector);
         vm.prank(alice);
         streaming.close(bob);
     }
@@ -384,7 +384,7 @@ contract ERC20StreamingTest is TestCommon {
         uint256 shares = _openStream(alice, bob, 1e18, duration);
 
         uint256 streamId = streaming.getStreamId(alice, bob);
-        ERC20Streaming.Stream memory stream = streaming.getStream(streamId);
+        ERC20Streams.Stream memory stream = streaming.getStream(streamId);
 
         vm.warp(block.timestamp + 12 hours);
 
@@ -398,7 +398,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
         assertEq(vault.balanceOf(bob), 0, "receiver balance");
 
-        ERC20Streaming.Stream memory updatedStream = streaming.getStream(streamId);
+        ERC20Streams.Stream memory updatedStream = streaming.getStream(streamId);
 
         assertEq(updatedStream.amount, shares + additionalShares, "amount");
         assertApproxEqRel(
@@ -451,7 +451,7 @@ contract ERC20StreamingTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streams.StreamDoesNotExist.selector);
         vm.prank(alice);
         streaming.topUp(bob, shares, 1 days);
     }
@@ -464,7 +464,7 @@ contract ERC20StreamingTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(ERC20Streaming.StreamExpired.selector);
+        vm.expectRevert(ERC20Streams.StreamExpired.selector);
         vm.prank(alice);
         streaming.topUp(bob, shares, 1 days);
     }
@@ -538,7 +538,7 @@ contract ERC20StreamingTest is TestCommon {
         vault.approve(address(streaming), shares);
 
         // top up with same amount of shares and 2x the initial duration will decrease the rate per second
-        vm.expectRevert(ERC20Streaming.RatePerSecondDecreased.selector);
+        vm.expectRevert(ERC20Streams.RatePerSecondDecreased.selector);
         streaming.topUp(bob, shares, duration * 2);
     }
 
@@ -575,7 +575,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
         assertEq(vault.balanceOf(address(streaming)), shares, "contract balance");
 
-        ERC20Streaming.Stream memory stream = streaming.getStream(streaming.getStreamId(dave, alice));
+        ERC20Streams.Stream memory stream = streaming.getStream(streaming.getStreamId(dave, alice));
         assertEq(stream.amount, shares, "amount");
         assertEq(stream.ratePerSecond, shares.divWadUp(duration), "ratePerSecond");
         assertEq(stream.startTime, block.timestamp, "startTime");
@@ -619,7 +619,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(dave), 0, "dave's balance");
         assertEq(vault.balanceOf(bob), 0, "receiver balance");
 
-        ERC20Streaming.Stream memory updatedStream = streaming.getStream(streaming.getStreamId(dave, bob));
+        ERC20Streams.Stream memory updatedStream = streaming.getStream(streaming.getStreamId(dave, bob));
         assertEq(updatedStream.amount, shares + additionalShares, "amount");
         assertApproxEqRel(
             updatedStream.ratePerSecond,
@@ -656,7 +656,7 @@ contract ERC20StreamingTest is TestCommon {
         streaming.multicall(data);
 
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
-        ERC20Streaming.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
+        ERC20Streams.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
         assertEq(stream.amount, shares / 2, "bob's stream shares");
         stream = streaming.getStream(streaming.getStreamId(alice, carol));
         assertEq(stream.amount, shares / 2, "carol's stream shares");
@@ -686,7 +686,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(address(streaming)), shares);
 
         assertEq(streaming.previewClaim(alice, bob), 0, "previewClaim(alice, bob)");
-        ERC20Streaming.Stream memory bobsStream = streaming.getStream(streaming.getStreamId(alice, bob));
+        ERC20Streams.Stream memory bobsStream = streaming.getStream(streaming.getStreamId(alice, bob));
         assertEq(bobsStream.amount, bobsStreamShares, "bob's stream shares");
         assertEq(
             bobsStream.ratePerSecond, bobsStreamShares.divWadUp(bobsStreamDuration), "bob's stream rate per second"
@@ -695,7 +695,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(bobsStream.lastClaimTime, block.timestamp, "bob's stream last claim time");
 
         assertEq(streaming.previewClaim(alice, carol), 0, "previewClaim(alice, carol)");
-        ERC20Streaming.Stream memory carolsStream = streaming.getStream(streaming.getStreamId(alice, carol));
+        ERC20Streams.Stream memory carolsStream = streaming.getStream(streaming.getStreamId(alice, carol));
         assertEq(carolsStream.amount, carolsStreamShares, "carol's stream shares");
         assertEq(
             carolsStream.ratePerSecond,
@@ -728,7 +728,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(carol), carolsClaim, "carol's balance");
         assertApproxEqRel(carolsClaim, carolsStreamShares / 2, 0.0001e18, "claimed");
 
-        ERC20Streaming.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
+        ERC20Streams.Stream memory stream = streaming.getStream(streaming.getStreamId(alice, bob));
         assertEq(stream.amount, 0, "bob's stream not deleted - amount");
         assertEq(stream.ratePerSecond, 0, "bob's stream not deleted - ratePerSecond");
         assertEq(stream.startTime, 0, "bob's stream not deleted - startTime");
@@ -743,7 +743,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(stream.lastClaimTime, block.timestamp, "carol's stream - lastClaimTime");
 
         vm.startPrank(alice);
-        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streams.StreamDoesNotExist.selector);
         streaming.close(bob);
 
         streaming.close(carol);
@@ -764,9 +764,9 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(carol), 0);
 
         vm.startPrank(carol);
-        vm.expectRevert(ERC20Streaming.NoTokensToClaim.selector);
+        vm.expectRevert(ERC20Streams.NoTokensToClaim.selector);
         streaming.claim(alice, carol);
-        vm.expectRevert(ERC20Streaming.NoTokensToClaim.selector);
+        vm.expectRevert(ERC20Streams.NoTokensToClaim.selector);
         streaming.claim(bob, carol);
         vm.stopPrank();
 
@@ -790,7 +790,7 @@ contract ERC20StreamingTest is TestCommon {
         assertEq(vault.balanceOf(carol), claimFromAlice + claimFromBob, "carol's balance after claims");
 
         vm.prank(alice);
-        vm.expectRevert(ERC20Streaming.StreamDoesNotExist.selector);
+        vm.expectRevert(ERC20Streams.StreamDoesNotExist.selector);
         streaming.close(carol);
 
         vm.prank(bob);
