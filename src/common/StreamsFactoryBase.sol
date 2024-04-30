@@ -8,7 +8,7 @@ import {AddressZero, AlreadyDeployed} from "./Errors.sol";
 
 /**
  * @title StreamsFactoryBase
- * @dev A base contract for creating and managing streaming contract instances.
+ * @dev A base contract for creating and managing streams contract instances.
  */
 abstract contract StreamsFactoryBase {
     /// @dev The addresses of deployed instances.
@@ -19,9 +19,9 @@ abstract contract StreamsFactoryBase {
     event Deployed(address indexed vault, address indexed deployed);
 
     /**
-     * @dev Creates a new streaming contract instance.
+     * @dev Creates a new instance of the streams contract.
      * @param _vault The address of the vault contract.
-     * @return deployed The address of the deployed streaming contract instance.
+     * @return deployed The address of the deployed streams contract instance.
      */
     function create(address _vault) public virtual returns (address deployed) {
         _checkZeroAddress(_vault);
@@ -38,18 +38,18 @@ abstract contract StreamsFactoryBase {
     }
 
     /**
-     * @dev Predicts the address of the deployed streaming contract instance.
+     * @dev Predicts the address of the deployed streams contract instance.
      * @param _vault The address of the vault contract.
-     * @return predicted The predicted address of the deployed streaming contract instance.
+     * @return predicted The predicted address of the deployed streams contract instance.
      */
     function predictDeploy(address _vault) public view returns (address predicted) {
         predicted = CREATE3.getDeployed(getSalt(_vault), address(this));
     }
 
     /**
-     * @dev Checks if an streaming contract instance is deployed for the given vault contract address.
+     * @dev Checks if an streams contract instance is deployed for the given vault contract address.
      * @param _vault The address of the vault contract.
-     * @return bool Returns true if an streaming contract instance is deployed, false otherwise.
+     * @return bool Returns true if an streams contract instance is deployed, false otherwise.
      */
     function isDeployed(address _vault) public view returns (bool) {
         return predictDeploy(_vault).code.length > 0;

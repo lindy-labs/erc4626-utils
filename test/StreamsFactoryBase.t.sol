@@ -10,7 +10,7 @@ import "../src/common/Errors.sol";
 
 import {StreamsFactoryBase} from "../src/common/StreamsFactoryBase.sol";
 
-contract StreamingFactoryBaseTest is Test {
+contract StreamsFactoryBaseTest is Test {
     FactoryHarness public factory;
     MockERC4626 public vault;
 
@@ -28,7 +28,7 @@ contract StreamingFactoryBaseTest is Test {
         factory.create(address(0));
     }
 
-    function test_create_deploysStreamingContract() public {
+    function test_create_deploysStreamsContract() public {
         address predicted = factory.predictDeploy(address(vault));
         assertTrue(!factory.isDeployed(address(vault)), "isDeployed");
         assertEq(factory.deployedCount(), 0, "deployedCount");
