@@ -16,7 +16,7 @@ import {ERC20Streams} from "../src/ERC20Streams.sol";
 contract ERC20StreamsTest is TestCommon {
     using FixedPointMathLib for uint256;
 
-    ERC20Streams public scEthStreaming;
+    ERC20Streams public scEthStreams;
     IERC4626 public scEth;
     IERC20 public weth;
 
@@ -32,56 +32,56 @@ contract ERC20StreamsTest is TestCommon {
         scEth = IERC4626(0x4c406C068106375724275Cbff028770C544a1333); // scETH mainnet address
         weth = IERC20(scEth.asset());
 
-        scEthStreaming = new ERC20Streams(scEth);
+        scEthStreams = new ERC20Streams(scEth);
     }
 
     function test_openStream_claimTokens() public {
         uint256 duration = 2 days;
         uint256 shares = _depositToVault(scEth, alice, 1 ether);
-        _approve(scEth, address(scEthStreaming), alice, shares);
+        _approve(scEth, address(scEthStreams), alice, shares);
 
         vm.prank(alice);
-        scEthStreaming.open(bob, shares, duration);
+        scEthStreams.open(bob, shares, duration);
 
-        assertEq(scEth.balanceOf(address(scEthStreaming)), shares, "contract shares");
+        assertEq(scEth.balanceOf(address(scEthStreams)), shares, "contract shares");
 
         _generateYield(scEth, 0.05e18); // 5%
 
         vm.warp(block.timestamp + duration / 2);
 
         // assert token stream
-        uint256 previewClaim = scEthStreaming.previewClaim(alice, bob);
+        uint256 previewClaim = scEthStreams.previewClaim(alice, bob);
         assertApproxEqRel(previewClaim, shares / 2, 0.00001e18, "previewClaimShares");
 
         vm.prank(bob);
-        scEthStreaming.claim(alice, bob);
+        scEthStreams.claim(alice, bob);
 
         assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
-        assertEq(scEth.balanceOf(address(scEthStreaming)), shares - previewClaim, "contract shares");
+        assertEq(scEth.balanceOf(address(scEthStreams)), shares - previewClaim, "contract shares");
     }
 
     function test_closeStream() public {
         uint256 duration = 2 days;
         uint256 shares = _depositToVault(scEth, alice, 1 ether);
-        _approve(scEth, address(scEthStreaming), alice, shares);
+        _approve(scEth, address(scEthStreams), alice, shares);
 
         vm.prank(alice);
-        scEthStreaming.open(bob, shares, duration);
+        scEthStreams.open(bob, shares, duration);
 
-        assertEq(scEth.balanceOf(address(scEthStreaming)), shares, "contract shares");
+        assertEq(scEth.balanceOf(address(scEthStreams)), shares, "contract shares");
 
         vm.warp(block.timestamp + duration / 2);
 
         // assert shares stream
-        uint256 previewClaim = scEthStreaming.previewClaim(alice, bob);
+        uint256 previewClaim = scEthStreams.previewClaim(alice, bob);
         assertApproxEqRel(previewClaim, shares / 2, 0.00001e18, "previewClaimShares");
 
         vm.prank(alice);
-        scEthStreaming.close(bob);
+        scEthStreams.close(bob);
 
         assertEq(scEth.balanceOf(bob), previewClaim, "bob's shares");
         assertEq(scEth.balanceOf(alice), shares - previewClaim, "alice's shares");
-        assertEq(scEth.balanceOf(address(scEthStreaming)), 0, "contract shares");
+        assertEq(scEth.balanceOf(address(scEthStreams)), 0, "contract shares");
     }
 
     function test_openMultipleTokenStreams() public {
@@ -92,28 +92,28 @@ contract ERC20StreamsTest is TestCommon {
         uint256 bobsShares = _depositToVault(scEth, bob, 2 ether);
         uint256 bobsDuration = 4 days;
 
-        _approve(scEth, address(scEthStreaming), alice, alicesShares);
-        _approve(scEth, address(scEthStreaming), bob, bobsShares);
+        _approve(scEth, address(scEthStreams), alice, alicesShares);
+        _approve(scEth, address(scEthStreams), bob, bobsShares);
 
         vm.prank(alice);
-        scEthStreaming.open(carol, alicesShares, alicesDuration);
+        scEthStreams.open(carol, alicesShares, alicesDuration);
         vm.prank(bob);
-        scEthStreaming.open(carol, bobsShares, bobsDuration);
+        scEthStreams.open(carol, bobsShares, bobsDuration);
 
         vm.warp(block.timestamp + 1 days);
 
         uint256 carolsShares = _depositToVault(scEth, carol, 3 ether);
         uint256 carolsDuration = 6 days;
-        _approve(scEth, address(scEthStreaming), carol, carolsShares);
+        _approve(scEth, address(scEthStreams), carol, carolsShares);
 
         vm.prank(carol);
-        scEthStreaming.open(alice, carolsShares, carolsDuration);
+        scEthStreams.open(alice, carolsShares, carolsDuration);
 
         vm.warp(block.timestamp + 1 days);
 
         vm.startPrank(carol);
-        scEthStreaming.claim(alice, carol);
-        scEthStreaming.claim(bob, carol);
+        scEthStreams.claim(alice, carol);
+        scEthStreams.claim(bob, carol);
         vm.stopPrank();
 
         assertEq(scEth.balanceOf(alice), 0, "alice's shares");
@@ -121,13 +121,13 @@ contract ERC20StreamsTest is TestCommon {
         assertApproxEqRel(scEth.balanceOf(carol), alicesShares + bobsShares / 2, 0.00001e18, "carol's shares");
 
         vm.prank(alice);
-        scEthStreaming.claim(carol, alice);
+        scEthStreams.claim(carol, alice);
 
         vm.warp(block.timestamp + 2 days);
 
         vm.startPrank(carol);
-        scEthStreaming.claim(bob, carol);
-        scEthStreaming.close(alice);
+        scEthStreams.claim(bob, carol);
+        scEthStreams.close(alice);
         vm.stopPrank();
 
         assertApproxEqRel(scEth.balanceOf(alice), carolsShares / 2, 0.00001e18, "alice's shares");

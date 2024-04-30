@@ -33,7 +33,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param streamer The address of the streamer who opened the yield stream.
      * @param receiver The address of the receiver for the yield stream.
      * @param shares The number of shares allocated to the new yield stream.
-     * @param principal The principal amount in asset units, ie the value of the shares at the time of opening the stream.
+     * @param principal The principal amount in asset units, i.e. the value of the shares at the time of opening the stream.
      */
     event Open(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
@@ -45,7 +45,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param streamer The address of the streamer who added the shares to the yield stream.
      * @param receiver The address of the receiver for the yield stream.
      * @param shares The number of additional shares added to the yield stream.
-     * @param principal The principal amount in asset units, ie the value of the shares at the time of the addition.
+     * @param principal The principal amount in asset units, i.e. the value of the shares at the time of the addition.
      */
     event TopUp(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
@@ -74,7 +74,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param streamer The address of the streamer who is closing the yield stream.
      * @param receiver The address of the receiver for the yield stream.
      * @param shares The number of shares returned to the streamer upon closing the yield stream.
-     * @param principal The principal amount in asset units, ie the value of the shares at the time of closing the stream.
+     * @param principal The principal amount in asset units, i.e. the value of the shares at the time of closing the stream.
      */
     event Close(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
@@ -453,20 +453,20 @@ contract YieldStreams is ERC721, Multicall {
      * keeping the yield within the same asset class. This might be preferable for receivers looking to maintain their position in the underlying vault.
      *
      * @param _sendTo The address where the claimed yield shares should be sent. This can be the caller's address or another specified recipient.
-     * @return shares The total number of shares claimed as yield and transferred to the `_sendTo` address.
+     * @return yieldInShares The total number of shares claimed as yield and transferred to the `_sendTo` address.
      */
-    function claimYieldInShares(address _sendTo) external returns (uint256 shares) {
+    function claimYieldInShares(address _sendTo) external returns (uint256 yieldInShares) {
         _checkZeroAddress(_sendTo);
 
-        shares = previewClaimYieldInShares(msg.sender);
+        yieldInShares = previewClaimYieldInShares(msg.sender);
 
-        if (shares == 0) revert NoYieldToClaim();
+        if (yieldInShares == 0) revert NoYieldToClaim();
 
-        receiverTotalShares[msg.sender] -= shares;
+        receiverTotalShares[msg.sender] -= yieldInShares;
 
-        emit ClaimYieldInShares(msg.sender, _sendTo, shares);
+        emit ClaimYieldInShares(msg.sender, _sendTo, yieldInShares);
 
-        vault.safeTransfer(_sendTo, shares);
+        vault.safeTransfer(_sendTo, yieldInShares);
     }
 
     /**
