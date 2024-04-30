@@ -127,15 +127,15 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of shares to allocate to the new yield stream.
-     * @param _maxLossOnOpenTolerancePercent The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
      * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      */
-    function open(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
+    function open(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         public
         returns (uint256 streamId)
     {
-        uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerancePercent);
+        uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerance);
 
         streamId = _openStream(_receiver, _shares, principal);
 
@@ -147,17 +147,17 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _receiver The address of the receiver.
      * @param _shares The number of shares to allocate to the new yield stream.
-     * @param _maxLossOnOpenTolerancePercent The maximum loss percentage tolerated by the sender.
+     * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
      * @return principal The principal amount in asset units (ie shares value at open)
      */
-    function previewOpen(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerancePercent)
+    function previewOpen(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         public
         view
         returns (uint256 principal)
     {
         principal = _convertToAssets(_shares);
 
-        _canOpen(_receiver, _shares, principal, _maxLossOnOpenTolerancePercent);
+        _canOpen(_receiver, principal, _shares, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -168,7 +168,7 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of ERC4626 vault shares to allocate to the new yield stream. These shares are transferred from the streamer to the contract as part of the stream setup.
-     * @param _maxLossOnOpenTolerancePercent The maximum loss percentage that the streamer is willing to tolerate upon opening the yield stream.
+     * @param _maxLossOnOpenTolerance The maximum loss percentage that the streamer is willing to tolerate upon opening the yield stream.
      * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
@@ -179,7 +179,7 @@ contract YieldStreams is ERC721, Multicall {
     function openUsingPermit(
         address _receiver,
         uint256 _shares,
-        uint256 _maxLossOnOpenTolerancePercent,
+        uint256 _maxLossOnOpenTolerance,
         uint256 deadline,
         uint8 v,
         bytes32 r,
@@ -187,7 +187,7 @@ contract YieldStreams is ERC721, Multicall {
     ) external returns (uint256 streamId) {
         IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
-        streamId = open(_receiver, _shares, _maxLossOnOpenTolerancePercent);
+        streamId = open(_receiver, _shares, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -203,12 +203,12 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The amount in asset units to be allocated to the new yield stream as shares (ie principal amount).
-     * @param _maxLossOnOpenTolerancePercent The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
      * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
-    function openWithAssets(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerancePercent)
+    function openWithAssets(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
         returns (uint256 streamId)
     {
@@ -218,7 +218,7 @@ contract YieldStreams is ERC721, Multicall {
 
         uint256 shares = vault.deposit(_principal, address(this));
 
-        _canOpen(_receiver, shares, _principal, _maxLossOnOpenTolerancePercent);
+        _canOpen(_receiver, _principal, shares, _maxLossOnOpenTolerance);
 
         streamId = _openStream(_receiver, shares, _principal);
     }
@@ -229,17 +229,17 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The principal amount in asset units to be allocated to the new yield stream.
-     * @param _maxLossOnOpenTolerancePercent The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
      * @return shares The estimated number of shares that would be allocated to the receiver upon opening the yield stream.
      */
-    function previewOpenWithAssets(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerancePercent)
+    function previewOpenWithAssets(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
         view
         returns (uint256 shares)
     {
         shares = _convertToShares(_principal);
 
-        _canOpen(_receiver, shares, _principal, _maxLossOnOpenTolerancePercent);
+        _canOpen(_receiver, _principal, shares, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -250,7 +250,7 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The amount in asset units to be allocated to the new yield stream as shares (ie principal amount).
-     * @param _maxLossOnOpenTolerancePercent The maximum loss percentage tolerated by the sender.
+     * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
      * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
@@ -261,7 +261,7 @@ contract YieldStreams is ERC721, Multicall {
     function openWithAssetsUsingPermit(
         address _receiver,
         uint256 _principal,
-        uint256 _maxLossOnOpenTolerancePercent,
+        uint256 _maxLossOnOpenTolerance,
         uint256 deadline,
         uint8 v,
         bytes32 r,
@@ -269,7 +269,7 @@ contract YieldStreams is ERC721, Multicall {
     ) external returns (uint256 streamId) {
         IERC2612(vault.asset()).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
-        streamId = openWithAssets(_receiver, _principal, _maxLossOnOpenTolerancePercent);
+        streamId = openWithAssets(_receiver, _principal, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -569,7 +569,7 @@ contract YieldStreams is ERC721, Multicall {
         return receiverPrincipal[_receiver][_streamId];
     }
 
-    function _canOpen(address _receiver, uint256 _shares, uint256 _principal, uint256 _maxLossOnOpenTolerancePercent)
+    function _canOpen(address _receiver, uint256 _principal, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         internal
         view
     {
@@ -589,7 +589,7 @@ contract YieldStreams is ERC721, Multicall {
         // this loss occurs due to inability of the accounting logic to differentiate between principal amounts allocated from different streams to same receiver.
         totalPrincipal = totalPrincipal + _principal;
         uint256 lossOnOpen = debt.mulDivUp(_principal, totalPrincipal);
-        uint256 maxLoss = _principal.mulWadUp(_maxLossOnOpenTolerancePercent);
+        uint256 maxLoss = _principal.mulWadUp(_maxLossOnOpenTolerance);
 
         if (lossOnOpen > maxLoss) revert LossToleranceExceeded();
     }
