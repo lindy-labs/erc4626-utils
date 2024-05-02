@@ -50,7 +50,7 @@ contract YieldStreamingTest is TestCommon {
         scEthYield.open(bob, shares, 0);
 
         assertEq(scEth.balanceOf(address(scEthYield)), shares, "contract's balance");
-        assertEq(scEthYield.receiverShares(bob), shares, "receiverShares");
+        assertEq(scEthYield.receiverTotalShares(bob), shares, "receiverShares");
         assertEq(scEthYield.receiverPrincipal(bob, 1), scEth.convertToAssets(shares), "receiverPrincipal");
         assertEq(scEthYield.previewClaimYield(bob), 0, "yield not 0");
 
@@ -82,10 +82,10 @@ contract YieldStreamingTest is TestCommon {
         vm.stopPrank();
 
         assertEq(scUsdc.balanceOf(address(scUsdcYield)), shares, "contract's balance");
-        assertEq(scUsdcYield.receiverShares(bob), bobsShares, "bob's receiverShares");
+        assertEq(scUsdcYield.receiverTotalShares(bob), bobsShares, "bob's receiverShares");
         assertEq(scUsdcYield.receiverPrincipal(bob, 1), scUsdc.convertToAssets(bobsShares), "bob's receiverPrincipal");
         assertEq(scUsdcYield.previewClaimYield(bob), 0, "bob's yield not 0");
-        assertEq(scUsdcYield.receiverShares(carol), carolsShares, "carol's receiverShares");
+        assertEq(scUsdcYield.receiverTotalShares(carol), carolsShares, "carol's receiverShares");
         assertEq(
             scUsdcYield.receiverPrincipal(carol, 2), scUsdc.convertToAssets(carolsShares), "carol's receiverPrincipal"
         );
@@ -138,7 +138,7 @@ contract YieldStreamingTest is TestCommon {
         scEthYield.claimYield(bob);
         assertEq(scEthYield.previewClaimYield(bob), 0, "yield not 0 after claim");
 
-        uint256 sharesBeforeTopUp = scEthYield.receiverShares(bob);
+        uint256 sharesBeforeTopUp = scEthYield.receiverTotalShares(bob);
 
         uint256 topUpShares = _depositToVault(scEth, alice, 2 ether);
         _approve(scEth, address(scEthYield), alice, topUpShares);
@@ -147,7 +147,7 @@ contract YieldStreamingTest is TestCommon {
         scEthYield.topUp(1, topUpShares);
 
         assertEq(scEthYield.previewClaimYield(bob), 0, "yield not 0 immediately after topUp");
-        assertEq(scEthYield.receiverShares(bob), sharesBeforeTopUp + topUpShares, "receiverShares");
+        assertEq(scEthYield.receiverTotalShares(bob), sharesBeforeTopUp + topUpShares, "receiverShares");
 
         uint256 profitPct = 0.1e18; // 10%
         expectedYield = scEth.convertToAssets(sharesBeforeTopUp + topUpShares).mulWadDown(profitPct);
@@ -171,7 +171,7 @@ contract YieldStreamingTest is TestCommon {
         scEthYield.open(carol, bobsShares, 0);
 
         assertEq(scEth.balanceOf(address(scEthYield)), alicesShares + bobsShares, "contract's balance");
-        assertEq(scEthYield.receiverShares(carol), alicesShares + bobsShares, "receiverShares");
+        assertEq(scEthYield.receiverTotalShares(carol), alicesShares + bobsShares, "receiverShares");
         assertApproxEqAbs(scEthYield.receiverPrincipal(carol, 1), alicesPrincipal, 1, "alice's receiverPrincipal");
         assertApproxEqAbs(scEthYield.receiverPrincipal(carol, 2), bobsPrincipal, 1, "bob's receiverPrincipal");
 
@@ -191,6 +191,79 @@ contract YieldStreamingTest is TestCommon {
         assertApproxEqAbs(weth.balanceOf(carol), expectedYield, 1, "carol's assets");
     }
 
+    function test_openWithAssets() public {
+        uint256 principal = 1000e6;
+        uint256 shares = scUsdc.previewDeposit(principal);
+        deal(address(usdc), alice, principal);
+        vm.prank(alice);
+        usdc.approve(address(scUsdcYield), principal);
+
+        vm.prank(alice);
+        scUsdcYield.openWithAssets(bob, principal, 0);
+
+        assertEq(scUsdc.balanceOf(address(scUsdcYield)), shares, "contract's balance");
+        assertEq(scUsdcYield.receiverTotalShares(bob), shares, "receiverShares");
+        assertEq(scUsdcYield.receiverPrincipal(bob, 1), principal, "receiverPrincipal");
+
+        _generateYield(scUsdc, 0.05e18); // 5%
+
+        uint256 expectedYield = 50e6;
+
+        assertApproxEqAbs(scUsdcYield.previewClaimYield(bob), expectedYield, 1, "yield");
+
+        vm.prank(bob);
+        uint256 claimed = scUsdcYield.claimYield(bob);
+
+        assertEq(scUsdcYield.previewClaimYield(bob), 0, "yield not 0 after claim");
+        assertEq(usdc.balanceOf(bob), claimed, "bob's assets");
+        assertApproxEqAbs(claimed, expectedYield, 1, "bob's claim");
+    }
+
+    function test_topUpWithAssets() public {
+        uint256 principal = 1000e6;
+        uint256 shares = _depositToVault(scUsdc, alice, principal);
+        _approve(scUsdc, address(scUsdcYield), alice, shares);
+
+        vm.prank(alice);
+        uint256 streamId = scUsdcYield.open(bob, shares, 0);
+
+        uint256 firstYield = 0.05e18; // 5%
+        _generateYield(scUsdc, int256(firstYield)); // 5%
+
+        assertApproxEqAbs(
+            scUsdcYield.previewClaimYield(bob), principal.mulWadDown(firstYield), 1, "yield before top up"
+        );
+
+        // top up
+        uint256 addedPrincipal = 2000e6;
+        uint256 addedShares = scUsdc.previewDeposit(addedPrincipal);
+        deal(address(usdc), alice, addedPrincipal);
+        vm.prank(alice);
+        usdc.approve(address(scUsdcYield), addedPrincipal);
+
+        vm.prank(alice);
+        scUsdcYield.topUpWithAssets(streamId, addedPrincipal);
+
+        assertEq(scUsdcYield.receiverTotalShares(bob), shares + addedShares, "receiverShares");
+
+        uint256 secondYield = 0.1e18; // 10%
+        _generateYield(scUsdc, int256(secondYield));
+
+        uint256 expectedYield = principal.mulWadDown(firstYield)
+            + (principal + principal.mulWadDown(firstYield) + addedPrincipal).mulWadDown(secondYield);
+        // 5% of 1000 + 10% of (1000 + 50 + 2000) = 50 + 305 = 355
+        assertEq(expectedYield, 355e6, "expected total yield");
+
+        assertApproxEqAbs(scUsdcYield.previewClaimYield(bob), expectedYield, 1, "yield after topUp");
+        assertEq(scUsdcYield.receiverTotalShares(bob), shares + addedShares, "receiverShares after topUp");
+        assertApproxEqAbs(
+            scUsdcYield.receiverTotalPrincipal(bob), principal + addedPrincipal, 1, "receiverTotalPrincipal after topUp"
+        );
+        assertApproxEqAbs(
+            scUsdcYield.receiverPrincipal(bob, 1), principal + addedPrincipal, 1, "receiverPrincipal after topUp"
+        );
+    }
+
     function test_close() public {
         uint256 principal = 1 ether;
         uint256 shares = _depositToVault(scEth, alice, principal);
@@ -200,7 +273,7 @@ contract YieldStreamingTest is TestCommon {
         scEthYield.open(bob, shares, 0);
 
         assertEq(scEth.balanceOf(address(scEthYield)), shares, "contract's balance");
-        assertEq(scEthYield.receiverShares(bob), shares, "receiverShares");
+        assertEq(scEthYield.receiverTotalShares(bob), shares, "receiverShares");
         assertEq(scEthYield.receiverPrincipal(bob, 1), scEth.convertToAssets(shares), "receiverPrincipal");
 
         _generateYield(scEth, 0.05e18); // 5%
@@ -213,7 +286,7 @@ contract YieldStreamingTest is TestCommon {
 
         uint256 expectedYield = 0.05 ether;
         assertApproxEqAbs(
-            scEthYield.receiverShares(bob), scEth.convertToShares(expectedYield), 1, "receiverShares after close"
+            scEthYield.receiverTotalShares(bob), scEth.convertToShares(expectedYield), 1, "receiverShares after close"
         );
         assertApproxEqAbs(scEthYield.receiverPrincipal(bob, 1), 0, 1, "receiverPrincipal after close");
         assertApproxEqAbs(scEthYield.receiverTotalPrincipal(bob), 0, 1, "receiverTotalPrincipal after close");
