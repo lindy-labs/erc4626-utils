@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
-import "forge-std/console2.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
@@ -44,26 +43,26 @@ contract YieldDCA is ERC721, AccessControl {
 
     struct EpochInfo {
         // using uint128s to pack variables and save on sstore/sload since both values are always written/read together
-        // dcaPrice and sharePrice are in WAD and represet the result of dividing two uint256s
+        // dcaPrice and sharePrice are in WAD and represent the result of dividing two uint256s
         // using uint128s instead of uint256s can only lead to some insignificant precision loss in balances calculation
         uint128 dcaPrice;
         uint128 sharePrice;
     }
 
-    error DcaTokenAddressZero();
+    error DCATokenAddressZero();
     error VaultAddressZero();
     error SwapperAddressZero();
-    error DcaTokenSameAsVaultAsset();
-    error InvalidDcaInterval();
+    error DCATokenSameAsVaultAsset();
+    error InvalidDCAInterval();
     error KeeperAddressZero();
     error AdminAddressZero();
     error InvalidMinYieldPerEpoch();
 
-    error DcaMinEpochDurationNotReached();
-    error DcaInsufficientYield();
-    error DcaYieldZero();
+    error MinEpochDurationNotReached();
+    error InsufficientYield();
+    error YieldZero();
     error NoPrincipalDeposited();
-    error DcaAmountReceivedTooLow();
+    error AmountReceivedTooLow();
     error InsufficientSharesToWithdraw();
     error CallerNotTokenOwner();
 
@@ -106,9 +105,9 @@ contract YieldDCA is ERC721, AccessControl {
         address _admin,
         address _keeper
     ) ERC721("YieldDCA", "YDCA") {
-        if (address(_dcaToken) == address(0)) revert DcaTokenAddressZero();
+        if (address(_dcaToken) == address(0)) revert DCATokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
-        if (address(_dcaToken) == _vault.asset()) revert DcaTokenSameAsVaultAsset();
+        if (address(_dcaToken) == _vault.asset()) revert DCATokenSameAsVaultAsset();
         if (address(_swapper) == address(0)) revert SwapperAddressZero();
         if (_admin == address(0)) revert AdminAddressZero();
         if (_keeper == address(0)) revert KeeperAddressZero();
@@ -159,7 +158,7 @@ contract YieldDCA is ERC721, AccessControl {
 
     function _setMinEpochDuration(uint256 _duration) internal {
         if (_duration < MIN_DCA_INTERVAL_LOWER_BOUND || _duration > MIN_DCA_INTERVAL_UPPER_BOUND) {
-            revert InvalidDcaInterval();
+            revert InvalidDCAInterval();
         }
 
         minEpochDuration = _duration;
@@ -240,17 +239,17 @@ contract YieldDCA is ERC721, AccessControl {
     function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
         uint256 totalPrincipal = totalPrincipalDeposited;
         if (totalPrincipal == 0) revert NoPrincipalDeposited();
-        if (block.timestamp < currentEpochTimestamp + minEpochDuration) revert DcaMinEpochDurationNotReached();
+        if (block.timestamp < currentEpochTimestamp + minEpochDuration) revert MinEpochDurationNotReached();
 
         uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal);
 
-        if (yieldInShares == 0) revert DcaYieldZero();
+        if (yieldInShares == 0) revert YieldZero();
 
         vault.redeem(yieldInShares, address(this), address(this));
 
         uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
 
-        if (yield < totalPrincipal.mulWadDown(minYieldPerEpoch)) revert DcaInsufficientYield();
+        if (yield < totalPrincipal.mulWadDown(minYieldPerEpoch)) revert InsufficientYield();
 
         uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin, _swapData);
         uint256 dcaPrice = amountOut.divWadDown(yield);
@@ -278,7 +277,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         uint256 balanceAfter = dcaBalance();
 
-        if (balanceAfter < balanceBefore + _dcaAmountOutMin) revert DcaAmountReceivedTooLow();
+        if (balanceAfter < balanceBefore + _dcaAmountOutMin) revert AmountReceivedTooLow();
 
         unchecked {
             return balanceAfter - balanceBefore;
