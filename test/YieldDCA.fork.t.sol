@@ -9,7 +9,7 @@ import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {YieldDCA} from "src/YieldDCA.sol";
 import {UniSwapper} from "src/UniSwapper.sol";
 
-contract YieldDCATest is Test {
+contract YieldDCAForkTest is Test {
     using FixedPointMathLib for uint256;
 
     uint256 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
