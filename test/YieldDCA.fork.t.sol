@@ -5,11 +5,13 @@ import "forge-std/Test.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
+import {IERC721Errors} from "openzeppelin-contracts/interfaces/draft-IERC6093.sol";
 
 import {YieldDCA} from "src/YieldDCA.sol";
 import {UniSwapper} from "src/UniSwapper.sol";
+import {TestCommon} from "./common/TestCommon.sol";
 
-contract YieldDCAForkTest is Test {
+contract YieldDCAForkTest is TestCommon {
     using FixedPointMathLib for uint256;
 
     uint256 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
@@ -47,9 +49,12 @@ contract YieldDCAForkTest is Test {
 
     function test_executeDCA_oneUserOneEpoch() public {
         uint256 principal = 10_000e6; // 10,000 USDC
-        _depositIntoDca(alice, principal);
+        uint256 depositId = _depositIntoDca(alice, principal);
 
-        _addYield(0.1e18); // 10% yield
+        assertEq(yieldDca.balanceOf(alice), 1, "alice's deposits");
+        assertEq(yieldDca.ownerOf(depositId), alice, "alice's deposit owner");
+
+        _generateYield(0.1e18); // 10% yield
 
         uint256 expectedYield = principal.mulWadDown(0.1e18);
 
@@ -67,15 +72,24 @@ contract YieldDCAForkTest is Test {
         vm.prank(keeper);
         yieldDca.executeDCA(0, POOL_FEE);
 
-        assertEq(dcaToken.balanceOf(address(yieldDca)), expectedDcaAmount, "dca token balance");
+        assertApproxEqRel(dcaToken.balanceOf(address(yieldDca)), expectedDcaAmount, 0.00001e18, "dca token balance");
 
         (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(1);
-        assertApproxEqRel(vault.convertToAssets(shares), principal, 0.00001e18, "alices principal");
+        assertApproxEqRel(vault.convertToAssets(shares), principal, 0.0000001e18, "alices principal");
         assertApproxEqRel(dcaAmount, expectedDcaAmount, 0.00001e18, "alices dca amount");
 
-        _withdrawAll(alice, 1);
+        _withdrawAll(alice, depositId);
 
-        assertEq(dcaToken.balanceOf(address(yieldDca)), expectedDcaAmount - dcaAmount, "aw: contract dca balance");
+        assertEq(yieldDca.balanceOf(alice), 0, "aw: alice's deposit not burned");
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, depositId));
+        yieldDca.ownerOf(depositId);
+
+        assertApproxEqAbs(
+            dcaToken.balanceOf(address(yieldDca)),
+            0,
+            expectedDcaAmount.mulWadDown(0.0000001e18), // dust leftover from accounting inaccuracy
+            "aw: contract dca balance"
+        );
         assertEq(vault.balanceOf(address(yieldDca)), 0, "aw: contract vault balance");
 
         assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(alice)), principal, 2, "aw: alices principal");
@@ -84,8 +98,8 @@ contract YieldDCAForkTest is Test {
 
     function test_executeDCA_multipleUsersTwoEpochs() public {
         /**
-         * 1. alice deposits 10,000 USDC into DCA
-         * 2. 10% yield is added
+         * 1. alice deposits 10,000 USDC into DCA contract
+         * 2. 10% yield is added in the first epoch
          * 3. execute DCA
          * 4. bob deposits 5,000 USDC into DCA
          * 5. 10% yield is added
@@ -99,13 +113,15 @@ contract YieldDCAForkTest is Test {
         uint256 bobPrincipal = 5_000e6; // 5,000 USDC
         uint256 carolPrincipal = 15_000e6; // 15,000 USDC
 
+        // alice is expected to have DCA tokens worth 20% of her principal (2 * 10%)
         uint256 alicesExpectedDca =
             swapper.previewExecute(address(asset), address(dcaToken), alicePrincipal.mulWadDown(0.1e18) * 2, POOL_FEE);
+        // bob is expected to have DCA tokens worth 10% of his principal
         uint256 bobsExpectedDca =
             swapper.previewExecute(address(asset), address(dcaToken), bobPrincipal.mulWadDown(0.1e18), POOL_FEE);
 
         _depositIntoDca(alice, alicePrincipal);
-        _addYield(0.1e18); // 10% yield
+        _generateYield(0.1e18); // 10% yield
 
         _shiftTime(DEFAULT_DCA_INTERVAL);
 
@@ -113,7 +129,7 @@ contract YieldDCAForkTest is Test {
         yieldDca.executeDCA(0, POOL_FEE);
 
         _depositIntoDca(bob, bobPrincipal);
-        _addYield(0.1e18); // 10% yield
+        _generateYield(0.1e18); // 10% yield
 
         _depositIntoDca(carol, carolPrincipal);
 
@@ -141,36 +157,31 @@ contract YieldDCAForkTest is Test {
 
     // *** helper functions *** ///
 
-    function _depositIntoDca(address _account, uint256 _amount) public returns (uint256 tokenId) {
+    function _depositIntoDca(address _account, uint256 _amount) public returns (uint256 depositId) {
+        uint256 shares = _depositToVault(vault, _account, _amount);
+
         vm.startPrank(_account);
 
-        deal(address(asset), _account, _amount);
-        asset.approve(address(vault), _amount);
-        uint256 shares = vault.deposit(_amount, _account);
-
         vault.approve(address(yieldDca), shares);
-        tokenId = yieldDca.deposit(shares);
+        depositId = yieldDca.deposit(shares);
 
         vm.stopPrank();
     }
 
-    function _addYield(uint256 _percent) internal {
-        uint256 usdcBalance = asset.balanceOf(address(vault));
-        uint256 yield = vault.totalAssets().mulWadDown(_percent);
-
-        deal(address(asset), address(vault), usdcBalance + yield);
+    function _generateYield(int256 _percent) internal {
+        _generateYield(vault, _percent);
     }
 
     function _shiftTime(uint256 _period) internal {
         vm.warp(block.timestamp + _period);
     }
 
-    function _withdrawAll(address _account, uint256 _id) internal {
+    function _withdrawAll(address _account, uint256 _depositId) internal {
         vm.startPrank(_account);
 
-        (uint256 shares,) = yieldDca.balancesOf(_id);
+        (uint256 shares,) = yieldDca.balancesOf(_depositId);
 
-        yieldDca.withdraw(shares, _id);
+        yieldDca.withdraw(shares, _depositId);
 
         vm.stopPrank();
     }
