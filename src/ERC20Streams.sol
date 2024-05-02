@@ -1,32 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
+import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
-import "./common/Errors.sol";
-import {StreamingBase} from "./common/StreamingBase.sol";
+import {AddressZero, AmountZero} from "./common/Errors.sol";
 
 /**
  * @title This contract facilitates the streaming of ERC20 tokens with unique stream IDs per streamer-receiver pair.
  * @notice This contract allows users to open, top up, claim from, and close streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
  */
-contract ERC20Streaming is StreamingBase {
+contract ERC20Streams is Multicall {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC20;
 
     error ZeroDuration();
+    error CannotOpenStreamToSelf();
     error StreamAlreadyExists();
     error StreamExpired();
     error RatePerSecondDecreased();
     error NoTokensToClaim();
+    error StreamDoesNotExist();
 
-    event OpenStream(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
+    event Open(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
     event Claim(address indexed streamer, address indexed receiver, uint256 claimed);
-    event CloseStream(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
-    event TopUpStream(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
+    event Close(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
+    event TopUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
 
     struct Stream {
         uint256 amount;
@@ -35,12 +37,14 @@ contract ERC20Streaming is StreamingBase {
         uint128 lastClaimTime;
     }
 
+    IERC20 public immutable token;
+
     mapping(uint256 => Stream) public streamById;
 
     constructor(IERC20 _token) {
         _checkZeroAddress(address(_token));
 
-        token = address(_token);
+        token = _token;
     }
 
     /**
@@ -68,10 +72,10 @@ contract ERC20Streaming is StreamingBase {
      * @param _amount The number of tokens to stream
      * @param _duration The duration of the stream in seconds
      */
-    function openStream(address _receiver, uint256 _amount, uint256 _duration) public {
+    function open(address _receiver, uint256 _amount, uint256 _duration) public {
         _checkZeroAddress(_receiver);
         _checkOpenStreamToSelf(_receiver);
-        _checkBalance(msg.sender, _amount);
+        _checkZeroAmount(_amount);
         _checkZeroDuration(_duration);
 
         uint256 streamId = getStreamId(msg.sender, _receiver);
@@ -84,7 +88,7 @@ contract ERC20Streaming is StreamingBase {
             }
 
             // if is expired, transfer unclaimed tokens to receiver & emit close event
-            emit CloseStream(msg.sender, _receiver, 0, stream.amount);
+            emit Close(msg.sender, _receiver, 0, stream.amount);
 
             IERC20(token).safeTransfer(_receiver, stream.amount);
         }
@@ -96,7 +100,7 @@ contract ERC20Streaming is StreamingBase {
         stream.startTime = uint128(block.timestamp);
         stream.lastClaimTime = uint128(block.timestamp);
 
-        emit OpenStream(msg.sender, _receiver, stream.amount, _duration);
+        emit Open(msg.sender, _receiver, stream.amount, _duration);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _amount);
     }
@@ -111,7 +115,7 @@ contract ERC20Streaming is StreamingBase {
      * @param _r Half of the ECDSA signature pair
      * @param _s Half of the ECDSA signature pair
      */
-    function openStreamUsingPermit(
+    function openUsingPermit(
         address _receiver,
         uint256 _amount,
         uint256 _duration,
@@ -122,7 +126,7 @@ contract ERC20Streaming is StreamingBase {
     ) external {
         IERC2612(address(token)).permit(msg.sender, address(this), _amount, _deadline, _v, _r, _s);
 
-        openStream(_receiver, _amount, _duration);
+        open(_receiver, _amount, _duration);
     }
 
     /**
@@ -131,9 +135,9 @@ contract ERC20Streaming is StreamingBase {
      * @param _additionalAmount The additional number of tokens to add to the stream
      * @param _additionalDuration The additional duration to add to the stream in seconds
      */
-    function topUpStream(address _receiver, uint256 _additionalAmount, uint256 _additionalDuration) public {
+    function topUp(address _receiver, uint256 _additionalAmount, uint256 _additionalDuration) public {
         _checkZeroAddress(_receiver);
-        _checkBalance(msg.sender, _additionalAmount);
+        _checkZeroAmount(_additionalAmount);
 
         Stream storage stream = streamById[getStreamId(msg.sender, _receiver)];
 
@@ -151,7 +155,7 @@ contract ERC20Streaming is StreamingBase {
 
         stream.ratePerSecond = newRatePerSecond;
 
-        emit TopUpStream(msg.sender, _receiver, _additionalAmount, _additionalDuration);
+        emit TopUp(msg.sender, _receiver, _additionalAmount, _additionalDuration);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _additionalAmount);
     }
@@ -166,7 +170,7 @@ contract ERC20Streaming is StreamingBase {
      * @param _r Half of the ECDSA signature pair
      * @param _s Half of the ECDSA signature pair
      */
-    function topUpStreamUsingPermit(
+    function topUpUsingPermit(
         address _receiver,
         uint256 _additionalAmount,
         uint256 _additionalDuration,
@@ -177,7 +181,7 @@ contract ERC20Streaming is StreamingBase {
     ) external {
         IERC2612(address(token)).permit(msg.sender, address(this), _additionalAmount, _deadline, _v, _r, _s);
 
-        topUpStream(_receiver, _additionalAmount, _additionalDuration);
+        topUp(_receiver, _additionalAmount, _additionalDuration);
     }
 
     /**
@@ -199,7 +203,7 @@ contract ERC20Streaming is StreamingBase {
             delete streamById[streamId];
 
             // emit with 0s to indicate that the stream was closed during the claim
-            emit CloseStream(_streamer, msg.sender, 0, 0);
+            emit Close(_streamer, msg.sender, 0, 0);
         } else {
             stream.lastClaimTime = uint128(block.timestamp);
             stream.amount -= claimed;
@@ -236,15 +240,15 @@ contract ERC20Streaming is StreamingBase {
      * @return remaining The number of tokens returned to the streamer
      * @return streamed The number of tokens transferred to the receiver
      */
-    function closeStream(address _receiver) external returns (uint256 remaining, uint256 streamed) {
+    function close(address _receiver) external returns (uint256 remaining, uint256 streamed) {
         uint256 streamId = getStreamId(msg.sender, _receiver);
         Stream memory stream = streamById[streamId];
 
-        (remaining, streamed) = _previewCloseStream(stream);
+        (remaining, streamed) = _previewClose(stream);
 
         delete streamById[streamId];
 
-        emit CloseStream(msg.sender, _receiver, remaining, streamed);
+        emit Close(msg.sender, _receiver, remaining, streamed);
 
         if (remaining != 0) IERC20(token).safeTransfer(msg.sender, remaining);
 
@@ -258,17 +262,17 @@ contract ERC20Streaming is StreamingBase {
      * @return remaining The number of tokens that would be returned to the streamer
      * @return streamed The number of tokens that would be transferred to the receiver
      */
-    function previewCloseStream(address _streamer, address _receiver)
+    function previewClose(address _streamer, address _receiver)
         public
         view
         returns (uint256 remaining, uint256 streamed)
     {
         Stream memory stream = streamById[getStreamId(_streamer, _receiver)];
 
-        return _previewCloseStream(stream);
+        return _previewClose(stream);
     }
 
-    function _previewCloseStream(Stream memory _stream) internal view returns (uint256 remaining, uint256 streamed) {
+    function _previewClose(Stream memory _stream) internal view returns (uint256 remaining, uint256 streamed) {
         _checkNonExistingStream(_stream);
 
         uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
@@ -279,6 +283,18 @@ contract ERC20Streaming is StreamingBase {
         remaining = _stream.amount - streamed;
 
         return (remaining, streamed);
+    }
+
+    function _checkZeroAddress(address _receiver) internal pure {
+        if (_receiver == address(0)) revert AddressZero();
+    }
+
+    function _checkZeroAmount(uint256 _amount) internal pure {
+        if (_amount == 0) revert AmountZero();
+    }
+
+    function _checkOpenStreamToSelf(address _receiver) internal view {
+        if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
     }
 
     function _checkZeroDuration(uint256 _duration) internal pure {

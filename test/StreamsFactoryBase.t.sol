@@ -7,9 +7,9 @@ import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 
 import "src/common/Errors.sol";
 
-import {StreamingFactoryBase} from "src/common/StreamingFactoryBase.sol";
+import {StreamsFactoryBase} from "../src/common/StreamsFactoryBase.sol";
 
-contract SttreamingFactoryBaseTest is Test {
+contract StreamsFactoryBaseTest is Test {
     FactoryHarness public factory;
     MockERC4626 public vault;
 
@@ -27,7 +27,7 @@ contract SttreamingFactoryBaseTest is Test {
         factory.create(address(0));
     }
 
-    function test_create_deploysStreamHubContract() public {
+    function test_create_deploysStreamsContract() public {
         address predicted = factory.predictDeploy(address(vault));
         assertTrue(!factory.isDeployed(address(vault)), "isDeployed");
         assertEq(factory.deployedCount(), 0, "deployedCount");
@@ -79,7 +79,7 @@ contract SttreamingFactoryBaseTest is Test {
     }
 }
 
-contract FactoryHarness is StreamingFactoryBase {
+contract FactoryHarness is StreamsFactoryBase {
     function _getCreationCode(address) internal pure override returns (bytes memory) {
         return abi.encodePacked(type(DeployMock).creationCode);
     }
