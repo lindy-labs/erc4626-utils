@@ -25,7 +25,8 @@ contract YieldStreams is ERC721, Multicall {
 
     error NoYieldToClaim();
     error LossToleranceExceeded();
-    error CallerNotOwner();
+    error CallerNotStreamOwner();
+    error InputArraysLengthMismatch(uint256 length1, uint256 length2);
 
     /**
      * @notice Emitted when a new yield stream is opened between a streamer and a receiver.
@@ -157,7 +158,7 @@ contract YieldStreams is ERC721, Multicall {
     {
         principal = _convertToAssets(_shares);
 
-        _canOpen(_receiver, principal, _shares, _maxLossOnOpenTolerance);
+        _canOpenStream(_receiver, principal, _shares, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -191,6 +192,67 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
+     * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers, represented by ERC721 tokens.
+     * The streamer allocates a specified number of ERC4626 shares to each stream, which are used to generate yield for the respective receivers.
+     * @dev When new streams are opened, ERC721 tokens are minted to the streamer, uniquely identifying each stream.
+     * These tokens represent the ownership of the yield streams (and principal allocated to them) and can be held, transferred, or utilized in other contracts.
+     * If a receiver is in debt (where the total value of their streams is less than the allocated principal),
+     * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
+     *
+     * @param _shares The number of shares to allocate to each new yield stream.
+     * @param _receivers The addresses of the receivers for the yield streams.
+     * @param _allocations The percentage of shares to allocate to each receiver.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
+     * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening a stream.
+     * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
+     */
+    function openMultiple(
+        uint256 _shares,
+        address[] calldata _receivers,
+        uint256[] calldata _allocations,
+        uint256 _maxLossOnOpenTolerance
+    ) public returns (uint256[] memory streamIds) {
+        _checkZeroAmount(_shares);
+
+        uint256 principal = _convertToAssets(_shares);
+        uint256 totalSharesAllocated;
+        (totalSharesAllocated, streamIds) =
+            _openStreams(principal, _shares, _receivers, _allocations, _maxLossOnOpenTolerance);
+
+        vault.safeTransferFrom(msg.sender, address(this), totalSharesAllocated);
+    }
+
+    /**
+     * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers using ERC4626 permit for setting the allowance.
+     * @dev This function allows opening of multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
+     * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
+     *
+     * @param _shares The number of ERC4626 vault shares to allocate to each new yield stream.
+     * @param _receivers The addresses of the receivers for the yield streams.
+     * @param _allocations The percentage of shares to allocate to each receiver.
+     * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
+     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param v The recovery byte of the signature, a part of the permit approval process.
+     * @param r The first 32 bytes of the signature, another component of the permit.
+     * @param s The second 32 bytes of the signature, completing the permit approval requirements.
+     * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
+     */
+    function openMultipleUsingPermit(
+        uint256 _shares,
+        address[] calldata _receivers,
+        uint256[] calldata _allocations,
+        uint256 _maxLossOnOpenTolerance,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256[] memory streamIds) {
+        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+
+        streamIds = openMultiple(_shares, _receivers, _allocations, _maxLossOnOpenTolerance);
+    }
+
+    /**
      * @notice Opens a new yield stream between the caller (streamer) and a receiver, represented by an ERC721 token.
      * The streamer allocates a specified number of the vault's underlying ERC20 asset to the stream, representing the principal amount.
      * This amount is then deposited to the ERC4626 vault to obtan the corresponding shares, which are used to generate yield for the receiver.
@@ -212,13 +274,9 @@ contract YieldStreams is ERC721, Multicall {
         public
         returns (uint256 streamId)
     {
-        asset.safeTransferFrom(msg.sender, address(this), _principal);
+        uint256 shares = _depositToVault(_principal);
 
-        asset.forceApprove(address(vault), _principal);
-
-        uint256 shares = vault.deposit(_principal, address(this));
-
-        _canOpen(_receiver, _principal, shares, _maxLossOnOpenTolerance);
+        _canOpenStream(_receiver, _principal, shares, _maxLossOnOpenTolerance);
 
         streamId = _openStream(_receiver, shares, _principal);
     }
@@ -239,7 +297,7 @@ contract YieldStreams is ERC721, Multicall {
     {
         shares = _convertToShares(_principal);
 
-        _canOpen(_receiver, _principal, shares, _maxLossOnOpenTolerance);
+        _canOpenStream(_receiver, _principal, shares, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -270,6 +328,68 @@ contract YieldStreams is ERC721, Multicall {
         IERC2612(vault.asset()).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
         streamId = openWithAssets(_receiver, _principal, _maxLossOnOpenTolerance);
+    }
+
+    /**
+     * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers, represented by ERC721 tokens.
+     * The streamer allocates a specified amount of the vault's underlying ERC20 asset to each stream, representing the principal amount.
+     * This amount is then deposited to the ERC4626 vault to obtain the corresponding shares, which are used to generate yield for the respective receivers.
+     * @dev When new streams are opened, ERC721 tokens are minted to represent each stream, uniquely identifying them.
+     * These tokens represent the ownership of the yield streams (and principal allocated to them) and can be held, transferred, or utilized in other contracts.
+     * If a receiver is in debt (where the total value of their streams is less than the allocated principal),
+     * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
+     *
+     * @param _assets The amount in asset units to allocate to each new yield stream as shares (ie principal amount).
+     * @param _receivers The addresses of the receivers for the yield streams.
+     * @param _allocations The percentage of shares to allocate to each receiver.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
+     * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
+     * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
+     */
+    function depositAndOpenMultiple(
+        uint256 _assets,
+        address[] calldata _receivers,
+        uint256[] calldata _allocations,
+        uint256 _maxLossOnOpenTolerance
+    ) public returns (uint256[] memory streamIds) {
+        _checkZeroAmount(_assets);
+
+        uint256 shares = _depositToVault(_assets);
+        uint256 totalSharesAllocated;
+        (totalSharesAllocated, streamIds) =
+            _openStreams(_assets, shares, _receivers, _allocations, _maxLossOnOpenTolerance);
+
+        vault.safeTransfer(msg.sender, shares - totalSharesAllocated);
+    }
+
+    /**
+     * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers using ERC20 permit for setting the allowance.
+     * @dev This function allows opening of multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
+     * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
+     *
+     * @param _assets The amount in asset units to allocate to each new yield stream as shares (ie principal amount).
+     * @param _receivers The addresses of the receivers for the yield streams.
+     * @param _allocations The percentage of shares to allocate to each receiver.
+     * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
+     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param v The recovery byte of the signature, a part of the permit approval process.
+     * @param r The first 32 bytes of the signature, another component of the permit.
+     * @param s The second 32 bytes of the signature, completing the permit approval requirements.
+     * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
+     */
+    function depositAndOpenMultipleUsingPermit(
+        uint256 _assets,
+        address[] calldata _receivers,
+        uint256[] calldata _allocations,
+        uint256 _maxLossOnOpenTolerance,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256[] memory streamIds) {
+        IERC2612(address(asset)).permit(msg.sender, address(this), _assets, deadline, v, r, s);
+
+        streamIds = depositAndOpenMultiple(_assets, _receivers, _allocations, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -325,11 +445,7 @@ contract YieldStreams is ERC721, Multicall {
         _checkZeroAmount(_principal);
         _checkIsOwner(_streamId);
 
-        asset.safeTransferFrom(msg.sender, address(this), _principal);
-
-        asset.forceApprove(address(vault), _principal);
-
-        shares = vault.deposit(_principal, address(this));
+        shares = _depositToVault(_principal);
 
         _topUpStream(_streamId, shares, _principal);
     }
@@ -534,6 +650,40 @@ contract YieldStreams is ERC721, Multicall {
         emit Open(streamId, msg.sender, _receiver, _shares, _principal);
     }
 
+    // accounting logic for opening multiple streams
+    function _openStreams(
+        uint256 _principal,
+        uint256 _shares,
+        address[] memory _receivers,
+        uint256[] memory _allocations,
+        uint256 _maxLossOnOpenTolerance
+    ) internal returns (uint256 totalSharesAllocated, uint256[] memory streamIds) {
+        _checkInputArraysLength(_receivers, _allocations);
+
+        streamIds = new uint256[](_receivers.length);
+
+        address receiver;
+        uint256 allocation;
+        uint256 sharesAllocation;
+        uint256 principalAllocation;
+
+        for (uint256 i = 0; i < _receivers.length;) {
+            receiver = _receivers[i];
+            allocation = _allocations[i];
+            sharesAllocation = _shares.mulWadDown(allocation);
+            principalAllocation = _principal.mulWadDown(allocation);
+
+            _canOpenStream(receiver, principalAllocation, sharesAllocation, _maxLossOnOpenTolerance);
+            streamIds[i] = _openStream(receiver, sharesAllocation, principalAllocation);
+
+            totalSharesAllocated += sharesAllocation;
+
+            unchecked {
+                i++;
+            }
+        }
+    }
+
     // accounting logic for topping up a stream
     function _topUpStream(uint256 _streamId, uint256 _shares, uint256 _principal) internal {
         address _receiver = streamIdToReceiver[_streamId];
@@ -565,11 +715,19 @@ contract YieldStreams is ERC721, Multicall {
         shares = ask > have ? have : ask;
     }
 
+    function _depositToVault(uint256 _amount) internal returns (uint256 shares) {
+        asset.safeTransferFrom(msg.sender, address(this), _amount);
+
+        asset.forceApprove(address(vault), _amount);
+
+        shares = vault.deposit(_amount, address(this));
+    }
+
     function _getPrincipal(uint256 _streamId, address _receiver) internal view returns (uint256) {
         return receiverPrincipal[_receiver][_streamId];
     }
 
-    function _canOpen(address _receiver, uint256 _principal, uint256 _shares, uint256 _maxLossOnOpenTolerance)
+    function _canOpenStream(address _receiver, uint256 _principal, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         internal
         view
     {
@@ -612,8 +770,14 @@ contract YieldStreams is ERC721, Multicall {
         if (_amount == 0) revert AmountZero();
     }
 
+    function _checkInputArraysLength(address[] memory _receivers, uint256[] memory _allocations) internal pure {
+        if (_receivers.length != _allocations.length) {
+            revert InputArraysLengthMismatch(_receivers.length, _allocations.length);
+        }
+    }
+
     function _checkIsOwner(uint256 _streamId) internal view {
-        if (ownerOf(_streamId) != msg.sender) revert CallerNotOwner();
+        if (ownerOf(_streamId) != msg.sender) revert CallerNotStreamOwner();
     }
 
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {
