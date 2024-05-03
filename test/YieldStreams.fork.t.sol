@@ -24,10 +24,6 @@ contract YieldStreamsForkTest is TestCommon {
     IERC4626 public scUsdc;
     IERC20 public usdc;
 
-    address constant alice = address(0x06);
-    address constant bob = address(0x07);
-    address constant carol = address(0x08);
-
     function setUp() public {
         uint256 mainnetFork = vm.createFork(vm.envString("RPC_URL_MAINNET"));
         vm.selectFork(mainnetFork);
@@ -387,6 +383,50 @@ contract YieldStreamsForkTest is TestCommon {
         assertEq(scUsdcYield.receiverTotalShares(carol), shares / 2, "carol's receiverShares");
         assertApproxEqAbs(
             scUsdcYield.receiverPrincipal(carol, streamIds[1]), principal / 2, 1, "carol's receiverPrincipal"
+        );
+    }
+
+    function test_depositAndOpenMultipleUsingPermit() public {
+        uint256 principal = 1000e6;
+        uint256 shares = scUsdc.previewDeposit(principal);
+
+        uint256 deadline = block.timestamp + 1 days;
+        deal(address(usdc), dave, principal);
+
+        // Sign the permit message
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            davesPrivateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    MockERC20(address(usdc)).DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(scUsdcYield), principal, 0, deadline))
+                )
+            )
+        );
+
+        // open streams to alice and bob
+        address[] memory receivers = new address[](2);
+        receivers[0] = alice;
+        receivers[1] = bob;
+
+        uint256[] memory allocations = new uint256[](2);
+        allocations[0] = 0.6e18;
+        allocations[1] = 0.3e18;
+
+        vm.prank(dave);
+        scUsdcYield.depositAndOpenMultipleUsingPermit(principal, receivers, allocations, 0, deadline, v, r, s);
+
+        // add some yield
+        _generateYield(scUsdc, 0.1e18); // 10%
+
+        // assert yield is as expected
+        assertEq(scUsdc.balanceOf(address(scUsdcYield)), shares.mulWadDown(0.9e18), "contract's balance");
+        assertApproxEqAbs(
+            scUsdcYield.previewClaimYield(alice), principal.mulWadDown(0.6e18).mulWadDown(0.1e18), 1, "alice's yield"
+        );
+        assertApproxEqAbs(
+            scUsdcYield.previewClaimYield(bob), principal.mulWadDown(0.3e18).mulWadDown(0.1e18), 1, "bob's yield"
         );
     }
 }

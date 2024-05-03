@@ -19,10 +19,6 @@ contract ERC20StreamsTest is TestCommon {
     MockERC4626 public vault;
     ERC20Streams public streams;
 
-    address public alice = address(0x1);
-    address public bob = address(0x2);
-    address public carol = address(0x3);
-
     event Open(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
     event Claim(address indexed streamer, address indexed receiver, uint256 claimed);
     event Close(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
@@ -545,16 +541,10 @@ contract ERC20StreamsTest is TestCommon {
     /// *** #openStreamUsingPermit *** ///
 
     function test_openStreamUsingPermit() public {
-        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
-        address dave = vm.addr(davesPrivateKey);
-
         uint256 shares = _depositToVault(dave, 1 ether);
         uint256 duration = 2 days;
         uint256 nonce = vault.nonces(dave);
         uint256 deadline = block.timestamp + 1 days;
-
-        bytes32 PERMIT_TYPEHASH =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
         // Sign the permit message
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
@@ -585,8 +575,6 @@ contract ERC20StreamsTest is TestCommon {
     /// *** #topUpStreamUsingPermit *** ///
 
     function test_topUpStreamUsingPermit() public {
-        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
-        address dave = vm.addr(davesPrivateKey);
         uint256 duration = 1 days;
         uint256 shares = _openStream(dave, bob, 1e18, duration);
 
@@ -597,8 +585,6 @@ contract ERC20StreamsTest is TestCommon {
         uint256 additionalDuration = 1 days;
         uint256 nonce = vault.nonces(dave);
         uint256 deadline = block.timestamp + 1 days;
-        bytes32 PERMIT_TYPEHASH =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
         // Sign the permit message
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(

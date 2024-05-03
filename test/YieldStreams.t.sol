@@ -39,10 +39,6 @@ contract YieldStreamsTest is TestCommon {
     MockERC4626 public vault;
     MockERC20 public asset;
 
-    address constant alice = address(0x06);
-    address constant bob = address(0x07);
-    address constant carol = address(0x08);
-
     function setUp() public {
         asset = new MockERC20("Mock ERC20", "mERC20", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "Mock ERC4626", "mERC4626");
@@ -214,16 +210,10 @@ contract YieldStreamsTest is TestCommon {
     }
 
     function test_openUsingPermit() public {
-        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
-        address dave = vm.addr(davesPrivateKey);
-
         uint256 principal = 1 ether;
         uint256 shares = _depositToVault(dave, principal);
         uint256 nonce = vault.nonces(dave);
         uint256 deadline = block.timestamp + 1 days;
-
-        bytes32 PERMIT_TYPEHASH =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
         // Sign the permit message
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
@@ -506,16 +496,10 @@ contract YieldStreamsTest is TestCommon {
     }
 
     function test_openMultipleUsingPermit() public {
-        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
-        address dave = vm.addr(davesPrivateKey);
-
         uint256 principal = 1 ether;
         uint256 shares = _depositToVault(dave, principal);
         uint256 nonce = vault.nonces(dave);
         uint256 deadline = block.timestamp + 1 days;
-
-        bytes32 PERMIT_TYPEHASH =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
         // Sign the permit message
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
@@ -696,16 +680,10 @@ contract YieldStreamsTest is TestCommon {
     }
 
     function test_depositAndOpenUsingPermit() public {
-        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
-        address dave = vm.addr(davesPrivateKey);
-
         uint256 principal = 1 ether;
         uint256 nonce = asset.nonces(dave);
         uint256 deadline = block.timestamp + 1 days;
         deal(address(asset), dave, principal);
-
-        bytes32 PERMIT_TYPEHASH =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
         // Sign the permit message
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
@@ -1001,16 +979,10 @@ contract YieldStreamsTest is TestCommon {
     }
 
     function test_depositAndOpenMultipleUsingPermit() public {
-        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
-        address dave = vm.addr(davesPrivateKey);
-
         uint256 principal = 1 ether;
         uint256 nonce = asset.nonces(dave);
         uint256 deadline = block.timestamp + 1 days;
         deal(address(asset), dave, principal);
-
-        bytes32 PERMIT_TYPEHASH =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
         // Sign the permit message
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
@@ -1174,9 +1146,6 @@ contract YieldStreamsTest is TestCommon {
     }
 
     function test_topUpUsingPermit() public {
-        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
-        address dave = vm.addr(davesPrivateKey);
-
         uint256 principal = 1 ether;
         uint256 streamId = _openYieldStream(dave, bob, principal);
 
@@ -1186,9 +1155,6 @@ contract YieldStreamsTest is TestCommon {
 
         uint256 nonce = vault.nonces(dave);
         uint256 deadline = block.timestamp + 1 days;
-
-        bytes32 PERMIT_TYPEHASH =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
         // Sign the permit message
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
@@ -1345,9 +1311,6 @@ contract YieldStreamsTest is TestCommon {
     }
 
     function test_depositAndTopUpUsingPermit() public {
-        uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
-        address dave = vm.addr(davesPrivateKey);
-
         uint256 principal = 1 ether;
         uint256 streamId = _openYieldStream(dave, bob, principal);
 
@@ -1357,9 +1320,6 @@ contract YieldStreamsTest is TestCommon {
 
         uint256 nonce = asset.nonces(dave);
         uint256 deadline = block.timestamp + 1 days;
-
-        bytes32 PERMIT_TYPEHASH =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
         // Sign the permit message
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
