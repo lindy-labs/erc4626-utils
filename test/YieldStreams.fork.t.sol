@@ -340,4 +340,53 @@ contract YieldStreamsForkTest is TestCommon {
             scEthYield.previewClaimYield(carol), expectedYield, 1, "carol's yield after alice's stream closed"
         );
     }
+
+    function test_multicall_openTwoStreams() public {
+        uint256 principal = 1000e6;
+        uint256 shares = _depositToVault(scUsdc, alice, principal);
+        _approve(scUsdc, address(scUsdcYield), alice, shares);
+
+        bytes[] memory callData = new bytes[](2);
+
+        callData[0] = abi.encodeWithSelector(YieldStreams.open.selector, bob, shares / 2, 0);
+        callData[1] = abi.encodeWithSelector(YieldStreams.open.selector, carol, shares / 2, 0);
+
+        vm.prank(alice);
+        bytes[] memory results = scUsdcYield.multicall(callData);
+        uint256 streamIdBob = abi.decode(results[0], (uint256));
+        uint256 streamIdCarol = abi.decode(results[1], (uint256));
+
+        assertApproxEqAbs(scUsdc.balanceOf(address(scUsdcYield)), shares, 1, "contract's balance");
+        assertEq(scUsdcYield.receiverTotalShares(bob), shares / 2, "bob's receiverShares");
+        assertApproxEqAbs(scUsdcYield.receiverPrincipal(bob, streamIdBob), principal / 2, 1, "bob's receiverPrincipal");
+        assertEq(scUsdcYield.receiverTotalShares(carol), shares / 2, "carol's receiverShares");
+        assertApproxEqAbs(
+            scUsdcYield.receiverPrincipal(carol, streamIdCarol), principal / 2, 1, "carol's receiverPrincipal"
+        );
+    }
+
+    function test_openMultiple_openTwoStreams() public {
+        uint256 principal = 1000e6;
+        uint256 shares = _depositToVault(scUsdc, alice, principal);
+        _approve(scUsdc, address(scUsdcYield), alice, shares);
+
+        address[] memory receivers = new address[](2);
+        uint256[] memory allocations = new uint256[](2);
+
+        receivers[0] = bob;
+        allocations[0] = 0.5e18;
+        receivers[1] = carol;
+        allocations[1] = 0.5e18;
+
+        vm.prank(alice);
+        uint256[] memory streamIds = scUsdcYield.openMultiple(shares, receivers, allocations, 0);
+
+        assertApproxEqAbs(scUsdc.balanceOf(address(scUsdcYield)), shares, 1, "contract's balance");
+        assertEq(scUsdcYield.receiverTotalShares(bob), shares / 2, "bob's receiverShares");
+        assertApproxEqAbs(scUsdcYield.receiverPrincipal(bob, streamIds[0]), principal / 2, 1, "bob's receiverPrincipal");
+        assertEq(scUsdcYield.receiverTotalShares(carol), shares / 2, "carol's receiverShares");
+        assertApproxEqAbs(
+            scUsdcYield.receiverPrincipal(carol, streamIds[1]), principal / 2, 1, "carol's receiverPrincipal"
+        );
+    }
 }
