@@ -194,6 +194,7 @@ contract YieldStreams is ERC721, Multicall {
     /**
      * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers, represented by ERC721 tokens.
      * The streamer allocates a specified number of ERC4626 shares to each stream, which are used to generate yield for the respective receivers.
+     * Only shares that are allocated to the streams are transferred to the contract.
      * @dev When new streams are opened, ERC721 tokens are minted to the streamer, uniquely identifying each stream.
      * These tokens represent the ownership of the yield streams (and principal allocated to them) and can be held, transferred, or utilized in other contracts.
      * If a receiver is in debt (where the total value of their streams is less than the allocated principal),
@@ -224,6 +225,7 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers using ERC4626 permit for setting the allowance.
+     * Only shares that are allocated to the streams are transferred to the contract.
      * @dev This function allows opening of multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
      * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
      *
@@ -270,7 +272,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
-    function openWithAssets(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
+    function depositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
         returns (uint256 streamId)
     {
@@ -290,7 +292,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
      * @return shares The estimated number of shares that would be allocated to the receiver upon opening the yield stream.
      */
-    function previewOpenWithAssets(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
+    function previewDepositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
         view
         returns (uint256 shares)
@@ -316,7 +318,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
-    function openWithAssetsUsingPermit(
+    function depositAndOpenUsingPermit(
         address _receiver,
         uint256 _principal,
         uint256 _maxLossOnOpenTolerance,
@@ -327,13 +329,14 @@ contract YieldStreams is ERC721, Multicall {
     ) external returns (uint256 streamId) {
         IERC2612(vault.asset()).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
-        streamId = openWithAssets(_receiver, _principal, _maxLossOnOpenTolerance);
+        streamId = depositAndOpen(_receiver, _principal, _maxLossOnOpenTolerance);
     }
 
     /**
      * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers, represented by ERC721 tokens.
      * The streamer allocates a specified amount of the vault's underlying ERC20 asset to each stream, representing the principal amount.
      * This amount is then deposited to the ERC4626 vault to obtain the corresponding shares, which are used to generate yield for the respective receivers.
+     * Any unallocated shares are returned to the streamer.
      * @dev When new streams are opened, ERC721 tokens are minted to represent each stream, uniquely identifying them.
      * These tokens represent the ownership of the yield streams (and principal allocated to them) and can be held, transferred, or utilized in other contracts.
      * If a receiver is in debt (where the total value of their streams is less than the allocated principal),
@@ -364,6 +367,7 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers using ERC20 permit for setting the allowance.
+     * Any unallocated shares are returned to the streamer.
      * @dev This function allows opening of multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
      * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
      *
@@ -441,7 +445,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _principal The additional principal amount in asset units to be added to the yield stream.
      * @return shares The added number of shares to the yield stream.
      */
-    function topUpWithAssets(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
+    function depositAndTopUp(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
         _checkZeroAmount(_principal);
         _checkIsOwner(_streamId);
 
@@ -463,7 +467,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return shares The added number of shares to the yield stream.
      */
-    function topUpWithAssetsUsingPermit(
+    function depositAndTopUpUsingPermit(
         uint256 _streamId,
         uint256 _principal,
         uint256 deadline,
@@ -473,7 +477,7 @@ contract YieldStreams is ERC721, Multicall {
     ) external returns (uint256 shares) {
         IERC2612(address(vault.asset())).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
-        shares = topUpWithAssets(_streamId, _principal);
+        shares = depositAndTopUp(_streamId, _principal);
     }
 
     /**

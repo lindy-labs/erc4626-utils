@@ -191,7 +191,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(weth.balanceOf(carol), expectedYield, 1, "carol's assets");
     }
 
-    function test_openWithAssets() public {
+    function test_depositAndOpen() public {
         uint256 principal = 1000e6;
         uint256 shares = scUsdc.previewDeposit(principal);
         deal(address(usdc), alice, principal);
@@ -199,7 +199,7 @@ contract YieldStreamsForkTest is TestCommon {
         usdc.approve(address(scUsdcYield), principal);
 
         vm.prank(alice);
-        scUsdcYield.openWithAssets(bob, principal, 0);
+        scUsdcYield.depositAndOpen(bob, principal, 0);
 
         assertEq(scUsdc.balanceOf(address(scUsdcYield)), shares, "contract's balance");
         assertEq(scUsdcYield.receiverTotalShares(bob), shares, "receiverShares");
@@ -219,7 +219,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(claimed, expectedYield, 1, "bob's claim");
     }
 
-    function test_topUpWithAssets() public {
+    function test_depositAndTopUp() public {
         uint256 principal = 1000e6;
         uint256 shares = _depositToVault(scUsdc, alice, principal);
         _approve(scUsdc, address(scUsdcYield), alice, shares);
@@ -242,7 +242,7 @@ contract YieldStreamsForkTest is TestCommon {
         usdc.approve(address(scUsdcYield), addedPrincipal);
 
         vm.prank(alice);
-        scUsdcYield.topUpWithAssets(streamId, addedPrincipal);
+        scUsdcYield.depositAndTopUp(streamId, addedPrincipal);
 
         assertEq(scUsdcYield.receiverTotalShares(bob), shares + addedShares, "receiverShares");
 
