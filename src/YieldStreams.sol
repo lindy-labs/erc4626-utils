@@ -5,9 +5,9 @@ import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
-import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {ERC721} from "solmate/tokens/ERC721.sol";
 
 import {AddressZero, AmountZero} from "./common/Errors.sol";
 
@@ -791,4 +791,6 @@ contract YieldStreams is ERC721, Multicall {
     function _convertToShares(uint256 _assets) internal view returns (uint256) {
         return vault.convertToShares(_assets);
     }
+
+    function tokenURI(uint256 id) public view virtual override returns (string memory) {}
 }

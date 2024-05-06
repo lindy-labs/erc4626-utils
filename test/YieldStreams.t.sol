@@ -6,7 +6,6 @@ import "forge-std/Test.sol";
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
-import {IERC721Errors} from "openzeppelin-contracts/interfaces/draft-IERC6093.sol";
 import {IERC721Receiver} from "openzeppelin-contracts/interfaces/IERC721Receiver.sol";
 import {IERC721} from "openzeppelin-contracts/interfaces/IERC721.sol";
 import {IERC721Metadata} from "openzeppelin-contracts/interfaces/IERC721Metadata.sol";
@@ -1037,7 +1036,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 invalidTokenId = streamId + 1;
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, invalidTokenId));
+        vm.expectRevert("NOT_MINTED");
         ys.topUp(invalidTokenId, shares);
     }
 
@@ -1197,7 +1196,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 invalidTokenId = streamId + 1;
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, invalidTokenId));
+        vm.expectRevert("NOT_MINTED");
         ys.depositAndTopUp(invalidTokenId, addedPrincipal);
     }
 
@@ -1758,7 +1757,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 invalidId = streamId + 1;
 
         vm.startPrank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, invalidId));
+        vm.expectRevert("NOT_MINTED");
         ys.close(invalidId);
     }
 
@@ -1780,7 +1779,7 @@ contract YieldStreamsTest is TestCommon {
         vm.prank(alice);
         uint256 sharesReturned = ys.close(streamId);
 
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, streamId));
+        vm.expectRevert("NOT_MINTED");
         ys.ownerOf(streamId);
         assertEq(ys.balanceOf(alice), 0, "alice's nfts after");
         assertEq(ys.receiverPrincipal(bob, streamId), 0, "receiver principal");
@@ -1870,7 +1869,7 @@ contract YieldStreamsTest is TestCommon {
         ys.close(streamId);
 
         // fails
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, streamId));
+        vm.expectRevert("NOT_MINTED");
         ys.close(streamId);
     }
 
