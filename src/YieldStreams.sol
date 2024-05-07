@@ -131,6 +131,9 @@ contract YieldStreams is ERC721, Multicall {
         return symbol_;
     }
 
+    /// @inheritdoc ERC721
+    function tokenURI(uint256 id) public view virtual override returns (string memory) {}
+
     /**
      * @notice Opens a new yield stream between the caller (streamer) and a receiver, represented by an ERC721 token.
      * The streamer allocates a specified number of ERC4626 shares to the stream, which are used to generate yield for the receiver.
@@ -821,6 +824,4 @@ contract YieldStreams is ERC721, Multicall {
     function _convertToShares(uint256 _assets) internal view returns (uint256) {
         return vault.convertToShares(_assets);
     }
-
-    function tokenURI(uint256 id) public view virtual override returns (string memory) {}
 }
