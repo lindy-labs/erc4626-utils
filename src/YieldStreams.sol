@@ -177,7 +177,7 @@ contract YieldStreams is ERC721, Multicall {
     {
         principal = _convertToAssets(_shares);
 
-        _canOpenStream(_receiver, principal, _shares, _maxLossOnOpenTolerance);
+        _canOpenStream(_receiver, _shares, principal, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -221,7 +221,7 @@ contract YieldStreams is ERC721, Multicall {
      * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
      * Emits an Open event for each successful stream creation.
      *
-     * @param _shares The number of shares to allocate to each new yield stream.
+     * @param _shares The total number of shares to allocate to yield streams.
      * @param _receivers The addresses of the receivers for the yield streams.
      * @param _allocations The percentage of shares to allocate to each receiver.
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
@@ -239,7 +239,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256 principal = _convertToAssets(_shares);
         uint256 totalSharesAllocated;
         (totalSharesAllocated, streamIds) =
-            _openStreams(principal, _shares, _receivers, _allocations, _maxLossOnOpenTolerance);
+            _openStreams(_shares, principal, _receivers, _allocations, _maxLossOnOpenTolerance);
 
         vault.safeTransferFrom(msg.sender, address(this), totalSharesAllocated);
     }
@@ -251,7 +251,7 @@ contract YieldStreams is ERC721, Multicall {
      * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
      * Emits an Open event for each successful stream creation.
      *
-     * @param _shares The number of ERC4626 vault shares to allocate to each new yield stream.
+     * @param _shares The total number of shares to allocate to yield streams.
      * @param _receivers The addresses of the receivers for the yield streams.
      * @param _allocations The percentage of shares to allocate to each receiver.
      * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
@@ -289,7 +289,7 @@ contract YieldStreams is ERC721, Multicall {
      * Emits an Open event upon successful stream creation.
      *
      * @param _receiver The address of the receiver for the yield stream.
-     * @param _principal The amount in asset units to be allocated to the new yield stream as shares (ie principal amount).
+     * @param _principal The principal amount in asset units to be allocated to the new yield stream.
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
      * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
@@ -301,7 +301,7 @@ contract YieldStreams is ERC721, Multicall {
     {
         uint256 shares = _depositToVault(_principal);
 
-        _canOpenStream(_receiver, _principal, shares, _maxLossOnOpenTolerance);
+        _canOpenStream(_receiver, shares, _principal, _maxLossOnOpenTolerance);
 
         streamId = _openStream(_receiver, shares, _principal);
     }
@@ -322,7 +322,7 @@ contract YieldStreams is ERC721, Multicall {
     {
         shares = _convertToShares(_principal);
 
-        _canOpenStream(_receiver, _principal, shares, _maxLossOnOpenTolerance);
+        _canOpenStream(_receiver, shares, _principal, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -333,7 +333,7 @@ contract YieldStreams is ERC721, Multicall {
      * Emits an Open event upon successful stream creation.
      *
      * @param _receiver The address of the receiver for the yield stream.
-     * @param _principal The amount in asset units to be allocated to the new yield stream as shares (ie principal amount).
+     * @param _principal The principal amount in asset units to be allocated to the new yield stream.
      * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
      * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
@@ -367,7 +367,7 @@ contract YieldStreams is ERC721, Multicall {
      * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
      * Emits an Open event for each successful stream creation.
      *
-     * @param _assets The amount in asset units to allocate to each new yield stream as shares (ie principal amount).
+     * @param _principal The total principal amount in asset units to be allocated to new yield streams.
      * @param _receivers The addresses of the receivers for the yield streams.
      * @param _allocations The percentage of shares to allocate to each receiver.
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
@@ -375,17 +375,17 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      */
     function depositAndOpenMultiple(
-        uint256 _assets,
+        uint256 _principal,
         address[] calldata _receivers,
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) public returns (uint256[] memory streamIds) {
-        _checkZeroAmount(_assets);
+        _checkZeroAmount(_principal);
 
-        uint256 shares = _depositToVault(_assets);
+        uint256 shares = _depositToVault(_principal);
         uint256 totalSharesAllocated;
         (totalSharesAllocated, streamIds) =
-            _openStreams(_assets, shares, _receivers, _allocations, _maxLossOnOpenTolerance);
+            _openStreams(shares, _principal, _receivers, _allocations, _maxLossOnOpenTolerance);
 
         vault.safeTransfer(msg.sender, shares - totalSharesAllocated);
     }
@@ -397,7 +397,7 @@ contract YieldStreams is ERC721, Multicall {
      * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
      * Emits an Open event for each successful stream creation.
      *
-     * @param _assets The amount in asset units to allocate to each new yield stream as shares (ie principal amount).
+     * @param _principal The total principal amount in asset units to be allocated to new yield streams.
      * @param _receivers The addresses of the receivers for the yield streams.
      * @param _allocations The percentage of shares to allocate to each receiver.
      * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
@@ -408,7 +408,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      */
     function depositAndOpenMultipleUsingPermit(
-        uint256 _assets,
+        uint256 _principal,
         address[] calldata _receivers,
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance,
@@ -417,9 +417,9 @@ contract YieldStreams is ERC721, Multicall {
         bytes32 r,
         bytes32 s
     ) external returns (uint256[] memory streamIds) {
-        IERC2612(address(asset)).permit(msg.sender, address(this), _assets, deadline, v, r, s);
+        IERC2612(address(asset)).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
-        streamIds = depositAndOpenMultiple(_assets, _receivers, _allocations, _maxLossOnOpenTolerance);
+        streamIds = depositAndOpenMultiple(_principal, _receivers, _allocations, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -563,7 +563,7 @@ contract YieldStreams is ERC721, Multicall {
      * Emits a ClaimYield event upon successful yield claim.
      *
      * @param _sendTo The address where the claimed yield should be sent. This can be the caller's address or another specified recipient.
-     * @return assets The total amount of assets claimed as yield realized from all streams.
+     * @return assets The total amount of assets claimed as realized yield from all streams.
      */
     function claimYield(address _sendTo) external returns (uint256 assets) {
         _checkZeroAddress(_sendTo);
@@ -653,7 +653,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256 shares = receiverTotalShares[_receiver];
         uint256 sharePrice = _convertToAssets(shares).divWadUp(shares);
 
-        return _calculateDebt(principal, shares, sharePrice);
+        return _calculateDebt(shares, principal, sharePrice);
     }
 
     /**
@@ -689,8 +689,8 @@ contract YieldStreams is ERC721, Multicall {
 
     // accounting logic for opening multiple streams
     function _openStreams(
-        uint256 _principal,
         uint256 _shares,
+        uint256 _principal,
         address[] memory _receivers,
         uint256[] memory _allocations,
         uint256 _maxLossOnOpenTolerance
@@ -710,7 +710,7 @@ contract YieldStreams is ERC721, Multicall {
             sharesAllocation = _shares.mulWad(allocation);
             principalAllocation = _principal.mulWad(allocation);
 
-            _canOpenStream(receiver, principalAllocation, sharesAllocation, _maxLossOnOpenTolerance);
+            _canOpenStream(receiver, sharesAllocation, principalAllocation, _maxLossOnOpenTolerance);
             streamIds[i] = _openStream(receiver, sharesAllocation, principalAllocation);
 
             totalSharesAllocated += sharesAllocation;
@@ -764,7 +764,7 @@ contract YieldStreams is ERC721, Multicall {
         return receiverPrincipal[_receiver][_streamId];
     }
 
-    function _canOpenStream(address _receiver, uint256 _principal, uint256 _shares, uint256 _maxLossOnOpenTolerance)
+    function _canOpenStream(address _receiver, uint256 _shares, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         internal
         view
     {
@@ -772,9 +772,9 @@ contract YieldStreams is ERC721, Multicall {
         _checkZeroAmount(_principal);
 
         // when opening a new stream from sender, check if the receiver is in debt
-        uint256 sharePrice = _principal.divWadUp(_shares);
         uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
-        uint256 debt = _calculateDebt(totalPrincipal, receiverTotalShares[_receiver], sharePrice);
+        uint256 sharePrice = _principal.divWadUp(_shares);
+        uint256 debt = _calculateDebt(receiverTotalShares[_receiver], totalPrincipal, sharePrice);
 
         if (debt == 0) return;
 
@@ -789,7 +789,7 @@ contract YieldStreams is ERC721, Multicall {
         if (lossOnOpen > maxLoss) revert LossToleranceExceeded();
     }
 
-    function _calculateDebt(uint256 _totalPrincipal, uint256 _totalShares, uint256 _sharePrice)
+    function _calculateDebt(uint256 _totalShares, uint256 _totalPrincipal, uint256 _sharePrice)
         internal
         pure
         returns (uint256 debt)
