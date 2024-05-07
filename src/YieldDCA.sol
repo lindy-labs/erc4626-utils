@@ -13,21 +13,26 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
 
 /**
  * @title YieldDCA
- * @dev This contract implements a Dollar Cost Averaging (DCA) strategy by utilizing yield generated from deposited ERC4626 tokens over fixed periods (epochs).
- * The contract calculates the yield generated from the total principal deposited in every epoch, and sells the yield for a specified DCA token via the swapper contract.
- * Distribution of the purchased DCA tokens among participants is based on their share of the total yield generated in each epoch.
+ * @notice Implements a Dollar Cost Averaging (DCA) strategy using yield from ERC4626 vault assets
+ * @dev This contract deploys a strategy that automatically executes DCA by converting yield generated from assets deposited in an ERC4626 vault into a specified ERC20 DCA token.
+ * The DCA execution is scheduled in defined time periods known as epochs.
+ * The contract manages the periodic sale of accumulated yield for the DCA token at the end of each epoch using a designated swapper contract.
+ * It handles user deposits, each represented as an ERC721 token, and tracks the accrual of DCA tokens per deposit based on the yield generated.
  *
- * The contract tracks each user's deposit (in terms of shares of the vault and principal amount) and the epoch when the deposit was made.
- * When users decide to withdraw, they receive their share of the DCA tokens bought during the epochs their deposit was active, adjusted for any yield generated on their principal.
+ * Key features include:
+ * - Depositing and withdrawing shares from a specified ERC4626 vault.
+ * - Automatic conversion of yield to DCA tokens at fixed intervals (epochs).
+ * - Tracking of individual deposits and allocation of DCA tokens based on the yield generated from those deposits during active epochs.
+ * - Configurable settings for the duration of epochs, minimum yield required per epoch to trigger the DCA.
  *
- * Key functionalities include:
- * - Allowing users to deposit assets into a vault and participate in the DCA strategy.
- * - Automatic progression through epochs, with the contract executing the DCA strategy by selling generated yield for DCA tokens at the end of each epoch.
- * - Calculation of users' shares of DCA tokens based on the yield generated from their deposited principal.
- * - Providing a mechanism for users to withdraw their original deposit and their share of DCA tokens generated from yields.
+ * The contract uses roles for administration and operation, specifically distinguishing between default admin and keeper roles for enhanced security. Each role is empowered to perform specific functions, such as adjusting operational parameters or executing the DCA strategy.
  *
- * This contract requires external integration with a vault (IERC4626 for asset management), a token to DCA into (IERC20), and a swapper contract for executing trades.
- * It is designed for efficiency and scalability, with considerations for gas optimization and handling a large number of epochs and user deposits.
+ * It requires external integrations with:
+ * - An ERC4626-compliant vault for managing the underlying asset.
+ * - An ERC20 token to act as the DCA target.
+ * - A swapper contract to facilitate the exchange of assets.
+ *
+ * The implementation focuses on optimizing gas costs and ensuring security through rigorous checks and balances, while accommodating a scalable number of epochs and user deposits.
  */
 contract YieldDCA is ERC721, AccessControl {
     using FixedPointMathLib for uint256;
@@ -125,12 +130,20 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     /**
-     * @dev See {IERC165-supportsInterface}.
+     * @notice Checks if the contract implements an interface
+     * @dev Implements ERC165 standard for interface detection.
+     * @param interfaceId The interface identifier, as specified in ERC-165
+     * @return bool True if the contract implements the requested interface, false otherwise
      */
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
         return interfaceId == type(AccessControl).interfaceId || super.supportsInterface(interfaceId);
     }
 
+    /**
+     * @notice Updates the address of the swapper contract used to exchange yield for DCA tokens
+     * @dev Restricted to only the DEFAULT_ADMIN_ROLE. Emits the SwapperUpdated event.
+     * @param _swapper The address of the new swapper contract
+     */
     function setSwapper(ISwapper _swapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setSwapper(_swapper);
 
@@ -148,6 +161,11 @@ contract YieldDCA is ERC721, AccessControl {
         swapper = _swapper;
     }
 
+    /**
+     * @notice Sets the minimum duration between epochs in which the DCA can be executed
+     * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The duration must be between defined upper and lower bounds. Emits the DCAIntervalUpdated event.
+     * @param _duration The new minimum duration in seconds
+     */
     function setMinEpochDuration(uint256 _duration) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setMinEpochDuration(_duration);
 
@@ -164,6 +182,11 @@ contract YieldDCA is ERC721, AccessControl {
         minEpochDuration = _duration;
     }
 
+    /**
+     * @notice Sets the minimum yield required per epoch to execute the DCA strategy
+     * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The yield must be between defined upper and lower bounds. Emits the MinYieldPerEpochUpdated event.
+     * @param _minYield The new minimum yield as a WAD-scaled percentage of the total principal
+     */
     function setMinYieldPerEpoch(uint256 _minYield) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (_minYield < MIN_YIELD_PER_EPOCH_LOWER_BOUND || _minYield > MIN_YIELD_PER_EPOCH_UPPER_BOUND) {
             revert InvalidMinYieldPerEpoch();
@@ -174,6 +197,12 @@ contract YieldDCA is ERC721, AccessControl {
         emit MinYieldPerEpochUpdated(msg.sender, _minYield);
     }
 
+    /**
+     * @notice Deposits shares of the vault's underlying asset into the DCA strategy
+     * @dev Mints a unique ERC721 token representing the deposit. The deposit details are recorded, and the shares are transferred from the caller to the contract.
+     * @param _shares The amount of shares to deposit
+     * @return depositId The ID of the created deposit, represented by an ERC721 token
+     */
     function deposit(uint256 _shares) external returns (uint256 depositId) {
         _checkAmount(_shares);
 
@@ -200,6 +229,12 @@ contract YieldDCA is ERC721, AccessControl {
         emit Deposit(msg.sender, depositId, _shares, principal, currentEpoch_);
     }
 
+    /**
+     * @notice Adds additional shares to an existing deposit
+     * @dev Can only be called by the owner of the deposit. Updates the deposit's principal and share count.
+     * @param _shares The amount of additional shares to add
+     * @param _depositId The ID of the deposit to top up
+     */
     function topUp(uint256 _shares, uint256 _depositId) external {
         _checkAmount(_shares);
         _checkOwnership(_depositId);
@@ -231,11 +266,23 @@ contract YieldDCA is ERC721, AccessControl {
         emit Deposit(msg.sender, _depositId, _shares, principal, currentEpoch_);
     }
 
+    /**
+     * @notice Checks if the conditions are met to execute the DCA strategy for the current epoch
+     * @dev Verifies if there is sufficient principal deposited, the minimum time has elapsed, and the yield threshold is met.
+     * @return bool True if the DCA strategy can be executed, false otherwise
+     */
     function canExecuteDCA() external view returns (bool) {
         return totalPrincipalDeposited != 0 && block.timestamp >= currentEpochTimestamp + minEpochDuration
             && getYield() >= totalPrincipalDeposited.mulWadDown(minYieldPerEpoch);
     }
 
+    /**
+     * @notice Executes the DCA strategy to convert all available yield into DCA tokens and starts a new epoch
+     * @dev Restricted to only the KEEPER_ROLE. This function redeems yield from the vault, swaps it for DCA tokens, and updates the epoch information.
+     * Emits the DCAExecuted event with details of the executed epoch.
+     * @param _dcaAmountOutMin The minimum amount of DCA tokens expected to be received from the swap
+     * @param _swapData Arbitrary data used by the swapper contract to facilitate the token swap
+     */
     function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
         uint256 totalPrincipal = totalPrincipalDeposited;
         if (totalPrincipal == 0) revert NoPrincipalDeposited();
@@ -284,8 +331,18 @@ contract YieldDCA is ERC721, AccessControl {
         }
     }
 
-    // if 0 is passed only dca is withdrawn
     // NOTE: uses around 610k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
+    /**
+     * @notice Withdraws a specified amount of shares and any accumulated DCA tokens from a deposit
+     * @dev Can only be called by the owner of the deposit. Adjusts or deletes the deposit record based on the amount withdrawn.
+     * Emits the Withdraw event with details of the withdrawal.
+     * Reverts if the user does not own the deposit, or if the amount of shares to withdraw is greater than the principal value of the deposit.
+     * If 0 shares are passed, only DCA tokens are withdrawn.
+     * @param _shares The number of shares to withdraw
+     * @param _depositId The ID of the deposit from which to withdraw
+     * @return principalWithdrawn The amount of principal corresponding to the shares withdrawn
+     * @return dcaAmount The amount of DCA tokens withdrawn
+     */
     function withdraw(uint256 _shares, uint256 _depositId)
         external
         returns (uint256 principalWithdrawn, uint256 dcaAmount)
@@ -336,10 +393,21 @@ contract YieldDCA is ERC721, AccessControl {
         totalPrincipalDeposited -= principalWithdrawn;
     }
 
+    /**
+     * @notice Provides the current balance of shares and DCA tokens for a given deposit
+     * @param _depositId The ID of the deposit to query
+     * @return shares The current number of shares in the deposit
+     * @return dcaTokens The current amount of DCA tokens attributed to the deposit
+     */
     function balancesOf(uint256 _depositId) public view returns (uint256 shares, uint256 dcaTokens) {
         (shares, dcaTokens) = _calculateBalances(deposits[_depositId], currentEpoch);
     }
 
+    /**
+     * @notice Calculates the total yield generated from the vault's assets beyond the total principal deposited
+     * @dev This yield represents the total available assets minus the principal, which can be used in the DCA strategy.
+     * @return uint256 The total yield available in the vault's underlying asset units
+     */
     function getYield() public view returns (uint256) {
         uint256 assets = _convertToAssets(sharesBalance());
 
@@ -348,6 +416,11 @@ contract YieldDCA is ERC721, AccessControl {
         }
     }
 
+    /**
+     * @notice Calculates the current yield in terms of vault shares
+     * @dev Provides the yield in share format, useful for operations requiring share-based calculations.
+     * @return uint256 The yield represented in shares of the vault
+     */
     function getYieldInShares() public view returns (uint256) {
         return _calculateCurrentYieldInShares(totalPrincipalDeposited);
     }
@@ -396,10 +469,20 @@ contract YieldDCA is ERC721, AccessControl {
         }
     }
 
+    /**
+     * @notice Gets the balance of DCA tokens held by this contract
+     * @dev Useful for checking how many DCA tokens are available for withdrawal or other operations.
+     * @return uint256 The amount of DCA tokens currently held by the contract
+     */
     function dcaBalance() public view returns (uint256) {
         return dcaToken.balanceOf(address(this));
     }
 
+    /**
+     * @notice Gets the balance of vault shares held by this contract
+     * @dev Useful for operations that require knowledge of total shares under the control of the contract.
+     * @return uint256 The total number of shares held by the contract
+     */
     function sharesBalance() public view returns (uint256) {
         return vault.balanceOf(address(this));
     }
