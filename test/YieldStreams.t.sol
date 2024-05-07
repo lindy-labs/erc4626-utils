@@ -13,6 +13,7 @@ import {IERC165} from "openzeppelin-contracts/interfaces/IERC165.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
 
 import {TestCommon} from "./common/TestCommon.sol";
 import {YieldStreams} from "src/YieldStreams.sol";
@@ -1036,7 +1037,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 invalidTokenId = streamId + 1;
 
         vm.prank(alice);
-        vm.expectRevert("NOT_MINTED");
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         ys.topUp(invalidTokenId, shares);
     }
 
@@ -1196,7 +1197,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 invalidTokenId = streamId + 1;
 
         vm.prank(alice);
-        vm.expectRevert("NOT_MINTED");
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         ys.depositAndTopUp(invalidTokenId, addedPrincipal);
     }
 
@@ -1757,7 +1758,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 invalidId = streamId + 1;
 
         vm.startPrank(alice);
-        vm.expectRevert("NOT_MINTED");
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         ys.close(invalidId);
     }
 
@@ -1779,7 +1780,7 @@ contract YieldStreamsTest is TestCommon {
         vm.prank(alice);
         uint256 sharesReturned = ys.close(streamId);
 
-        vm.expectRevert("NOT_MINTED");
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         ys.ownerOf(streamId);
         assertEq(ys.balanceOf(alice), 0, "alice's nfts after");
         assertEq(ys.receiverPrincipal(bob, streamId), 0, "receiver principal");
@@ -1869,7 +1870,7 @@ contract YieldStreamsTest is TestCommon {
         ys.close(streamId);
 
         // fails
-        vm.expectRevert("NOT_MINTED");
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         ys.close(streamId);
     }
 

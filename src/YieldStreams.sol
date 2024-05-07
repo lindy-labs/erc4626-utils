@@ -6,8 +6,8 @@ import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
-import {ERC721} from "solmate/tokens/ERC721.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
 
 import {AddressZero, AmountZero} from "./common/Errors.sol";
 
@@ -102,18 +102,33 @@ contract YieldStreams is ERC721, Multicall {
     /// @notice stream ID to receiver address
     mapping(uint256 => address) public streamIdToReceiver;
 
+    // ERC721 name and symbol
+    string private name_;
+    string private symbol_;
+
     /**
      * @notice Creates a new YieldStreams contract, initializing the ERC721 token with custom names and setting the vault address.
      * @dev The constructor initializes an ERC721 token with a dynamic name and symbol derived from the underlying vault's characteristics.
      * @param _vault Address of the ERC4626 vault
      */
-    constructor(IERC4626 _vault)
-        ERC721(string.concat("Yield Stream - ", _vault.name()), string.concat("YS-", _vault.symbol()))
-    {
+    constructor(IERC4626 _vault) {
         _checkZeroAddress(address(_vault));
+
+        name_ = string.concat("Yield Stream - ", _vault.name());
+        symbol_ = string.concat("YS-", _vault.symbol());
 
         vault = _vault;
         asset = IERC20(_vault.asset());
+    }
+
+    /// @inheritdoc ERC721
+    function name() public view override returns (string memory) {
+        return name_;
+    }
+
+    /// @inheritdoc ERC721
+    function symbol() public view override returns (string memory) {
+        return symbol_;
     }
 
     /**
@@ -125,6 +140,7 @@ contract YieldStreams is ERC721, Multicall {
      * The function calculates the principal amount based on the shares provided, updating the total principal allocated to the receiver.
      * If the receiver is in debt (where the total value of their streams is less than the allocated principal),
      * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
+     * Emits an Open event upon successful stream creation.
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of shares to allocate to the new yield stream.
@@ -166,6 +182,7 @@ contract YieldStreams is ERC721, Multicall {
      * @dev This function allows opening of a new yield stream without requiring a separate approval transaction, by utilizing the "permit" functionality.
      * It enables a seamless user experience by allowing approval and stream creation in a single transaction.
      * The function mints a new ERC721 token to represent the yield stream, assigning ownership to the streamer.
+     * Emits an Open event upon successful stream creation.
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of ERC4626 vault shares to allocate to the new yield stream. These shares are transferred from the streamer to the contract as part of the stream setup.
@@ -199,6 +216,7 @@ contract YieldStreams is ERC721, Multicall {
      * These tokens represent the ownership of the yield streams (and principal allocated to them) and can be held, transferred, or utilized in other contracts.
      * If a receiver is in debt (where the total value of their streams is less than the allocated principal),
      * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
+     * Emits an Open event for each successful stream creation.
      *
      * @param _shares The number of shares to allocate to each new yield stream.
      * @param _receivers The addresses of the receivers for the yield streams.
@@ -228,6 +246,7 @@ contract YieldStreams is ERC721, Multicall {
      * Only shares that are allocated to the streams are transferred to the contract.
      * @dev This function allows opening of multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
      * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
+     * Emits an Open event for each successful stream creation.
      *
      * @param _shares The number of ERC4626 vault shares to allocate to each new yield stream.
      * @param _receivers The addresses of the receivers for the yield streams.
@@ -264,6 +283,7 @@ contract YieldStreams is ERC721, Multicall {
      * The function calculates the principal amount based on the shares provided, updating the total principal allocated to the receiver.
      * If the receiver is in debt (where the total value of their streams is less than the allocated principal),
      * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
+     * Emits an Open event upon successful stream creation.
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The amount in asset units to be allocated to the new yield stream as shares (ie principal amount).
@@ -307,6 +327,7 @@ contract YieldStreams is ERC721, Multicall {
      * @dev This function allows opening of a new yield stream without requiring a separate approval transaction, by utilizing the "permit" functionality.
      * It enables a seamless user experience by allowing approval and stream creation in a single transaction.
      * The function mints a new ERC721 token to represent the yield stream, assigning ownership to the streamer.
+     * Emits an Open event upon successful stream creation.
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The amount in asset units to be allocated to the new yield stream as shares (ie principal amount).
@@ -341,6 +362,7 @@ contract YieldStreams is ERC721, Multicall {
      * These tokens represent the ownership of the yield streams (and principal allocated to them) and can be held, transferred, or utilized in other contracts.
      * If a receiver is in debt (where the total value of their streams is less than the allocated principal),
      * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
+     * Emits an Open event for each successful stream creation.
      *
      * @param _assets The amount in asset units to allocate to each new yield stream as shares (ie principal amount).
      * @param _receivers The addresses of the receivers for the yield streams.
@@ -370,6 +392,7 @@ contract YieldStreams is ERC721, Multicall {
      * Any unallocated shares are returned to the streamer.
      * @dev This function allows opening of multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
      * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
+     * Emits an Open event for each successful stream creation.
      *
      * @param _assets The amount in asset units to allocate to each new yield stream as shares (ie principal amount).
      * @param _receivers The addresses of the receivers for the yield streams.
@@ -399,6 +422,7 @@ contract YieldStreams is ERC721, Multicall {
     /**
      * @notice Adds additional shares to an existing yield stream, increasing the principal allocated to the receiver.
      * @dev The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
+     * Emits a TopUp event upon successful addition of shares to the stream.
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _shares The number of additional shares to be added to the yield stream.
@@ -419,6 +443,7 @@ contract YieldStreams is ERC721, Multicall {
      * @notice Adds additional shares to an existing yield stream, increasing the principal allocated to the receiver using ERC20 permit for token allowance.
      * @dev It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
      * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
+     * Emits a TopUp event upon successful addition of shares to the stream.
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _shares The number of additional shares to be added to the yield stream.
@@ -440,6 +465,7 @@ contract YieldStreams is ERC721, Multicall {
     /**
      * @notice Adds additional principal to an existing yield stream, increasing the principal allocated to the receiver.
      * @dev The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
+     * Emits a TopUp event upon successful addition of shares to the stream.
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _principal The additional principal amount in asset units to be added to the yield stream.
@@ -458,6 +484,7 @@ contract YieldStreams is ERC721, Multicall {
      * @notice Adds additional principal to an existing yield stream, increasing the principal allocated to the receiver using ERC20 permit for token allowance.
      * @dev It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
      * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
+     * Emits a TopUp event upon successful addition of shares to the stream.
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _principal The additional principal amount in asset units to be added to the yield stream.
@@ -486,6 +513,7 @@ contract YieldStreams is ERC721, Multicall {
      * Upon closure, the function calculates and returns the remaining shares to the streamer,
      * after which the ERC721 token representing the yield stream is burned to ensure it cannot be reused or transferred.
      * This action effectively removes the stream from the contract's tracking, settling any allocated principal and shares back to the streamer.
+     * Emits a Close event upon successful stream closure.
      *
      * @param _streamId The unique identifier of the yield stream to be closed, represented by an ERC721 token. This token must be owned by the caller.
      * @return shares The number of shares returned to the streamer upon closing the yield stream.
@@ -529,6 +557,7 @@ contract YieldStreams is ERC721, Multicall {
      * This function redeems the shares representing the generated yield, converting them into the underlying asset and transferring the resultant assets to a specified address.
      * Note that this function operates on all yield streams associated with the caller, aggregating the total yield available.
      * Reverts if the total yield is zero or the receiver is currently in debt (i.e., the value of their allocated shares is less than the principal).
+     * Emits a ClaimYield event upon successful yield claim.
      *
      * @param _sendTo The address where the claimed yield should be sent. This can be the caller's address or another specified recipient.
      * @return assets The total amount of assets claimed as yield realized from all streams.
@@ -568,6 +597,7 @@ contract YieldStreams is ERC721, Multicall {
      * @dev This function enables receivers to claim the yield generated across all their yield streams in the form of shares, rather than the underlying asset.
      * It calculates the total yield in shares that the caller can claim, then transfers those shares to the specified address.
      * The operation is based on the difference between the current share value allocated to the receiver and the total principal in share terms.
+     * Emits a ClaimYieldInShares event upon successful yield claim.
      *
      * Unlike `claimYield`, which redeems shares for the underlying asset and transfers the assets, `claimYieldInShares` directly transfers the shares,
      * keeping the yield within the same asset class. This might be preferable for receivers looking to maintain their position in the underlying vault.
@@ -674,8 +704,8 @@ contract YieldStreams is ERC721, Multicall {
         for (uint256 i = 0; i < _receivers.length;) {
             receiver = _receivers[i];
             allocation = _allocations[i];
-            sharesAllocation = _shares.mulWadDown(allocation);
-            principalAllocation = _principal.mulWadDown(allocation);
+            sharesAllocation = _shares.mulWad(allocation);
+            principalAllocation = _principal.mulWad(allocation);
 
             _canOpenStream(receiver, principalAllocation, sharesAllocation, _maxLossOnOpenTolerance);
             streamIds[i] = _openStream(receiver, sharesAllocation, principalAllocation);
@@ -713,7 +743,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
 
         // calculate the maximum amount of shares that can be attributed to the sender as a percentage of the sender's share of the total principal.
-        uint256 have = receiverTotalShares[_receiver].mulDivDown(principal, totalPrincipal);
+        uint256 have = receiverTotalShares[_receiver].mulDiv(principal, totalPrincipal);
 
         // true if there was a loss (negative yield)
         shares = ask > have ? have : ask;
