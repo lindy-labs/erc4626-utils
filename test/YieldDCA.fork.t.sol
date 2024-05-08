@@ -163,7 +163,7 @@ contract YieldDCAForkTest is TestCommon {
         vm.startPrank(_account);
 
         vault.approve(address(yieldDca), shares);
-        depositId = yieldDca.deposit(shares);
+        depositId = yieldDca.openPosition(shares);
 
         vm.stopPrank();
     }
@@ -181,7 +181,7 @@ contract YieldDCAForkTest is TestCommon {
 
         (uint256 shares,) = yieldDca.balancesOf(_depositId);
 
-        yieldDca.withdraw(shares, _depositId);
+        yieldDca.decreasePosition(shares, _depositId);
 
         vm.stopPrank();
     }
