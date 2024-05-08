@@ -19,10 +19,10 @@ contract ERC20StreamsTest is TestCommon {
     MockERC4626 public vault;
     ERC20Streams public streams;
 
-    event Open(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
-    event Claim(address indexed streamer, address indexed receiver, uint256 claimed);
-    event Close(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
-    event TopUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
+    event StreamOpened(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
+    event TokensClaimed(address indexed streamer, address indexed receiver, uint256 claimed);
+    event StreamClosed(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
+    event StreamToppedUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
 
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
@@ -64,7 +64,7 @@ contract ERC20StreamsTest is TestCommon {
         _approve(alice, shares);
 
         vm.expectEmit(true, true, true, true);
-        emit Open(alice, bob, shares, duration);
+        emit StreamOpened(alice, bob, shares, duration);
 
         vm.prank(alice);
         streams.open(bob, shares, duration);
@@ -101,10 +101,10 @@ contract ERC20StreamsTest is TestCommon {
 
         // old stream is closed and new stream is opened
         vm.expectEmit(true, true, true, true);
-        emit Close(alice, bob, 0, shares);
+        emit StreamClosed(alice, bob, 0, shares);
 
         vm.expectEmit(true, true, true, true);
-        emit Open(alice, bob, shares2, duration2);
+        emit StreamOpened(alice, bob, shares2, duration2);
 
         vm.prank(alice);
         streams.open(bob, shares2, duration2);
@@ -261,10 +261,10 @@ contract ERC20StreamsTest is TestCommon {
 
         // also emits closeStream if stream is complete
         vm.expectEmit(true, true, true, true);
-        emit Close(alice, bob, 0, 0);
+        emit StreamClosed(alice, bob, 0, 0);
 
         vm.expectEmit(true, true, true, true);
-        emit Claim(alice, bob, shares);
+        emit TokensClaimed(alice, bob, shares);
 
         vm.startPrank(bob);
         streams.claim(alice, bob);
@@ -306,7 +306,7 @@ contract ERC20StreamsTest is TestCommon {
         vm.warp(block.timestamp + duration + 1);
 
         vm.expectEmit(true, true, true, true);
-        emit Close(alice, bob, 0, shares);
+        emit StreamClosed(alice, bob, 0, shares);
 
         vm.startPrank(alice);
         streams.close(bob);
@@ -417,7 +417,7 @@ contract ERC20StreamsTest is TestCommon {
         vault.approve(address(streams), shares);
 
         vm.expectEmit(true, true, true, true);
-        emit TopUp(alice, bob, additionalShares, additionalDuration);
+        emit StreamToppedUp(alice, bob, additionalShares, additionalDuration);
         streams.topUp(bob, additionalShares, additionalDuration);
     }
 

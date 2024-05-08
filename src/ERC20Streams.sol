@@ -25,10 +25,10 @@ contract ERC20Streams is Multicall {
     error NoTokensToClaim();
     error StreamDoesNotExist();
 
-    event Open(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
-    event Claim(address indexed streamer, address indexed receiver, uint256 claimed);
-    event Close(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
-    event TopUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
+    event StreamOpened(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
+    event TokensClaimed(address indexed streamer, address indexed receiver, uint256 claimed);
+    event StreamClosed(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
+    event StreamToppedUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
 
     struct Stream {
         uint256 amount;
@@ -88,7 +88,7 @@ contract ERC20Streams is Multicall {
             }
 
             // if is expired, transfer unclaimed tokens to receiver & emit close event
-            emit Close(msg.sender, _receiver, 0, stream.amount);
+            emit StreamClosed(msg.sender, _receiver, 0, stream.amount);
 
             IERC20(token).safeTransfer(_receiver, stream.amount);
         }
@@ -100,7 +100,7 @@ contract ERC20Streams is Multicall {
         stream.startTime = uint128(block.timestamp);
         stream.lastClaimTime = uint128(block.timestamp);
 
-        emit Open(msg.sender, _receiver, stream.amount, _duration);
+        emit StreamOpened(msg.sender, _receiver, stream.amount, _duration);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _amount);
     }
@@ -155,7 +155,7 @@ contract ERC20Streams is Multicall {
 
         stream.ratePerSecond = newRatePerSecond;
 
-        emit TopUp(msg.sender, _receiver, _additionalAmount, _additionalDuration);
+        emit StreamToppedUp(msg.sender, _receiver, _additionalAmount, _additionalDuration);
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), _additionalAmount);
     }
@@ -203,13 +203,13 @@ contract ERC20Streams is Multicall {
             delete streamById[streamId];
 
             // emit with 0s to indicate that the stream was closed during the claim
-            emit Close(_streamer, msg.sender, 0, 0);
+            emit StreamClosed(_streamer, msg.sender, 0, 0);
         } else {
             stream.lastClaimTime = uint128(block.timestamp);
             stream.amount -= claimed;
         }
 
-        emit Claim(_streamer, msg.sender, claimed);
+        emit TokensClaimed(_streamer, msg.sender, claimed);
 
         IERC20(token).safeTransfer(_sendTo, claimed);
     }
@@ -248,7 +248,7 @@ contract ERC20Streams is Multicall {
 
         delete streamById[streamId];
 
-        emit Close(msg.sender, _receiver, remaining, streamed);
+        emit StreamClosed(msg.sender, _receiver, remaining, streamed);
 
         if (remaining != 0) IERC20(token).safeTransfer(msg.sender, remaining);
 
