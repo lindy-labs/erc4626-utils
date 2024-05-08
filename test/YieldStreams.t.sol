@@ -22,15 +22,16 @@ import "src/common/Errors.sol";
 contract YieldStreamsTest is TestCommon {
     using FixedPointMathLib for uint256;
 
-    event Open(
+    event StreamOpened(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
-    event TopUp(
+    event StreamToppedUp(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
-    event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
-    event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
-    event Close(
+    event YieldClaimed(
+        address indexed receiver, address indexed claimedTo, uint256 assetsClaimed, uint256 sharesClaimed
+    );
+    event StreamClosed(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
     event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
@@ -108,7 +109,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 streamId = ys.nextStreamId();
 
         vm.expectEmit(true, true, true, true);
-        emit Open(streamId, alice, bob, shares, principal);
+        emit StreamOpened(streamId, alice, bob, shares, principal);
 
         vm.prank(alice);
         ys.open(bob, shares, 0);
@@ -374,8 +375,8 @@ contract YieldStreamsTest is TestCommon {
         allocations[1] = 0.5e18;
 
         vm.expectEmit(true, true, true, true);
-        emit Open(1, alice, bob, shares.mulWadDown(0.3e18), 0.3e18);
-        emit Open(2, alice, carol, shares.mulWadDown(0.5e18), 0.5e18);
+        emit StreamOpened(1, alice, bob, shares.mulWadDown(0.3e18), 0.3e18);
+        emit StreamOpened(2, alice, carol, shares.mulWadDown(0.5e18), 0.5e18);
 
         vm.prank(alice);
         ys.openMultiple(shares, receivers, allocations, 0);
@@ -584,7 +585,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 streamId = ys.nextStreamId();
 
         vm.expectEmit(true, true, true, true);
-        emit Open(streamId, alice, bob, shares, principal);
+        emit StreamOpened(streamId, alice, bob, shares, principal);
 
         vm.prank(alice);
         ys.depositAndOpen(bob, principal, 0);
@@ -853,8 +854,8 @@ contract YieldStreamsTest is TestCommon {
         allocations[1] = 0.5e18;
 
         vm.expectEmit(true, true, true, true);
-        emit Open(1, alice, bob, shares.mulWadDown(0.3e18), 0.3e18);
-        emit Open(2, alice, carol, shares.mulWadDown(0.5e18), 0.5e18);
+        emit StreamOpened(1, alice, bob, shares.mulWadDown(0.3e18), 0.3e18);
+        emit StreamOpened(2, alice, carol, shares.mulWadDown(0.5e18), 0.5e18);
 
         vm.prank(alice);
         ys.depositAndOpenMultiple(amount, receivers, allocations, 0);
@@ -1075,7 +1076,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 addedShares = _depositToVaultAndApprove(alice, addedPrincipal);
 
         vm.expectEmit(true, true, true, true);
-        emit TopUp(streamId, alice, bob, addedShares, addedPrincipal);
+        emit StreamToppedUp(streamId, alice, bob, addedShares, addedPrincipal);
 
         vm.prank(alice);
         ys.topUp(streamId, addedShares);
@@ -1235,7 +1236,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 addedShares = _approveAssetsAndPreviewDeposit(alice, addedPrincipal);
 
         vm.expectEmit(true, true, true, true);
-        emit TopUp(streamId, alice, bob, addedShares, addedPrincipal);
+        emit StreamToppedUp(streamId, alice, bob, addedShares, addedPrincipal);
 
         vm.prank(alice);
         ys.depositAndTopUp(streamId, addedPrincipal);
@@ -1468,10 +1469,9 @@ contract YieldStreamsTest is TestCommon {
         _generateYield(0.5e18);
 
         uint256 yield = ys.previewClaimYield(bob);
-        uint256 sharesRedeemed = vault.convertToShares(yield);
 
         vm.expectEmit(true, true, true, true);
-        emit ClaimYield(bob, carol, sharesRedeemed, yield);
+        emit YieldClaimed(bob, carol, yield, 0);
 
         vm.prank(bob);
         ys.claimYield(carol);
@@ -1628,7 +1628,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 expectedYieldInShares = ys.previewClaimYieldInShares(bob);
 
         vm.expectEmit(true, true, true, true);
-        emit ClaimYieldInShares(bob, carol, expectedYieldInShares);
+        emit YieldClaimed(bob, carol, 0, expectedYieldInShares);
 
         vm.prank(bob);
         ys.claimYieldInShares(carol);
@@ -1802,7 +1802,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 shares = vault.convertToShares(principal);
 
         vm.expectEmit(true, true, true, true);
-        emit Close(1, alice, bob, shares, principal);
+        emit StreamClosed(1, alice, bob, shares, principal);
 
         vm.prank(alice);
         ys.close(1);

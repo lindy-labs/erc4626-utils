@@ -36,38 +36,33 @@ contract YieldStreams is ERC721, Multicall {
      * @param shares The number of shares allocated to the new yield stream.
      * @param principal The principal amount in asset units, i.e. the value of the shares at the time of opening the stream.
      */
-    event Open(
+    event StreamOpened(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
 
     /**
-     * @notice Emitted when additional shares are added to an existing yield stream.
+     * @notice Emitted when more shares are added to an existing yield stream.
      * @param streamId The unique identifier of the yield stream (ERC721 token) to which shares are added.
      * @param streamer The address of the streamer who added the shares to the yield stream.
      * @param receiver The address of the receiver for the yield stream.
      * @param shares The number of additional shares added to the yield stream.
      * @param principal The principal amount in asset units, i.e. the value of the shares at the time of the addition.
      */
-    event TopUp(
+    event StreamToppedUp(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
 
     /**
      * @notice Emitted when the yield generated from a stream is claimed by the receiver and transferred to a specified address.
+     * Either assetsClaimed or sharesClaimed will be non-zero depending on the type of yield claimed.
      * @param receiver The address of the receiver for the yield stream.
      * @param claimedTo The address where the claimed yield is sent.
-     * @param sharesRedeemed The number of shares redeemed as yield.
-     * @param yield The total amount of assets claimed as realized yield.
+     * @param assetsClaimed The total amount of assets claimed as realized yield, set to zero if yield is claimed in shares.
+     * @param sharesClaimed The total amount of shares claimed as realized yield, set to zero if yield is claimed in assets.
      */
-    event ClaimYield(address indexed receiver, address indexed claimedTo, uint256 sharesRedeemed, uint256 yield);
-
-    /**
-     * @notice Emitted when the yield generated from a stream is claimed by the receiver and transferred in shares to a specified address.
-     * @param receiver The address of the receiver for the yield stream.
-     * @param claimedTo The address where the claimed yield shares are sent.
-     * @param yieldInShares The total number of shares claimed as yield.
-     */
-    event ClaimYieldInShares(address indexed receiver, address indexed claimedTo, uint256 yieldInShares);
+    event YieldClaimed(
+        address indexed receiver, address indexed claimedTo, uint256 assetsClaimed, uint256 sharesClaimed
+    );
 
     /**
      * @notice Emitted when a yield stream is closed, returning the remaining shares to the streamer.
@@ -77,7 +72,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param shares The number of shares returned to the streamer upon closing the yield stream.
      * @param principal The principal amount in asset units, i.e. the value of the shares at the time of closing the stream.
      */
-    event Close(
+    event StreamClosed(
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
 
@@ -538,7 +533,7 @@ contract YieldStreams is ERC721, Multicall {
         receiverTotalPrincipal[receiver] -= principal;
         receiverTotalShares[receiver] -= shares;
 
-        emit Close(_streamId, msg.sender, receiver, shares, principal);
+        emit StreamClosed(_streamId, msg.sender, receiver, shares, principal);
 
         vault.safeTransfer(msg.sender, shares);
     }
@@ -576,7 +571,7 @@ contract YieldStreams is ERC721, Multicall {
 
         assets = vault.redeem(yieldInShares, _sendTo, address(this));
 
-        emit ClaimYield(msg.sender, _sendTo, yieldInShares, assets);
+        emit YieldClaimed(msg.sender, _sendTo, assets, 0);
     }
 
     /**
@@ -617,7 +612,7 @@ contract YieldStreams is ERC721, Multicall {
 
         receiverTotalShares[msg.sender] -= yieldInShares;
 
-        emit ClaimYieldInShares(msg.sender, _sendTo, yieldInShares);
+        emit YieldClaimed(msg.sender, _sendTo, 0, yieldInShares);
 
         vault.safeTransfer(_sendTo, yieldInShares);
     }
@@ -684,7 +679,7 @@ contract YieldStreams is ERC721, Multicall {
         receiverTotalPrincipal[_receiver] += _principal;
         receiverPrincipal[_receiver][streamId] = _principal;
 
-        emit Open(streamId, msg.sender, _receiver, _shares, _principal);
+        emit StreamOpened(streamId, msg.sender, _receiver, _shares, _principal);
     }
 
     // accounting logic for opening multiple streams
@@ -729,7 +724,7 @@ contract YieldStreams is ERC721, Multicall {
         receiverTotalPrincipal[_receiver] += _principal;
         receiverPrincipal[_receiver][_streamId] += _principal;
 
-        emit TopUp(_streamId, msg.sender, _receiver, _shares, _principal);
+        emit StreamToppedUp(_streamId, msg.sender, _receiver, _shares, _principal);
     }
 
     function _previewClose(uint256 _streamId, address _receiver)
