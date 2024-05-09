@@ -19,6 +19,18 @@ contract ERC20Streams is Multicall {
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC20;
 
+    struct Stream {
+        uint256 amount;
+        uint256 ratePerSecond;
+        uint128 startTime;
+        uint128 lastClaimTime;
+    }
+
+    event StreamOpened(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
+    event TokensClaimed(address indexed streamer, address indexed receiver, uint256 claimed);
+    event StreamClosed(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
+    event StreamToppedUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
+
     error ZeroDuration();
     error CannotOpenStreamToSelf();
     error StreamAlreadyExists();
@@ -27,27 +39,21 @@ contract ERC20Streams is Multicall {
     error NoTokensToClaim();
     error StreamDoesNotExist();
 
-    event StreamOpened(address indexed streamer, address indexed receiver, uint256 amount, uint256 duration);
-    event TokensClaimed(address indexed streamer, address indexed receiver, uint256 claimed);
-    event StreamClosed(address indexed streamer, address indexed receiver, uint256 remaining, uint256 claimed);
-    event StreamToppedUp(address indexed streamer, address indexed receiver, uint256 added, uint256 addedDuration);
-
-    struct Stream {
-        uint256 amount;
-        uint256 ratePerSecond;
-        uint128 startTime;
-        uint128 lastClaimTime;
-    }
-
     IERC20 public immutable token;
 
-    mapping(uint256 => Stream) public streamById;
+    mapping(uint256 => Stream) public streams;
 
     constructor(IERC20 _token) {
         address(_token).checkIsZero();
 
         token = _token;
     }
+
+    /*
+    * =======================================================
+    *                   EXTERNAL FUNCTIONS
+    * =======================================================
+    */
 
     /**
      * @notice Calculates the stream ID for a given streamer and receiver
@@ -65,7 +71,7 @@ contract ERC20Streams is Multicall {
      * @return The Stream struct containing all the stream information
      */
     function getStream(uint256 _streamId) public view returns (Stream memory) {
-        return streamById[_streamId];
+        return streams[_streamId];
     }
 
     /**
@@ -81,7 +87,7 @@ contract ERC20Streams is Multicall {
         _checkZeroDuration(_duration);
 
         uint256 streamId = getStreamId(msg.sender, _receiver);
-        Stream storage stream = streamById[streamId];
+        Stream storage stream = streams[streamId];
 
         if (stream.amount > 0) {
             // If the stream already exists and isn't expired, revert
@@ -141,7 +147,7 @@ contract ERC20Streams is Multicall {
         _receiver.checkIsZero();
         _additionalAmount.checkIsZero();
 
-        Stream storage stream = streamById[getStreamId(msg.sender, _receiver)];
+        Stream storage stream = streams[getStreamId(msg.sender, _receiver)];
 
         _checkNonExistingStream(stream);
 
@@ -196,14 +202,14 @@ contract ERC20Streams is Multicall {
         _sendTo.checkIsZero();
 
         uint256 streamId = getStreamId(_streamer, msg.sender);
-        Stream storage stream = streamById[streamId];
+        Stream storage stream = streams[streamId];
 
         claimed = _previewClaim(stream);
 
         if (claimed == 0) revert NoTokensToClaim();
 
         if (claimed == stream.amount) {
-            delete streamById[streamId];
+            delete streams[streamId];
 
             // emit with 0s to indicate that the stream was closed during the claim
             emit StreamClosed(_streamer, msg.sender, 0, 0);
@@ -224,17 +230,7 @@ contract ERC20Streams is Multicall {
      * @return claimable The number of tokens that can be claimed
      */
     function previewClaim(address _streamer, address _receiver) public view returns (uint256 claimable) {
-        return _previewClaim(streamById[getStreamId(_streamer, _receiver)]);
-    }
-
-    function _previewClaim(Stream memory _stream) internal view returns (uint256 claimable) {
-        _checkNonExistingStream(_stream);
-
-        uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
-        claimable = elapsedTime.mulWadUp(_stream.ratePerSecond);
-
-        // Cap the claimalbe amount to the max available amount
-        if (claimable > _stream.amount) claimable = _stream.amount;
+        return _previewClaim(streams[getStreamId(_streamer, _receiver)]);
     }
 
     /**
@@ -245,11 +241,11 @@ contract ERC20Streams is Multicall {
      */
     function close(address _receiver) external returns (uint256 remaining, uint256 streamed) {
         uint256 streamId = getStreamId(msg.sender, _receiver);
-        Stream memory stream = streamById[streamId];
+        Stream memory stream = streams[streamId];
 
         (remaining, streamed) = _previewClose(stream);
 
-        delete streamById[streamId];
+        delete streams[streamId];
 
         emit StreamClosed(msg.sender, _receiver, remaining, streamed);
 
@@ -270,9 +266,25 @@ contract ERC20Streams is Multicall {
         view
         returns (uint256 remaining, uint256 streamed)
     {
-        Stream memory stream = streamById[getStreamId(_streamer, _receiver)];
+        Stream memory stream = streams[getStreamId(_streamer, _receiver)];
 
         return _previewClose(stream);
+    }
+
+    /* 
+    * =======================================================
+    *                   INTERNAL FUNCTIONS
+    * =======================================================
+    */
+
+    function _previewClaim(Stream memory _stream) internal view returns (uint256 claimable) {
+        _checkNonExistingStream(_stream);
+
+        uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
+        claimable = elapsedTime.mulWadUp(_stream.ratePerSecond);
+
+        // Cap the claimalbe amount to the max available amount
+        if (claimable > _stream.amount) claimable = _stream.amount;
     }
 
     function _previewClose(Stream memory _stream) internal view returns (uint256 remaining, uint256 streamed) {

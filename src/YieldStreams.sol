@@ -115,11 +115,11 @@ contract YieldStreams is ERC721, Multicall {
         asset = IERC20(_vault.asset());
     }
 
-    /**
-     *
-     * EXTERNAL FUNCTIONS
-     *
-     */
+    /*
+    * =======================================================
+    *                   EXTERNAL FUNCTIONS
+    * =======================================================
+    */
 
     /// @inheritdoc ERC721
     function name() public view override returns (string memory) {
@@ -175,7 +175,7 @@ contract YieldStreams is ERC721, Multicall {
         view
         returns (uint256 principal)
     {
-        principal = _convertToAssets(_shares);
+        principal = vault.convertToAssets(_shares);
 
         _canOpenStream(_receiver, _shares, principal, _maxLossOnOpenTolerance);
     }
@@ -236,7 +236,7 @@ contract YieldStreams is ERC721, Multicall {
     ) public returns (uint256[] memory streamIds) {
         _shares.checkIsZero();
 
-        uint256 principal = _convertToAssets(_shares);
+        uint256 principal = vault.convertToAssets(_shares);
         uint256 totalSharesAllocated;
         (totalSharesAllocated, streamIds) =
             _openStreams(_shares, principal, _receivers, _allocations, _maxLossOnOpenTolerance);
@@ -320,7 +320,7 @@ contract YieldStreams is ERC721, Multicall {
         view
         returns (uint256 shares)
     {
-        shares = _convertToShares(_principal);
+        shares = vault.convertToShares(_principal);
 
         _canOpenStream(_receiver, shares, _principal, _maxLossOnOpenTolerance);
     }
@@ -435,7 +435,7 @@ contract YieldStreams is ERC721, Multicall {
         _shares.checkIsZero();
         _checkIsOwner(_streamId);
 
-        principal = _convertToAssets(_shares);
+        principal = vault.convertToAssets(_shares);
 
         _topUpStream(_streamId, _shares, principal);
 
@@ -589,10 +589,10 @@ contract YieldStreams is ERC721, Multicall {
      */
     function previewClaimYield(address _receiver) public view returns (uint256 yield) {
         uint256 principal = receiverTotalPrincipal[_receiver];
-        uint256 currentValue = _convertToAssets(receiverTotalShares[_receiver]);
+        uint256 currentValue = vault.convertToAssets(receiverTotalShares[_receiver]);
 
         // if vault made a loss, there is no yield
-        yield = currentValue > principal ? currentValue - principal : 0;
+        yield = currentValue > principal ? currentValue - principal : 0; //184245 | 179655 | 595864
     }
 
     /**
@@ -631,7 +631,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return yieldInShares The estimated amount of yield available to be claimed by the receiver, expressed in shares.
      */
     function previewClaimYieldInShares(address _receiver) public view returns (uint256 yieldInShares) {
-        uint256 principalInShares = _convertToShares(receiverTotalPrincipal[_receiver]);
+        uint256 principalInShares = vault.convertToShares(receiverTotalPrincipal[_receiver]);
         uint256 shares = receiverTotalShares[_receiver];
 
         // if vault made a loss, there is no yield
@@ -651,7 +651,7 @@ contract YieldStreams is ERC721, Multicall {
     function debtFor(address _receiver) public view returns (uint256) {
         uint256 principal = receiverTotalPrincipal[_receiver];
         uint256 shares = receiverTotalShares[_receiver];
-        uint256 sharePrice = _convertToAssets(shares).divWadUp(shares);
+        uint256 sharePrice = vault.convertToAssets(shares).divWadUp(shares);
 
         return _calculateDebt(shares, principal, sharePrice);
     }
@@ -673,11 +673,11 @@ contract YieldStreams is ERC721, Multicall {
         return _getPrincipal(_streamId, receiver);
     }
 
-    /**
-     *
-     * INTERNAL FUNCTIONS
-     *
-     */
+    /* 
+    * =======================================================
+    *                   INTERNAL FUNCTIONS
+    * =======================================================
+    */
 
     // accounting logic for opening a new stream
     function _openStream(address _receiver, uint256 _shares, uint256 _principal) internal returns (uint256 streamId) {
@@ -748,7 +748,7 @@ contract YieldStreams is ERC721, Multicall {
         if (principal == 0) return (0, 0);
 
         // asset amount of equivalent shares
-        uint256 ask = _convertToShares(principal);
+        uint256 ask = vault.convertToShares(principal);
         uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
 
         // calculate the maximum amount of shares that can be attributed to the sender as a percentage of the sender's share of the total principal.
@@ -813,13 +813,5 @@ contract YieldStreams is ERC721, Multicall {
 
     function _checkIsOwner(uint256 _streamId) internal view {
         if (ownerOf(_streamId) != msg.sender) revert CallerNotStreamOwner();
-    }
-
-    function _convertToAssets(uint256 _shares) internal view returns (uint256) {
-        return vault.convertToAssets(_shares);
-    }
-
-    function _convertToShares(uint256 _assets) internal view returns (uint256) {
-        return vault.convertToShares(_assets);
     }
 }
