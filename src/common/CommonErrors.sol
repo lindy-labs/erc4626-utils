@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 /**
  * @title CommonErrors
- * @notice A library for common errors and respective checking functions.
+ * @notice A library for commonly used errors and respective checking functions.
  */
 library CommonErrors {
     error AmountZero();

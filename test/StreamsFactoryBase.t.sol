@@ -6,7 +6,7 @@ import {CREATE3} from "solmate/utils/CREATE3.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 
-import "../src/common/Errors.sol";
+import "src/common/CommonErrors.sol";
 
 import {StreamsFactoryBase} from "../src/common/StreamsFactoryBase.sol";
 

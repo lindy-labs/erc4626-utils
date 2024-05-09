@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {CREATE3} from "solmate/utils/CREATE3.sol";
 import {IERC20} from "openzeppelin-contracts/token/ERC20/IERC20.sol";
 
-import {CommonErrors} from "./Errors.sol";
+import {CommonErrors} from "./CommonErrors.sol";
 /**
  * @title StreamsFactoryBase
  * @dev A base contract for creating and managing streams contract instances.
