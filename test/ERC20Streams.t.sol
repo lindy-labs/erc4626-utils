@@ -30,14 +30,22 @@ contract ERC20StreamsTest is TestCommon {
         streams = new ERC20Streams(IERC4626(address(vault)));
     }
 
-    /// *** constructor *** ///
+    /*
+     * --------------------
+     *     #constructor
+     * --------------------
+     */
 
     function test_constructor_failsForAddress0() public {
         vm.expectRevert(CommonErrors.AddressZero.selector);
         new ERC20Streams(IERC4626(address(0)));
     }
 
-    /// *** #openStream *** ///
+    /*
+     * --------------------
+     *     #openStream
+     * --------------------
+     */
 
     function test_openStream_createsNewStream() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -159,7 +167,11 @@ contract ERC20StreamsTest is TestCommon {
         streams.open(alice, shares, 1 days);
     }
 
-    /// *** #claim *** ///
+    /*
+     * --------------------
+     *       #claim
+     * --------------------
+     */
 
     function test_claim_failsIfStreamDoesNotExist() public {
         vm.expectRevert(ERC20Streams.StreamDoesNotExist.selector);
@@ -270,7 +282,11 @@ contract ERC20StreamsTest is TestCommon {
         streams.claim(alice, bob);
     }
 
-    /// *** #closeStream *** ///
+    /*
+     * --------------------
+     *     #closeStream
+     * --------------------
+     */
 
     function test_closeStream_failsIfStreamDoesNotExist() public {
         vm.expectRevert(ERC20Streams.StreamDoesNotExist.selector);
@@ -373,7 +389,11 @@ contract ERC20StreamsTest is TestCommon {
         assertApproxEqRel(vault.balanceOf(bob), shares / 2, 0.0001e18, "receiver balance 2");
     }
 
-    /// *** #topUpStream *** ///
+    /*
+     * --------------------
+     *     #topUpStream
+     * --------------------
+     */
 
     function test_topUpStream_addsAmountToStreamAndExtendsDuration() public {
         uint256 duration = 1 days;
@@ -538,7 +558,11 @@ contract ERC20StreamsTest is TestCommon {
         streams.topUp(bob, shares, duration * 2);
     }
 
-    /// *** #openStreamUsingPermit *** ///
+    /*
+     * --------------------
+     *  #openStreamUsingPermit
+     * --------------------
+     */
 
     function test_openStreamUsingPermit() public {
         uint256 shares = _depositToVault(dave, 1 ether);
@@ -572,7 +596,11 @@ contract ERC20StreamsTest is TestCommon {
         assertEq(stream.lastClaimTime, block.timestamp, "lastClaimTime");
     }
 
-    /// *** #topUpStreamUsingPermit *** ///
+    /*
+     * --------------------
+     *  #topUpStreamUsingPermit
+     * --------------------
+     */
 
     function test_topUpStreamUsingPermit() public {
         uint256 duration = 1 days;
@@ -627,7 +655,11 @@ contract ERC20StreamsTest is TestCommon {
         assertApproxEqRel(vault.balanceOf(bob), (shares + additionalShares) / 2, 0.0001e18, "receiver balance");
     }
 
-    /// *** #multicall *** ///
+    /*
+     * --------------------
+     *     #multicall
+     * --------------------
+     */
 
     function test_multicall() public {
         uint256 shares = _depositToVault(alice, 1e18);
@@ -648,7 +680,11 @@ contract ERC20StreamsTest is TestCommon {
         assertEq(stream.amount, shares / 2, "carol's stream shares");
     }
 
-    /// *** multiple streamers / receivers *** ///
+    /*
+     * --------------------
+     *   multiple streamers / receivers
+     * --------------------
+     */
 
     function test_oneStreamertoMultipleReceivers() public {
         // alice streams to bob and carol
@@ -788,7 +824,11 @@ contract ERC20StreamsTest is TestCommon {
         assertEq(vault.balanceOf(carol), claimFromAlice + claimFromBob, "carol's balance after closing");
     }
 
-    /// *** fuzzing *** ///
+    /*
+     * --------------------
+     *       FUZZING
+     * --------------------
+     */
 
     function testFuzz_open_claim_close_stream(uint256 _amount, uint256 _duration) public {
         _amount = bound(_amount, 10000, 10000 ether);
@@ -831,7 +871,11 @@ contract ERC20StreamsTest is TestCommon {
         assertApproxEqRel(vault.balanceOf(alice), shares / 2, 0.01e18, "alice's shares");
     }
 
-    /// *** helpers *** ///
+    /*
+     * --------------------
+     *     helper funcs
+     * --------------------
+     */
 
     function _depositToVault(address _account, uint256 _amount) internal returns (uint256 shares) {
         shares = _depositToVault(IERC4626(address(vault)), _account, _amount);
