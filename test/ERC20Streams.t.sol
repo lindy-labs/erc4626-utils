@@ -8,8 +8,8 @@ import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
+import "src/common/CommonErrors.sol";
 import "./common/TestCommon.sol";
-import "src/common/Errors.sol";
 import {ERC20Streams} from "src/ERC20Streams.sol";
 
 contract ERC20StreamsTest is TestCommon {
