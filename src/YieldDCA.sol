@@ -76,6 +76,8 @@ contract YieldDCA is ERC721, AccessControl {
     event SwapperUpdated(address indexed admin, address newSwapper);
     event Deposit(address indexed user, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
+    event DCATokensClaimed(address indexed user, uint256 indexed positionId, uint256 dcaTokens, uint256 epoch);
+    // TODO: add keeper
     event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
 
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
@@ -275,57 +277,107 @@ contract YieldDCA is ERC721, AccessControl {
      * If 0 shares are passed, only DCA tokens are withdrawn.
      * @param _shares The number of shares to withdraw
      * @param _positionId The ID of the deposit from which to withdraw
-     * @return principalValue The amount of principal corresponding to the shares withdrawn
-     * @return dcaAmount The amount of DCA tokens withdrawn
      */
-    function decreasePosition(uint256 _shares, uint256 _positionId)
-        external
-        returns (uint256 principalValue, uint256 dcaAmount)
+    function reducePosition(uint256 _shares, uint256 _positionId) external {
+        _checkOwnership(_positionId);
+        _checkAmount(_shares);
+
+        Position storage position_ = positions[_positionId];
+        uint256 currentEpoch_ = currentEpoch;
+        (uint256 sharesAvailable, uint256 dcaAmount) = _calculateBalances(position_, currentEpoch_);
+
+        // the position be closed if all shares are withdrawn
+        if (_shares != sharesAvailable) {
+            _reducePosition(position_, _shares, sharesAvailable, dcaAmount);
+        } else {
+            _closePosition(_positionId, position_.principal, sharesAvailable, dcaAmount);
+        }
+    }
+
+    function _reducePosition(Position storage position_, uint256 _shares, uint256 sharesAvailable, uint256 dcaAmount)
+        internal
     {
+        if (_shares > sharesAvailable) revert InsufficientSharesToWithdraw();
+
+        uint256 principalValue = position_.principal.mulDivDown(_shares, sharesAvailable);
+
+        unchecked {
+            // cannot underflow because sharesAvailable > _shares
+            position_.principal -= principalValue;
+            position_.shares = sharesAvailable - _shares;
+        }
+
+        position_.epoch = currentEpoch;
+        position_.dcaAmountAtEpoch = dcaAmount;
+
+        totalPrincipal -= principalValue;
+
+        _transferShares(_shares);
+
+        emit Withdraw(msg.sender, currentEpoch, principalValue, _shares, 0);
+    }
+
+    /**
+     * @notice Withdraws all shares and any accumulated DCA tokens from a deposit
+     * @dev Can only be called by the owner of the deposit. Deletes the deposit record and transfers the shares and DCA tokens to the caller.
+     * Emits the Withdraw event with details of the withdrawal.
+     * Reverts if the user does not own the deposit.
+     * @param _positionId The ID of the deposit to close
+     */
+    function closePosition(uint256 _positionId) external {
         _checkOwnership(_positionId);
 
         uint256 currentEpoch_ = currentEpoch;
-        (principalValue, dcaAmount) = _processWithdrawal(_shares, _positionId, currentEpoch_);
+        Position storage position_ = positions[_positionId];
+        (uint256 shares, uint256 dcaAmount) = _calculateBalances(position_, currentEpoch_);
 
-        uint256 sharesBalance_ = sharesBalance();
-        // limit to available shares and dca tokens because of possible rounding errors
-        _shares = _shares > sharesBalance_ ? sharesBalance_ : _shares;
-        vault.safeTransfer(msg.sender, _shares);
-
-        uint256 dcaBalance_ = dcaBalance();
-        dcaAmount = dcaAmount > dcaBalance_ ? dcaBalance_ : dcaAmount;
-        dcaToken.safeTransfer(msg.sender, dcaAmount);
-
-        emit Withdraw(msg.sender, currentEpoch_, principalValue, _shares, dcaAmount);
+        _closePosition(_positionId, position_.principal, shares, dcaAmount);
     }
 
-    function _processWithdrawal(uint256 _shares, uint256 _positionId, uint256 _currentEpoch)
-        internal
-        returns (uint256 principalValue, uint256 dcaAmount)
-    {
+    function _closePosition(uint256 _positionId, uint256 _principal, uint256 _shares, uint256 _dcaAmount) internal {
+        totalPrincipal -= _principal;
+        delete positions[_positionId];
+        _burn(_positionId);
+
+        _transferShares(_shares);
+        // TODO: check event emmision on rounding errors
+        _transferDcaTokens(_dcaAmount);
+
+        emit Withdraw(msg.sender, currentEpoch, _principal, _shares, _dcaAmount);
+    }
+
+    function _transferShares(uint256 _shares) internal returns (uint256 actualShares) {
+        // limit to available shares because of possible rounding errors
+        uint256 sharesBalance_ = sharesBalance();
+        actualShares = _shares > sharesBalance_ ? sharesBalance_ : _shares;
+        vault.safeTransfer(msg.sender, actualShares);
+    }
+
+    function _transferDcaTokens(uint256 _amount) internal returns (uint256 actualAmount) {
+        // limit to available dca balance because of possible rounding errors
+        uint256 dcaBalance_ = dcaBalance();
+        actualAmount = _amount > dcaBalance_ ? dcaBalance_ : _amount;
+        dcaToken.safeTransfer(msg.sender, actualAmount);
+    }
+
+    // TODO: test
+    function claimDCATokens(uint256 _positionId) external {
+        _checkOwnership(_positionId);
+
         Position storage position_ = positions[_positionId];
-        uint256 sharesRemaining;
-        (sharesRemaining, dcaAmount) = _calculateBalances(position_, _currentEpoch);
+        uint256 currentEpoch_ = currentEpoch;
+        (uint256 sharesAvailable, uint256 dcaAmount) = _calculateBalances(position_, currentEpoch_);
 
-        if (_shares > sharesRemaining) revert InsufficientSharesToWithdraw();
+        // TODO: error
+        if (dcaAmount == 0) revert YieldZero();
 
-        if (_shares == sharesRemaining) {
-            // withadraw all
-            principalValue = position_.principal;
+        position_.shares = sharesAvailable;
+        position_.epoch = currentEpoch_;
+        position_.dcaAmountAtEpoch = 0;
 
-            delete positions[_positionId];
-            _burn(_positionId);
-        } else {
-            // withdraw partial
-            principalValue = position_.principal.mulDivDown(_shares, sharesRemaining);
+        _transferDcaTokens(dcaAmount);
 
-            position_.principal -= principalValue;
-            position_.shares = sharesRemaining - _shares;
-            position_.dcaAmountAtEpoch = 0;
-            position_.epoch = _currentEpoch;
-        }
-
-        totalPrincipal -= principalValue;
+        emit DCATokensClaimed(msg.sender, _positionId, dcaAmount, currentEpoch_);
     }
 
     /**
@@ -434,7 +486,7 @@ contract YieldDCA is ERC721, AccessControl {
         }
     }
 
-    function _calculateBalances(Position memory _deposit, uint256 _latestEpoch)
+    function _calculateBalances(Position storage _deposit, uint256 _latestEpoch)
         internal
         view
         returns (uint256 shares, uint256 dcaTokens)
@@ -448,7 +500,6 @@ contract YieldDCA is ERC721, AccessControl {
         // NOTE: one iteration costs around 2480 gas when called from a non-view function
         for (uint256 i = _deposit.epoch; i < _latestEpoch;) {
             EpochInfo memory info = epochDetails[i];
-            // save gas on sload
             uint256 sharePrice = info.sharePrice;
 
             unchecked {

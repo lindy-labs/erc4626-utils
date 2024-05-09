@@ -45,7 +45,7 @@ contract UniSwapper is ISwapper {
         amountOut = swapRouter.exactInputSingle(params);
     }
 
-    // note: not meant to be used inside transactions because of unoptimized gas usage, only for read-only purposes (see IQuoterV2.sol)
+    // note: not meant to be used inside transactions because of inefficient gas usage, only for read-only purposes (see IQuoterV2.sol)
     function previewExecute(address _tokenIn, address _tokenOut, uint256 _amountIn, bytes calldata _data)
         external
         returns (uint256 amountOut)

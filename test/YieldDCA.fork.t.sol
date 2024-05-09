@@ -181,7 +181,7 @@ contract YieldDCAForkTest is TestCommon {
 
         (uint256 shares,) = yieldDca.balancesOf(_depositId);
 
-        yieldDca.decreasePosition(shares, _depositId);
+        yieldDca.reducePosition(shares, _depositId);
 
         vm.stopPrank();
     }
