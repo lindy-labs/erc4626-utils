@@ -23,7 +23,7 @@ contract StreamsFactoryBaseTest is Test {
     }
 
     function test_create_failsIfVaultIsZero() public {
-        vm.expectRevert(AddressZero.selector);
+        vm.expectRevert(CommonErrors.AddressZero.selector);
         factory.create(address(0));
     }
 
@@ -55,7 +55,7 @@ contract StreamsFactoryBaseTest is Test {
     function test_create_failsIfAlreadyDepolyed() public {
         factory.create(address(vault));
 
-        vm.expectRevert(AlreadyDeployed.selector);
+        vm.expectRevert(StreamsFactoryBase.AlreadyDeployed.selector);
         factory.create(address(vault));
     }
 

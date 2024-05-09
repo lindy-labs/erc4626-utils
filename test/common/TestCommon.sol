@@ -11,6 +11,16 @@ import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 abstract contract TestCommon is Test {
     using FixedPointMathLib for uint256;
 
+    address constant alice = address(0x06);
+    address constant bob = address(0x07);
+    address constant carol = address(0x08);
+
+    uint256 davesPrivateKey = uint256(bytes32("0xDAVE"));
+    address dave = vm.addr(davesPrivateKey);
+
+    bytes32 constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
     function _depositToVault(IERC4626 _vault, address _from, uint256 _amount) internal returns (uint256 shares) {
         vm.startPrank(_from);
 

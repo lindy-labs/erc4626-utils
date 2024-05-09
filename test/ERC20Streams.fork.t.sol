@@ -20,10 +20,6 @@ contract ERC20StreamsTest is TestCommon {
     IERC4626 public scEth;
     IERC20 public weth;
 
-    address constant alice = address(0x06);
-    address constant bob = address(0x07);
-    address constant carol = address(0x08);
-
     function setUp() public {
         uint256 mainnetFork = vm.createFork(vm.envString("RPC_URL_MAINNET"));
         vm.selectFork(mainnetFork);

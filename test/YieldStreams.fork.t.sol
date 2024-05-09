@@ -24,10 +24,6 @@ contract YieldStreamsForkTest is TestCommon {
     IERC4626 public scUsdc;
     IERC20 public usdc;
 
-    address constant alice = address(0x06);
-    address constant bob = address(0x07);
-    address constant carol = address(0x08);
-
     function setUp() public {
         uint256 mainnetFork = vm.createFork(vm.envString("RPC_URL_MAINNET"));
         vm.selectFork(mainnetFork);
@@ -191,7 +187,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(weth.balanceOf(carol), expectedYield, 1, "carol's assets");
     }
 
-    function test_openWithAssets() public {
+    function test_depositAndOpen() public {
         uint256 principal = 1000e6;
         uint256 shares = scUsdc.previewDeposit(principal);
         deal(address(usdc), alice, principal);
@@ -199,7 +195,7 @@ contract YieldStreamsForkTest is TestCommon {
         usdc.approve(address(scUsdcYield), principal);
 
         vm.prank(alice);
-        scUsdcYield.openWithAssets(bob, principal, 0);
+        scUsdcYield.depositAndOpen(bob, principal, 0);
 
         assertEq(scUsdc.balanceOf(address(scUsdcYield)), shares, "contract's balance");
         assertEq(scUsdcYield.receiverTotalShares(bob), shares, "receiverShares");
@@ -219,7 +215,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(claimed, expectedYield, 1, "bob's claim");
     }
 
-    function test_topUpWithAssets() public {
+    function test_depositAndTopUp() public {
         uint256 principal = 1000e6;
         uint256 shares = _depositToVault(scUsdc, alice, principal);
         _approve(scUsdc, address(scUsdcYield), alice, shares);
@@ -242,7 +238,7 @@ contract YieldStreamsForkTest is TestCommon {
         usdc.approve(address(scUsdcYield), addedPrincipal);
 
         vm.prank(alice);
-        scUsdcYield.topUpWithAssets(streamId, addedPrincipal);
+        scUsdcYield.depositAndTopUp(streamId, addedPrincipal);
 
         assertEq(scUsdcYield.receiverTotalShares(bob), shares + addedShares, "receiverShares");
 
@@ -338,6 +334,99 @@ contract YieldStreamsForkTest is TestCommon {
 
         assertApproxEqAbs(
             scEthYield.previewClaimYield(carol), expectedYield, 1, "carol's yield after alice's stream closed"
+        );
+    }
+
+    function test_multicall_openTwoStreams() public {
+        uint256 principal = 1000e6;
+        uint256 shares = _depositToVault(scUsdc, alice, principal);
+        _approve(scUsdc, address(scUsdcYield), alice, shares);
+
+        bytes[] memory callData = new bytes[](2);
+
+        callData[0] = abi.encodeWithSelector(YieldStreams.open.selector, bob, shares / 2, 0);
+        callData[1] = abi.encodeWithSelector(YieldStreams.open.selector, carol, shares / 2, 0);
+
+        vm.prank(alice);
+        bytes[] memory results = scUsdcYield.multicall(callData);
+        uint256 streamIdBob = abi.decode(results[0], (uint256));
+        uint256 streamIdCarol = abi.decode(results[1], (uint256));
+
+        assertApproxEqAbs(scUsdc.balanceOf(address(scUsdcYield)), shares, 1, "contract's balance");
+        assertEq(scUsdcYield.receiverTotalShares(bob), shares / 2, "bob's receiverShares");
+        assertApproxEqAbs(scUsdcYield.receiverPrincipal(bob, streamIdBob), principal / 2, 1, "bob's receiverPrincipal");
+        assertEq(scUsdcYield.receiverTotalShares(carol), shares / 2, "carol's receiverShares");
+        assertApproxEqAbs(
+            scUsdcYield.receiverPrincipal(carol, streamIdCarol), principal / 2, 1, "carol's receiverPrincipal"
+        );
+    }
+
+    function test_openMultiple_openTwoStreams() public {
+        uint256 principal = 1000e6;
+        uint256 shares = _depositToVault(scUsdc, alice, principal);
+        _approve(scUsdc, address(scUsdcYield), alice, shares);
+
+        address[] memory receivers = new address[](2);
+        uint256[] memory allocations = new uint256[](2);
+
+        receivers[0] = bob;
+        allocations[0] = 0.5e18;
+        receivers[1] = carol;
+        allocations[1] = 0.5e18;
+
+        vm.prank(alice);
+        uint256[] memory streamIds = scUsdcYield.openMultiple(shares, receivers, allocations, 0);
+
+        assertApproxEqAbs(scUsdc.balanceOf(address(scUsdcYield)), shares, 1, "contract's balance");
+        assertEq(scUsdcYield.receiverTotalShares(bob), shares / 2, "bob's receiverShares");
+        assertApproxEqAbs(scUsdcYield.receiverPrincipal(bob, streamIds[0]), principal / 2, 1, "bob's receiverPrincipal");
+        assertEq(scUsdcYield.receiverTotalShares(carol), shares / 2, "carol's receiverShares");
+        assertApproxEqAbs(
+            scUsdcYield.receiverPrincipal(carol, streamIds[1]), principal / 2, 1, "carol's receiverPrincipal"
+        );
+    }
+
+    function test_depositAndOpenMultipleUsingPermit() public {
+        uint256 principal = 1000e6;
+        uint256 shares = scUsdc.previewDeposit(principal);
+
+        uint256 deadline = block.timestamp + 1 days;
+        deal(address(usdc), dave, principal);
+
+        // Sign the permit message
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            davesPrivateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    MockERC20(address(usdc)).DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(scUsdcYield), principal, 0, deadline))
+                )
+            )
+        );
+
+        // open streams to alice and bob
+        address[] memory receivers = new address[](2);
+        receivers[0] = alice;
+        receivers[1] = bob;
+
+        uint256[] memory allocations = new uint256[](2);
+        allocations[0] = 0.6e18;
+        allocations[1] = 0.3e18;
+
+        vm.prank(dave);
+        scUsdcYield.depositAndOpenMultipleUsingPermit(principal, receivers, allocations, 0, deadline, v, r, s);
+
+        // add some yield
+        _generateYield(scUsdc, 0.1e18); // 10%
+
+        // assert yield is as expected
+        assertEq(scUsdc.balanceOf(address(scUsdcYield)), shares.mulWadDown(0.9e18), "contract's balance");
+        assertApproxEqAbs(
+            scUsdcYield.previewClaimYield(alice), principal.mulWadDown(0.6e18).mulWadDown(0.1e18), 1, "alice's yield"
+        );
+        assertApproxEqAbs(
+            scUsdcYield.previewClaimYield(bob), principal.mulWadDown(0.3e18).mulWadDown(0.1e18), 1, "bob's yield"
         );
     }
 }
