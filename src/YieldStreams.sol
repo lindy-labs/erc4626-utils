@@ -9,7 +9,7 @@ import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol"
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 
-import {AddressZero, AmountZero} from "./common/Errors.sol";
+import {CommonErrors} from "./common/Errors.sol";
 
 /**
  * @title YieldStreams
@@ -19,14 +19,11 @@ import {AddressZero, AmountZero} from "./common/Errors.sol";
  * It leverages the ERC4626 standard for tokenized vault interactions, assuming that these tokens appreciate over time, generating yield for their holders.
  */
 contract YieldStreams is ERC721, Multicall {
+    using CommonErrors for uint256;
+    using CommonErrors for address;
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
     using SafeERC20 for IERC20;
-
-    error NoYieldToClaim();
-    error LossToleranceExceeded();
-    error CallerNotStreamOwner();
-    error InputArraysLengthMismatch(uint256 length1, uint256 length2);
 
     /**
      * @notice Emitted when a new yield stream is opened between a streamer and a receiver.
@@ -76,26 +73,28 @@ contract YieldStreams is ERC721, Multicall {
         uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
 
+    // Errors
+    error NoYieldToClaim();
+    error LossToleranceExceeded();
+    error CallerNotStreamOwner();
+    error InputArraysLengthMismatch(uint256 length1, uint256 length2);
+
     /// @notice the underlying ERC4626 vault
     IERC4626 public immutable vault;
-
     /// @notice the underlying ERC20 asset of the ERC4626 vault
     IERC20 public immutable asset;
 
-    /// @notice identifier of the next stream to be opened (ERC721 token ID)
-    uint256 public nextStreamId = 1;
-
     /// @notice receiver addresses to the total shares amount allocated to their streams
     mapping(address => uint256) public receiverTotalShares;
-
     /// @notice receiver addresses to the total principal amount allocated to their streams
     mapping(address => uint256) public receiverTotalPrincipal;
-
     /// @notice receiver addresses to the principal amount allocated to each stream (receiver => (streamId => principal))
     mapping(address => mapping(uint256 => uint256)) public receiverPrincipal;
-
     /// @notice stream ID to receiver address
     mapping(uint256 => address) public streamIdToReceiver;
+
+    /// @notice identifier of the next stream to be opened (ERC721 token ID)
+    uint256 public nextStreamId = 1;
 
     // ERC721 name and symbol
     string private name_;
@@ -107,7 +106,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _vault Address of the ERC4626 vault
      */
     constructor(IERC4626 _vault) {
-        _checkZeroAddress(address(_vault));
+        address(_vault).checkIsZero();
 
         name_ = string.concat("Yield Stream - ", _vault.name());
         symbol_ = string.concat("YS-", _vault.symbol());
@@ -115,6 +114,12 @@ contract YieldStreams is ERC721, Multicall {
         vault = _vault;
         asset = IERC20(_vault.asset());
     }
+
+    /**
+     *
+     * EXTERNAL FUNCTIONS
+     *
+     */
 
     /// @inheritdoc ERC721
     function name() public view override returns (string memory) {
@@ -229,7 +234,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) public returns (uint256[] memory streamIds) {
-        _checkZeroAmount(_shares);
+        _shares.checkIsZero();
 
         uint256 principal = _convertToAssets(_shares);
         uint256 totalSharesAllocated;
@@ -375,7 +380,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) public returns (uint256[] memory streamIds) {
-        _checkZeroAmount(_principal);
+        _principal.checkIsZero();
 
         uint256 shares = _depositToVault(_principal);
         uint256 totalSharesAllocated;
@@ -427,7 +432,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return principal The added principal amount in asset units.
      */
     function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
-        _checkZeroAmount(_shares);
+        _shares.checkIsZero();
         _checkIsOwner(_streamId);
 
         principal = _convertToAssets(_shares);
@@ -470,7 +475,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return shares The added number of shares to the yield stream.
      */
     function depositAndTopUp(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
-        _checkZeroAmount(_principal);
+        _principal.checkIsZero();
         _checkIsOwner(_streamId);
 
         shares = _depositToVault(_principal);
@@ -561,7 +566,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return assets The total amount of assets claimed as realized yield from all streams.
      */
     function claimYield(address _sendTo) external returns (uint256 assets) {
-        _checkZeroAddress(_sendTo);
+        _sendTo.checkIsZero();
 
         uint256 yieldInShares = previewClaimYieldInShares(msg.sender);
 
@@ -604,7 +609,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return yieldInShares The total number of shares claimed as yield and transferred to the `_sendTo` address.
      */
     function claimYieldInShares(address _sendTo) external returns (uint256 yieldInShares) {
-        _checkZeroAddress(_sendTo);
+        _sendTo.checkIsZero();
 
         yieldInShares = previewClaimYieldInShares(msg.sender);
 
@@ -667,6 +672,12 @@ contract YieldStreams is ERC721, Multicall {
 
         return _getPrincipal(_streamId, receiver);
     }
+
+    /**
+     *
+     * INTERNAL FUNCTIONS
+     *
+     */
 
     // accounting logic for opening a new stream
     function _openStream(address _receiver, uint256 _shares, uint256 _principal) internal returns (uint256 streamId) {
@@ -763,8 +774,8 @@ contract YieldStreams is ERC721, Multicall {
         internal
         view
     {
-        _checkZeroAddress(_receiver);
-        _checkZeroAmount(_principal);
+        _receiver.checkIsZero();
+        _principal.checkIsZero();
 
         // when opening a new stream from sender, check if the receiver is in debt
         uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
@@ -792,14 +803,6 @@ contract YieldStreams is ERC721, Multicall {
         uint256 currentValue = _totalShares.mulWadUp(_sharePrice);
 
         debt = currentValue < _totalPrincipal ? _totalPrincipal - currentValue : 0;
-    }
-
-    function _checkZeroAddress(address _address) internal pure {
-        if (_address == address(0)) revert AddressZero();
-    }
-
-    function _checkZeroAmount(uint256 _amount) internal pure {
-        if (_amount == 0) revert AmountZero();
     }
 
     function _checkInputArraysLength(address[] memory _receivers, uint256[] memory _allocations) internal pure {

@@ -7,13 +7,15 @@ import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
-import {AddressZero, AmountZero} from "./common/Errors.sol";
+import {CommonErrors} from "./common/Errors.sol";
 
 /**
  * @title This contract facilitates the streaming of ERC20 tokens with unique stream IDs per streamer-receiver pair.
  * @notice This contract allows users to open, top up, claim from, and close streams. Note that the receiver can only claim from one stream at a time or use multicall as workaround.
  */
 contract ERC20Streams is Multicall {
+    using CommonErrors for uint256;
+    using CommonErrors for address;
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC20;
 
@@ -42,7 +44,7 @@ contract ERC20Streams is Multicall {
     mapping(uint256 => Stream) public streamById;
 
     constructor(IERC20 _token) {
-        _checkZeroAddress(address(_token));
+        address(_token).checkIsZero();
 
         token = _token;
     }
@@ -73,9 +75,9 @@ contract ERC20Streams is Multicall {
      * @param _duration The duration of the stream in seconds
      */
     function open(address _receiver, uint256 _amount, uint256 _duration) public {
-        _checkZeroAddress(_receiver);
+        _receiver.checkIsZero();
         _checkOpenStreamToSelf(_receiver);
-        _checkZeroAmount(_amount);
+        _amount.checkIsZero();
         _checkZeroDuration(_duration);
 
         uint256 streamId = getStreamId(msg.sender, _receiver);
@@ -136,8 +138,8 @@ contract ERC20Streams is Multicall {
      * @param _additionalDuration The additional duration to add to the stream in seconds
      */
     function topUp(address _receiver, uint256 _additionalAmount, uint256 _additionalDuration) public {
-        _checkZeroAddress(_receiver);
-        _checkZeroAmount(_additionalAmount);
+        _receiver.checkIsZero();
+        _additionalAmount.checkIsZero();
 
         Stream storage stream = streamById[getStreamId(msg.sender, _receiver)];
 
@@ -191,7 +193,8 @@ contract ERC20Streams is Multicall {
      * @return claimed The number of tokens claimed
      */
     function claim(address _streamer, address _sendTo) public returns (uint256 claimed) {
-        _checkZeroAddress(_sendTo);
+        _sendTo.checkIsZero();
+
         uint256 streamId = getStreamId(_streamer, msg.sender);
         Stream storage stream = streamById[streamId];
 
@@ -283,14 +286,6 @@ contract ERC20Streams is Multicall {
         remaining = _stream.amount - streamed;
 
         return (remaining, streamed);
-    }
-
-    function _checkZeroAddress(address _receiver) internal pure {
-        if (_receiver == address(0)) revert AddressZero();
-    }
-
-    function _checkZeroAmount(uint256 _amount) internal pure {
-        if (_amount == 0) revert AmountZero();
     }
 
     function _checkOpenStreamToSelf(address _receiver) internal view {

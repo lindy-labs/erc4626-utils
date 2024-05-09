@@ -33,7 +33,7 @@ contract ERC20StreamsTest is TestCommon {
     /// *** constructor *** ///
 
     function test_constructor_failsForAddress0() public {
-        vm.expectRevert(AddressZero.selector);
+        vm.expectRevert(CommonErrors.AddressZero.selector);
         new ERC20Streams(IERC4626(address(0)));
     }
 
@@ -118,7 +118,7 @@ contract ERC20StreamsTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(AddressZero.selector);
+        vm.expectRevert(CommonErrors.AddressZero.selector);
         vm.prank(alice);
         streams.open(address(0), shares, 1 days);
     }
@@ -127,7 +127,7 @@ contract ERC20StreamsTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(AmountZero.selector);
+        vm.expectRevert(CommonErrors.AmountZero.selector);
         vm.prank(alice);
         streams.open(bob, 0, 1 days);
     }
@@ -223,7 +223,7 @@ contract ERC20StreamsTest is TestCommon {
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(bob);
-        vm.expectRevert(AddressZero.selector);
+        vm.expectRevert(CommonErrors.AddressZero.selector);
         streams.claim(alice, address(0));
     }
 
@@ -427,7 +427,7 @@ contract ERC20StreamsTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(AmountZero.selector);
+        vm.expectRevert(CommonErrors.AmountZero.selector);
         vm.prank(alice);
         streams.topUp(bob, 0, 1 days);
     }
@@ -438,7 +438,7 @@ contract ERC20StreamsTest is TestCommon {
         uint256 shares = _depositToVault(alice, 1e18);
         _approve(alice, shares);
 
-        vm.expectRevert(AddressZero.selector);
+        vm.expectRevert(CommonErrors.AddressZero.selector);
         vm.prank(alice);
         streams.topUp(address(0), shares, 1 days);
     }
