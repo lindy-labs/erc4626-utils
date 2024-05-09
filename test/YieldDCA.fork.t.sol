@@ -25,13 +25,6 @@ contract YieldDCAForkTest is TestCommon {
 
     UniSwapper swapper;
 
-    address constant admin = address(0x01);
-    address constant keeper = address(0x02);
-
-    address constant alice = address(0x06);
-    address constant bob = address(0x07);
-    address constant carol = address(0x08);
-
     function setUp() public {
         uint256 mainnetFork = vm.createFork(vm.envString("RPC_URL_MAINNET"));
         vm.selectFork(mainnetFork);

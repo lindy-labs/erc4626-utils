@@ -11,6 +11,9 @@ import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 abstract contract TestCommon is Test {
     using FixedPointMathLib for uint256;
 
+    address constant admin = address(0x01);
+    address constant keeper = address(0x02);
+
     address constant alice = address(0x06);
     address constant bob = address(0x07);
     address constant carol = address(0x08);

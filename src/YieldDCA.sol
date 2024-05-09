@@ -8,7 +8,7 @@ import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
-import {AmountZero} from "./common/Errors.sol";
+import {CommonErrors} from "./common/Errors.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
 
 /**
@@ -35,6 +35,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * The implementation focuses on optimizing gas costs and ensuring security through rigorous checks and balances, while accommodating a scalable number of epochs and user deposits.
  */
 contract YieldDCA is ERC721, AccessControl {
+    using CommonErrors for uint256;
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
     using SafeERC20 for IERC20;
@@ -206,7 +207,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @return positionId The ID of the created deposit, represented by an ERC721 token
      */
     function openPosition(uint256 _shares) external returns (uint256 positionId) {
-        _checkAmount(_shares);
+        _shares.checkIsZero();
 
         unchecked {
             positionId = nextPositionId++;
@@ -238,7 +239,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _positionId The ID of the deposit to top up
      */
     function increasePosition(uint256 _shares, uint256 _positionId) external {
-        _checkAmount(_shares);
+        _shares.checkIsZero();
         _checkOwnership(_positionId);
 
         uint256 currentEpoch_ = currentEpoch;
@@ -279,8 +280,8 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _positionId The ID of the deposit from which to withdraw
      */
     function reducePosition(uint256 _shares, uint256 _positionId) external {
+        _shares.checkIsZero();
         _checkOwnership(_positionId);
-        _checkAmount(_shares);
 
         Position storage position_ = positions[_positionId];
         uint256 currentEpoch_ = currentEpoch;
@@ -538,15 +539,12 @@ contract YieldDCA is ERC721, AccessControl {
         return vault.balanceOf(address(this));
     }
 
+    // TODO: remove
     function _convertToAssets(uint256 _shares) internal view returns (uint256) {
         return vault.convertToAssets(_shares);
     }
 
     function _checkOwnership(uint256 _positionId) internal view {
         if (ownerOf(_positionId) != msg.sender) revert CallerNotTokenOwner();
-    }
-
-    function _checkAmount(uint256 _amount) internal pure {
-        if (_amount == 0) revert AmountZero();
     }
 }

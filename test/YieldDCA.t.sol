@@ -38,13 +38,6 @@ contract YieldDCATest is TestCommon {
 
     SwapperMock swapper;
 
-    address constant admin = address(0x01);
-    address constant keeper = address(0x02);
-
-    address constant alice = address(0x06);
-    address constant bob = address(0x07);
-    address constant carol = address(0x08);
-
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
         vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
@@ -324,7 +317,7 @@ contract YieldDCATest is TestCommon {
         uint256 shares = vault.deposit(principal, alice);
         vault.approve(address(yieldDca), shares);
 
-        vm.expectRevert(AmountZero.selector);
+        vm.expectRevert(CommonErrors.AmountZero.selector);
         yieldDca.openPosition(0);
     }
 
@@ -419,7 +412,7 @@ contract YieldDCATest is TestCommon {
     function test_increasePosition_failsIfAmountIsZero() public {
         uint256 depositId = _depositIntoDca(alice, 1 ether);
 
-        vm.expectRevert(AmountZero.selector);
+        vm.expectRevert(CommonErrors.AmountZero.selector);
         vm.prank(alice);
         yieldDca.increasePosition(0, depositId);
     }
@@ -1351,7 +1344,7 @@ contract YieldDCATest is TestCommon {
 
     function test_reducePosition_failsIfNoDepositWasMade() public {
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
-        yieldDca.reducePosition(0, 1);
+        yieldDca.reducePosition(1, 1);
     }
 
     function test_reducePosition_failsIfNotOwner() public {
@@ -1366,7 +1359,7 @@ contract YieldDCATest is TestCommon {
     function test_reducePosition_failsIfAmountIs0() public {
         uint256 depositId = _depositIntoDca(alice, 1 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(AmountZero.selector));
+        vm.expectRevert(abi.encodeWithSelector(CommonErrors.AmountZero.selector));
         vm.prank(alice);
         yieldDca.reducePosition(0, depositId);
     }
