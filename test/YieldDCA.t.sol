@@ -13,7 +13,7 @@ import {IAccessControl} from "openzeppelin-contracts/access/IAccessControl.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
-import "src/common/Errors.sol";
+import "src/common/CommonErrors.sol";
 import {YieldDCA} from "src/YieldDCA.sol";
 import {ISwapper} from "src/interfaces/ISwapper.sol";
 import {SwapperMock} from "./mock/SwapperMock.sol";

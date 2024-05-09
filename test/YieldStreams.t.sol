@@ -17,7 +17,7 @@ import {ERC721} from "solady/tokens/ERC721.sol";
 
 import {TestCommon} from "./common/TestCommon.sol";
 import {YieldStreams} from "src/YieldStreams.sol";
-import "src/common/Errors.sol";
+import "src/common/CommonErrors.sol";
 
 contract YieldStreamsTest is TestCommon {
     using FixedPointMathLib for uint256;

@@ -9,7 +9,7 @@ import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol"
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 
-import {CommonErrors} from "./common/Errors.sol";
+import {CommonErrors} from "./common/CommonErrors.sol";
 
 /**
  * @title YieldStreams

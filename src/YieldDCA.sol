@@ -8,7 +8,7 @@ import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
-import {CommonErrors} from "./common/Errors.sol";
+import {CommonErrors} from "./common/CommonErrors.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
 
 /**
