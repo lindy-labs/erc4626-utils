@@ -4,19 +4,23 @@ pragma solidity ^0.8.19;
 import {CREATE3} from "solmate/utils/CREATE3.sol";
 import {IERC20} from "openzeppelin-contracts/token/ERC20/IERC20.sol";
 
-import {AddressZero, AlreadyDeployed} from "./Errors.sol";
-
+import {CommonErrors} from "./Errors.sol";
 /**
  * @title StreamsFactoryBase
  * @dev A base contract for creating and managing streams contract instances.
  */
+
 abstract contract StreamsFactoryBase {
+    using CommonErrors for address;
+
+    event Deployed(address indexed vault, address indexed deployed);
+
+    error AlreadyDeployed();
+
     /// @dev The addresses of deployed instances.
     address[] public deployedAddresses;
     /// @dev The number of deployed instances.
     uint256 public deployedCount;
-
-    event Deployed(address indexed vault, address indexed deployed);
 
     /**
      * @dev Creates a new instance of the streams contract.
@@ -24,7 +28,7 @@ abstract contract StreamsFactoryBase {
      * @return deployed The address of the deployed streams contract instance.
      */
     function create(address _vault) public virtual returns (address deployed) {
-        _checkZeroAddress(_vault);
+        _vault.checkIsZero();
         if (isDeployed(_vault)) revert AlreadyDeployed();
 
         bytes memory creationCode = _getCreationCode(_vault);
@@ -68,8 +72,4 @@ abstract contract StreamsFactoryBase {
      * @param _vault The address of the vault contract.
      */
     function _getCreationCode(address _vault) internal view virtual returns (bytes memory);
-
-    function _checkZeroAddress(address _address) internal pure {
-        if (_address == address(0)) revert AddressZero();
-    }
 }
