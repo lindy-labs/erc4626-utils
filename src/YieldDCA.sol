@@ -64,22 +64,30 @@ contract YieldDCA is ERC721, AccessControl {
     error AdminAddressZero();
     error InvalidMinYieldPerEpoch();
 
+    // TODO: add DCA where needed?
     error MinEpochDurationNotReached();
     error InsufficientYield();
-    error YieldZero();
+    error NoYield();
     error NoPrincipalDeposited();
     error AmountReceivedTooLow();
     error InsufficientSharesToWithdraw();
     error CallerNotTokenOwner();
+    error NothingToClaim();
 
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
     event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
     event Deposit(address indexed user, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal);
     event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
-    event DCATokensClaimed(address indexed user, uint256 indexed positionId, uint256 dcaTokens, uint256 epoch);
-    // TODO: add keeper
-    event DCAExecuted(uint256 epoch, uint256 yieldSpent, uint256 dcaBought, uint256 dcaPrice, uint256 sharePrice);
+    event DCATokensClaimed(address indexed user, uint256 indexed positionId, uint256 epoch, uint256 dcaTokens);
+    event DCAExecuted(
+        address indexed keeper,
+        uint256 epoch,
+        uint256 yieldSpent,
+        uint256 dcaBought,
+        uint256 dcaPrice,
+        uint256 sharePrice
+    );
 
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
@@ -216,7 +224,7 @@ contract YieldDCA is ERC721, AccessControl {
         _mint(msg.sender, positionId);
 
         uint256 currentEpoch_ = currentEpoch;
-        uint256 principal = _convertToAssets(_shares);
+        uint256 principal = vault.convertToAssets(_shares);
 
         unchecked {
             totalPrincipal += principal;
@@ -238,12 +246,12 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _shares The amount of additional shares to add
      * @param _positionId The ID of the deposit to top up
      */
-    function increasePosition(uint256 _shares, uint256 _positionId) external {
+    function increasePosition(uint256 _positionId, uint256 _shares) external {
         _shares.checkIsZero();
         _checkOwnership(_positionId);
 
         uint256 currentEpoch_ = currentEpoch;
-        uint256 principal = _convertToAssets(_shares);
+        uint256 principal = vault.convertToAssets(_shares);
 
         unchecked {
             totalPrincipal += principal;
@@ -279,7 +287,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _shares The number of shares to withdraw
      * @param _positionId The ID of the deposit from which to withdraw
      */
-    function reducePosition(uint256 _shares, uint256 _positionId) external {
+    function reducePosition(uint256 _positionId, uint256 _shares) external {
         _shares.checkIsZero();
         _checkOwnership(_positionId);
 
@@ -361,16 +369,16 @@ contract YieldDCA is ERC721, AccessControl {
         dcaToken.safeTransfer(msg.sender, actualAmount);
     }
 
-    // TODO: test
-    function claimDCATokens(uint256 _positionId) external {
+    // TODO: check former withdraw tests
+    function claimDCATokens(uint256 _positionId) external returns (uint256 dcaAmount) {
         _checkOwnership(_positionId);
 
         Position storage position_ = positions[_positionId];
         uint256 currentEpoch_ = currentEpoch;
-        (uint256 sharesAvailable, uint256 dcaAmount) = _calculateBalances(position_, currentEpoch_);
+        uint256 sharesAvailable;
+        (sharesAvailable, dcaAmount) = _calculateBalances(position_, currentEpoch_);
 
-        // TODO: error
-        if (dcaAmount == 0) revert YieldZero();
+        if (dcaAmount == 0) revert NothingToClaim();
 
         position_.shares = sharesAvailable;
         position_.epoch = currentEpoch_;
@@ -378,7 +386,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         _transferDcaTokens(dcaAmount);
 
-        emit DCATokensClaimed(msg.sender, _positionId, dcaAmount, currentEpoch_);
+        emit DCATokensClaimed(msg.sender, _positionId, currentEpoch_, dcaAmount);
     }
 
     /**
@@ -400,12 +408,13 @@ contract YieldDCA is ERC721, AccessControl {
      */
     function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
         uint256 totalPrincipal_ = totalPrincipal;
+
         if (totalPrincipal_ == 0) revert NoPrincipalDeposited();
         if (block.timestamp < currentEpochTimestamp + minEpochDuration) revert MinEpochDurationNotReached();
 
         uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal_);
 
-        if (yieldInShares == 0) revert YieldZero();
+        if (yieldInShares == 0) revert NoYield();
 
         vault.redeem(yieldInShares, address(this), address(this));
 
@@ -426,7 +435,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         currentEpochTimestamp = block.timestamp;
 
-        emit DCAExecuted(currentEpoch_, yield, amountOut, dcaPrice, sharePrice);
+        emit DCAExecuted(msg.sender, currentEpoch_, yield, amountOut, dcaPrice, sharePrice);
     }
 
     function _buyDcaToken(uint256 _amountIn, uint256 _dcaAmountOutMin, bytes calldata _swapData)
@@ -462,7 +471,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @return uint256 The total yield available in the vault's underlying asset units
      */
     function getYield() public view returns (uint256) {
-        uint256 assets = _convertToAssets(sharesBalance());
+        uint256 assets = vault.convertToAssets(sharesBalance());
 
         unchecked {
             return assets > totalPrincipal ? assets - totalPrincipal : 0;
@@ -487,20 +496,21 @@ contract YieldDCA is ERC721, AccessControl {
         }
     }
 
-    function _calculateBalances(Position storage _deposit, uint256 _latestEpoch)
+    function _calculateBalances(Position storage _position, uint256 _latestEpoch)
         internal
         view
         returns (uint256 shares, uint256 dcaTokens)
     {
-        if (_deposit.epoch == 0) return (0, 0);
+        if (_position.epoch == 0) return (0, 0);
 
-        shares = _deposit.shares;
-        dcaTokens = _deposit.dcaAmountAtEpoch;
-        uint256 principal = _deposit.principal;
+        shares = _position.shares;
+        dcaTokens = _position.dcaAmountAtEpoch;
+        uint256 principal = _position.principal;
 
         // NOTE: one iteration costs around 2480 gas when called from a non-view function
-        for (uint256 i = _deposit.epoch; i < _latestEpoch;) {
+        for (uint256 i = _position.epoch; i < _latestEpoch;) {
             EpochInfo memory info = epochDetails[i];
+            // save gas on sload
             uint256 sharePrice = info.sharePrice;
 
             unchecked {
@@ -537,11 +547,6 @@ contract YieldDCA is ERC721, AccessControl {
      */
     function sharesBalance() public view returns (uint256) {
         return vault.balanceOf(address(this));
-    }
-
-    // TODO: remove
-    function _convertToAssets(uint256 _shares) internal view returns (uint256) {
-        return vault.convertToAssets(_shares);
     }
 
     function _checkOwnership(uint256 _positionId) internal view {
