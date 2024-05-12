@@ -567,28 +567,45 @@ contract YieldDCATest is TestCommon {
         yieldDca.increasePosition(positionId, shares);
     }
 
-    /// *** #canExecuteDCA *** //
+    /*
+     * --------------------
+     *    #canExecuteDCA
+     * --------------------
+     */
 
-    function test_canExecuteDCA_returnsFalseIfNoPrincipalDeposited() public {
-        assertTrue(!yieldDca.canExecuteDCA());
+    function test_canExecuteDCA_rvertsIfNoPrincipalDeposited() public {
+        vm.expectRevert(YieldDCA.NoPrincipalDeposited.selector);
+        yieldDca.canExecuteDCA();
     }
 
-    function test_canExecuteDCA_returnsFalseIfNotEnoughTimePassed() public {
+    function test_canExecuteDCA_revertsIfNotEnoughTimePassed() public {
         _depositAndOpenPosition(alice, 1 ether);
 
+        // shift time by less than min epoch duration
         _shiftTime(yieldDca.minEpochDuration() - 1);
 
-        assertTrue(!yieldDca.canExecuteDCA());
+        vm.expectRevert(YieldDCA.MinEpochDurationNotReached.selector);
+        yieldDca.canExecuteDCA();
     }
 
-    function test_canExecuteDCA_returnsFalseIfYieldIsBelowMin() public {
+    function test_canExecuteDCA_revertIfNoYieldGenerated() public {
         _depositAndOpenPosition(alice, 1 ether);
 
         _shiftTime(yieldDca.minEpochDuration());
 
-        _generateYield(int256(yieldDca.minYieldPerEpoch() - 1));
+        vm.expectRevert(YieldDCA.NoYield.selector);
+        yieldDca.canExecuteDCA();
+    }
 
-        assertTrue(!yieldDca.canExecuteDCA());
+    function test_canExecuteDCA_revertsIfYieldIsBelowMin() public {
+        _depositAndOpenPosition(alice, 1 ether);
+
+        _shiftTime(yieldDca.minEpochDuration());
+
+        _generateYield(int256(yieldDca.minYieldPerEpoch() - 2));
+
+        vm.expectRevert(YieldDCA.InsufficientYield.selector);
+        yieldDca.canExecuteDCA();
     }
 
     function test_canExecuteDCA_returnsTrueIfAllConditionsMet() public {

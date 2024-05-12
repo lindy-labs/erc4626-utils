@@ -50,7 +50,7 @@ contract YieldDCA is ERC721, AccessControl {
     struct EpochInfo {
         // using uint128s to pack variables and save on sstore/sload since both values are always written/read together
         // dcaPrice and sharePrice are in WAD and represent the result of dividing two uint256s
-        // using uint128s instead of uint256s can only lead to some insignificant precision loss in balances calculation
+        // using uint128s instead of uint256s can potentially lead to overflow issues
         uint128 dcaPrice;
         uint128 sharePrice;
     }
@@ -408,14 +408,23 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     /**
-     * @notice Checks if the conditions are met to execute the DCA strategy for the current epoch
-     * @dev Verifies if there is sufficient principal deposited, the minimum time has elapsed, and the yield threshold is met.
-     * @return bool True if the DCA strategy can be executed, false otherwise
+     * @notice Checks if the conditions are met to execute the DCA strategy for the current epoch.
+     * @dev Meant to be called only off-chain to preview the DCA execution conditions.
+     * @return True if the DCA strategy can be executed, reverts otherwise
      */
-    // TODO: reverts otherwise
     function canExecuteDCA() external view returns (bool) {
-        return totalPrincipal != 0 && block.timestamp >= currentEpochTimestamp + minEpochDuration
-            && getYield() >= totalPrincipal.mulWadDown(minYieldPerEpoch);
+        if (totalPrincipal == 0) revert NoPrincipalDeposited();
+        if (block.timestamp < currentEpochTimestamp + minEpochDuration) revert MinEpochDurationNotReached();
+
+        uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal);
+
+        if (yieldInShares == 0) revert NoYield();
+
+        uint256 yield = vault.previewRedeem(yieldInShares);
+
+        if (yield < totalPrincipal.mulWadDown(minYieldPerEpoch)) revert InsufficientYield();
+
+        return true;
     }
 
     /**
