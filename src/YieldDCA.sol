@@ -74,12 +74,24 @@ contract YieldDCA is ERC721, AccessControl {
     error CallerNotTokenOwner();
     error NothingToClaim();
 
+    event PositionOpened(
+        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+    );
+    event PositionIncreased(
+        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+    );
+    event PositionReduced(
+        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+    );
+    // TODO: should last param be dcaTokens?
+    event PositionClosed(
+        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 dcaTokens
+    );
+    event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 dcaTokens);
+
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
     event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
-    event Deposit(address indexed user, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal);
-    event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
-    event DCATokensClaimed(address indexed user, uint256 indexed positionId, uint256 epoch, uint256 dcaTokens);
     event DCAExecuted(
         address indexed keeper,
         uint256 epoch,
@@ -237,7 +249,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         vault.safeTransferFrom(msg.sender, address(this), _shares);
 
-        emit Deposit(msg.sender, positionId, _shares, principal, currentEpoch_);
+        emit PositionOpened(msg.sender, positionId, currentEpoch_, _shares, principal);
     }
 
     /**
@@ -272,9 +284,9 @@ contract YieldDCA is ERC721, AccessControl {
             position_.epoch = currentEpoch_;
         }
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
+        emit PositionIncreased(msg.sender, _positionId, currentEpoch_, _shares, principal);
 
-        emit Deposit(msg.sender, _positionId, _shares, principal, currentEpoch_);
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     // NOTE: uses around 610k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
@@ -295,35 +307,41 @@ contract YieldDCA is ERC721, AccessControl {
         uint256 currentEpoch_ = currentEpoch;
         (uint256 sharesAvailable, uint256 dcaAmount) = _calculateBalances(position_, currentEpoch_);
 
-        // the position be closed if all shares are withdrawn
+        // the position will be closed if all shares are withdrawn
         if (_shares != sharesAvailable) {
-            _reducePosition(position_, _shares, sharesAvailable, dcaAmount);
+            _reducePosition(position_, _positionId, currentEpoch_, _shares, sharesAvailable, dcaAmount);
         } else {
             _closePosition(_positionId, position_.principal, sharesAvailable, dcaAmount);
         }
     }
 
-    function _reducePosition(Position storage position_, uint256 _shares, uint256 sharesAvailable, uint256 dcaAmount)
-        internal
-    {
-        if (_shares > sharesAvailable) revert InsufficientSharesToWithdraw();
+    function _reducePosition(
+        Position storage position_,
+        uint256 _positionId,
+        uint256 _epoch,
+        uint256 _shares,
+        uint256 _sharesAvailable,
+        uint256 _dcaAmount
+    ) internal returns (uint256 principalReduction) {
+        if (_shares > _sharesAvailable) revert InsufficientSharesToWithdraw();
 
-        uint256 principalValue = position_.principal.mulDivDown(_shares, sharesAvailable);
+        principalReduction = position_.principal.mulDivDown(_shares, _sharesAvailable);
 
         unchecked {
             // cannot underflow because sharesAvailable > _shares
-            position_.principal -= principalValue;
-            position_.shares = sharesAvailable - _shares;
+            position_.principal -= principalReduction;
+            position_.shares = _sharesAvailable - _shares;
         }
 
-        position_.epoch = currentEpoch;
-        position_.dcaAmountAtEpoch = dcaAmount;
+        position_.epoch = _epoch;
+        position_.dcaAmountAtEpoch = _dcaAmount;
 
-        totalPrincipal -= principalValue;
+        totalPrincipal -= principalReduction;
 
+        // TODO: check event emmision on rounding errors
         _transferShares(_shares);
 
-        emit Withdraw(msg.sender, currentEpoch, principalValue, _shares, 0);
+        emit PositionReduced(msg.sender, _positionId, _epoch, _shares, principalReduction);
     }
 
     /**
@@ -352,7 +370,7 @@ contract YieldDCA is ERC721, AccessControl {
         // TODO: check event emmision on rounding errors
         _transferDcaTokens(_dcaAmount);
 
-        emit Withdraw(msg.sender, currentEpoch, _principal, _shares, _dcaAmount);
+        emit PositionClosed(msg.sender, _positionId, currentEpoch, _shares, _dcaAmount);
     }
 
     function _transferShares(uint256 _shares) internal returns (uint256 actualShares) {
@@ -394,6 +412,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @dev Verifies if there is sufficient principal deposited, the minimum time has elapsed, and the yield threshold is met.
      * @return bool True if the DCA strategy can be executed, false otherwise
      */
+    // TODO: reverts otherwise
     function canExecuteDCA() external view returns (bool) {
         return totalPrincipal != 0 && block.timestamp >= currentEpochTimestamp + minEpochDuration
             && getYield() >= totalPrincipal.mulWadDown(minYieldPerEpoch);

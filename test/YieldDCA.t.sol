@@ -22,11 +22,23 @@ import {TestCommon} from "./common/TestCommon.sol";
 contract YieldDCATest is TestCommon {
     using FixedPointMathLib for uint256;
 
+    event PositionOpened(
+        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+    );
+    event PositionIncreased(
+        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+    );
+    event PositionReduced(
+        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+    );
+    // TODO: should last param be dcaTokens?
+    event PositionClosed(
+        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 dcaTokens
+    );
+    event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 dcaTokens);
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
     event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
-    event Deposit(address indexed user, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal);
-    event Withdraw(address indexed user, uint256 epoch, uint256 principal, uint256 shares, uint256 dcaTokens);
     event DCAExecuted(
         address indexed keeper,
         uint256 epoch,
@@ -62,7 +74,11 @@ contract YieldDCATest is TestCommon {
         deal(address(asset), address(vault), 2e18);
     }
 
-    /// *** #constructor *** //
+    /*
+     * --------------------
+     *    #constructor
+     * --------------------
+     */
 
     function test_constructor_initialState() public {
         assertEq(address(yieldDca.dcaToken()), address(dcaToken), "dca token");
@@ -129,7 +145,11 @@ contract YieldDCATest is TestCommon {
         assertTrue(!yieldDca.supportsInterface(type(IERC721Receiver).interfaceId), "shouldn't support IERC721Receiver");
     }
 
-    /// *** #setSwapper *** //
+    /*
+     * --------------------
+     *     #setSwapper
+     * --------------------
+     */
 
     function test_setSwapper_failsIfCallerIsNotAdmin() public {
         vm.expectRevert(
@@ -194,7 +214,11 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(dcaToken.balanceOf(address(yieldDca)), 1e18, 5, "dca token balance");
     }
 
-    /// *** #setMinEpochDuration *** //
+    /*
+     * --------------------
+     *  #setMinEpochDuration
+     * --------------------
+     */
 
     function test_setMinEpochDuration_failsIfCallerIsNotAdmin() public {
         vm.expectRevert(
@@ -242,7 +266,11 @@ contract YieldDCATest is TestCommon {
         yieldDca.setMinEpochDuration(invalidInterval);
     }
 
-    /// *** #setMinYieldPerEpoch *** ///
+    /*
+     * --------------------
+     *  #setMinYieldPerEpoch
+     * --------------------
+     */
 
     function test_setMinYieldPerEpoch_failsIfCallerIsNotAdmin() public {
         vm.expectRevert(
@@ -290,41 +318,43 @@ contract YieldDCATest is TestCommon {
         yieldDca.setMinYieldPerEpoch(newYield);
     }
 
-    /// *** #openPosition *** //
+    /*
+     * --------------------
+     *    #openPosition
+     * --------------------
+     */
 
-    function test_openPosition_transfersSharesToDcaContract() public {
-        uint256 principal = 1 ether;
-        asset.mint(alice, principal);
+    function test_openPosition_failsIfAmountIsZero() public {
+        uint256 shares = _depositToVault(alice, 1 ether);
 
         vm.startPrank(alice);
-        asset.approve(address(vault), principal);
-        uint256 shares = vault.deposit(principal, alice);
         vault.approve(address(yieldDca), shares);
 
-        yieldDca.openPosition(shares);
-        vm.stopPrank();
+        vm.expectRevert(CommonErrors.AmountZero.selector);
+        yieldDca.openPosition(0);
+    }
+
+    function test_openPosition_transfersSharesAndMitnsNft() public {
+        uint256 principal = 1 ether;
+        uint256 shares = _depositToVault(alice, principal);
+
+        vm.startPrank(alice);
+        vault.approve(address(yieldDca), shares);
+
+        uint256 positionId = yieldDca.openPosition(shares);
+
+        assertEq(positionId, 1, "token id");
+        assertEq(yieldDca.ownerOf(positionId), alice, "owner");
+        assertEq(yieldDca.balanceOf(alice), 1, "nft balance of");
 
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
         assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
 
         (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(1);
-        assertEq(balance, shares, "alice's balance");
-        assertEq(dcaBalance, 0, "alice's dca balance");
-        assertEq(yieldDca.totalPrincipal(), principal, "total principal deposited");
+        assertEq(balance, shares, "alice's contract balance");
+        assertEq(dcaBalance, 0, "alice's contract dca balance");
+        assertEq(yieldDca.totalPrincipal(), principal, "contract's total principal");
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
-    }
-
-    function test_openPosition_failsIfAmountIsZero() public {
-        uint256 principal = 1 ether;
-        asset.mint(alice, principal);
-
-        vm.startPrank(alice);
-        asset.approve(address(vault), principal);
-        uint256 shares = vault.deposit(principal, alice);
-        vault.approve(address(yieldDca), shares);
-
-        vm.expectRevert(CommonErrors.AmountZero.selector);
-        yieldDca.openPosition(0);
     }
 
     function test_openPosition_emitsEvent() public {
@@ -343,67 +373,71 @@ contract YieldDCATest is TestCommon {
         assertEq(nextPositionId, 2, "next token id");
 
         vm.expectEmit(true, true, true, true);
-        emit Deposit(alice, nextPositionId, shares, principal, 1);
+        emit PositionOpened(alice, nextPositionId, yieldDca.currentEpoch(), shares, principal);
 
         yieldDca.openPosition(shares);
         vm.stopPrank();
     }
 
-    function test_openPosition_mintsNft() public {
+    function test_openPosition_correctlyMintsNftsForDifferentUsers() public {
         uint256 principal = 1 ether;
+        uint256 shares = _depositToVault(alice, principal);
 
         vm.startPrank(alice);
-        asset.mint(alice, principal);
-        asset.approve(address(vault), principal);
-        uint256 shares = vault.deposit(principal, alice);
         vault.approve(address(yieldDca), shares);
 
         uint256 positionId = yieldDca.openPosition(shares);
         vm.stopPrank();
 
-        assertEq(positionId, 1, "token id");
-        assertEq(yieldDca.ownerOf(positionId), alice, "owner");
+        assertEq(positionId, 1, "alice's token id");
+        assertEq(yieldDca.ownerOf(positionId), alice, "owner of alice's token");
+        (uint256 sharesBalance,) = yieldDca.balancesOf(positionId);
+        assertEq(shares, sharesBalance, "alice's contract balance");
+
+        uint256 bobPrincipal = 2 ether;
+        uint256 bobShares = _depositToVault(bob, bobPrincipal);
 
         vm.startPrank(bob);
-        asset.mint(bob, principal);
-        asset.approve(address(vault), principal);
-        shares = vault.deposit(principal, bob);
-        vault.approve(address(yieldDca), shares);
+        vault.approve(address(yieldDca), bobShares);
 
-        positionId = yieldDca.openPosition(shares);
+        positionId = yieldDca.openPosition(bobShares);
         vm.stopPrank();
 
-        assertEq(positionId, 2, "2nd token id");
-        assertEq(yieldDca.ownerOf(positionId), bob, "2nd owner");
+        assertEq(positionId, 2, "bob's token id");
+        assertEq(yieldDca.ownerOf(positionId), bob, "owner of bob's token");
+        (sharesBalance,) = yieldDca.balancesOf(positionId);
+        assertEq(bobShares, sharesBalance, "bob's contract balance");
     }
 
-    function test_openPosition_multipleDepositsFromSameUserAreSeparated() public {
+    function test_openPosition_oneUserCanOpenMultiplePositions() public {
         uint256 principal = 1 ether;
+        uint256 shares = _depositToVault(alice, principal);
 
         vm.startPrank(alice);
-        asset.mint(alice, principal);
-        asset.approve(address(vault), principal);
-        uint256 shares = vault.deposit(principal, alice);
         vault.approve(address(yieldDca), shares);
 
         uint256 positionId = yieldDca.openPosition(shares);
+        vm.stopPrank();
 
         assertEq(positionId, 1, "token id");
         assertEq(yieldDca.ownerOf(positionId), alice, "owner");
 
-        asset.mint(alice, principal);
-        asset.approve(address(vault), principal);
-        shares = vault.deposit(principal, alice);
-        vault.approve(address(yieldDca), shares);
+        uint256 secondShares = _depositToVault(alice, 2 ether);
+        vm.startPrank(alice);
+        vault.approve(address(yieldDca), secondShares);
 
-        positionId = yieldDca.openPosition(shares);
+        positionId = yieldDca.openPosition(secondShares);
         vm.stopPrank();
 
         assertEq(positionId, 2, "2nd token id");
         assertEq(yieldDca.ownerOf(positionId), alice, "2nd owner");
     }
 
-    /// *** #increasePosition *** //
+    /*
+     * --------------------
+     *  #increasePosition
+     * --------------------
+     */
 
     function test_increasePosition_failsIfCallerIsNotTokenOwner() public {
         uint256 principal = 1 ether;
@@ -491,7 +525,6 @@ contract YieldDCATest is TestCommon {
         assertEq(balance, vault.convertToShares(principal), "alice's balance");
         assertEq(dcaBalance, expectedDcaAmount, "alice's dca balance");
 
-        // repeat the deposit with same principal amount
         uint256 firstTopUp = 3 ether;
         _topUp(alice, firstTopUp, positionId);
 
@@ -504,7 +537,6 @@ contract YieldDCATest is TestCommon {
 
         expectedDcaAmount += 2 ether;
 
-        // repeat the deposit with different principal amount
         uint256 secondTopUp = 2 ether;
         _topUp(alice, secondTopUp, positionId);
 
@@ -530,7 +562,7 @@ contract YieldDCATest is TestCommon {
         vault.approve(address(yieldDca), shares);
 
         vm.expectEmit(true, true, true, true);
-        emit Deposit(alice, positionId, shares, topUpAmount, 2);
+        emit PositionIncreased(alice, positionId, yieldDca.currentEpoch(), shares, topUpAmount);
 
         yieldDca.increasePosition(positionId, shares);
     }
@@ -572,7 +604,11 @@ contract YieldDCATest is TestCommon {
         assertTrue(yieldDca.canExecuteDCA());
     }
 
-    /// *** #executeDCA *** //
+    /*
+     * --------------------
+     *     #executeDCA
+     * --------------------
+     */
 
     function test_executeDCA_failsIfCallerIsNotKeeper() public {
         vm.expectRevert(
@@ -1352,11 +1388,18 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca token balance");
     }
 
-    /// *** #reducePosition *** //
+    /*
+     * --------------------
+     *   #reducePosition
+     * --------------------
+     */
 
-    function test_reducePosition_failsIfNoDepositWasMade() public {
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
-        yieldDca.reducePosition(1, 1);
+    function test_reducePosition_failsIfInvalidPositionId() public {
+        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 2));
+        vm.prank(alice);
+        yieldDca.reducePosition(positionId + 1, 1);
     }
 
     function test_reducePosition_failsIfNotOwner() public {
@@ -1377,8 +1420,9 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_reducePosition_failsIfTryingToWithdrawMoreThanAvaiable() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
-        uint256 shares = vault.convertToShares(1 ether);
+        uint256 principal = 1 ether;
+        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 shares = vault.convertToShares(principal);
 
         vm.expectRevert(YieldDCA.InsufficientSharesToWithdraw.selector);
         vm.prank(alice);
@@ -1390,17 +1434,17 @@ contract YieldDCATest is TestCommon {
         uint256 shares = vault.convertToShares(principal);
         uint256 positionId = _depositAndOpenPosition(alice, principal);
 
-        uint256 toWithdraw = _getSharesBalanceInDcaFor(1);
         vm.prank(alice);
-        yieldDca.reducePosition(positionId, toWithdraw);
+        yieldDca.reducePosition(positionId, shares / 2);
 
-        assertEq(vault.balanceOf(alice), shares, "alice's balance");
-        assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
+        assertEq(yieldDca.balanceOf(alice), 1, "token burned");
+        assertEq(vault.balanceOf(alice), shares / 2, "alice's balance");
+        assertEq(vault.balanceOf(address(yieldDca)), shares / 2, "contract's balance");
 
         (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(1);
-        assertEq(balance, 0, "alice's balance");
+        assertEq(balance, shares / 2, "alice's balance");
         assertEq(dcaBalance, 0, "alice's dca balance");
-        assertEq(yieldDca.totalPrincipal(), 0, "total principal deposited");
+        assertEq(yieldDca.totalPrincipal(), principal / 2, "total principal deposited");
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
     }
 
@@ -1481,7 +1525,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _depositAndOpenPosition(alice, principal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
@@ -1492,7 +1536,7 @@ contract YieldDCATest is TestCommon {
         // step 4 - alice withdraws 1/2 principal
         uint256 toWithdraw = vault.convertToShares(principal / 2);
         vm.prank(alice);
-        yieldDca.reducePosition(1, toWithdraw);
+        yieldDca.reducePosition(positionId, toWithdraw);
 
         assertEq(vault.balanceOf(alice), toWithdraw, "alice's balance");
         assertEq(dcaToken.balanceOf(alice), 0, "alice's dca balance");
@@ -1512,13 +1556,13 @@ contract YieldDCATest is TestCommon {
         // step 7 - withdraw remaining 0.5 ether
         toWithdraw = vault.convertToShares(principal / 2);
         vm.prank(alice);
-        yieldDca.reducePosition(1, toWithdraw);
+        yieldDca.reducePosition(positionId, toWithdraw);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 4.5e18, 0.00001e18, "alice's dca balance after");
         // after withdrawing remaining 0.5 ether, alice's balance should be 1.5 ether
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 1.5 ether, 1, "alice's principal after");
 
-        (balance, dcaBalance) = yieldDca.balancesOf(1);
+        (balance, dcaBalance) = yieldDca.balancesOf(positionId);
         assertEq(balance, 0, "alice's balance after");
         assertEq(dcaBalance, 0, "alice's dca balance");
 
@@ -1526,7 +1570,7 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca balance after");
     }
 
-    function test_reducePosition_emitsEvent() public {
+    function test_reducePosition_emitsPositionReducedEvent() public {
         uint256 principal = 1 ether;
         _depositAndOpenPosition(alice, principal);
 
@@ -1539,30 +1583,32 @@ contract YieldDCATest is TestCommon {
         uint256 principalToWithdraw = vault.convertToAssets(toWithdraw) - 1; // -1 to account for rounding error
 
         vm.expectEmit(true, true, true, true);
-        emit Withdraw(alice, 2, principalToWithdraw, toWithdraw, 0);
+        emit PositionReduced(alice, 1, yieldDca.currentEpoch(), toWithdraw, principalToWithdraw);
 
         vm.prank(alice);
         yieldDca.reducePosition(1, toWithdraw);
     }
 
-    // TODO: change when event is added
-    function test_reducePosition_emitsClosedEventIfWithdrawingAll() public {
-        uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+    function test_reducePosition_emitsPositionClosedEventIfWithdrawingAll() public {
+        _depositAndOpenPosition(alice, 1 ether);
 
         _generateYield(0.5e18);
         _executeDcaAtExchangeRate(5e18);
 
-        (uint256 toWithdraw,) = yieldDca.balancesOf(1);
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(1);
 
         vm.expectEmit(true, true, true, true);
-        emit Withdraw(alice, 2, principal, toWithdraw, 2.5e18);
+        emit PositionClosed(alice, 1, yieldDca.currentEpoch(), shares, dcaAmount);
 
         vm.prank(alice);
-        yieldDca.reducePosition(1, toWithdraw);
+        yieldDca.reducePosition(1, shares);
     }
 
-    /// *** #closePosition *** //
+    /*
+     * --------------------
+     *   #closePosition
+     * --------------------
+     */
 
     function test_closePosition_failsIfPositionDoesNotExist() public {
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
@@ -1617,23 +1663,27 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
     }
 
-    // function test_closePosition_emitsEvent() public {
-    //     uint256 principal = 1 ether;
-    //     uint256 positionId = _depositAndOpenPosition(alice, principal);
+    function test_closePosition_emitsEvent() public {
+        uint256 principal = 1 ether;
+        uint256 positionId = _depositAndOpenPosition(alice, principal);
 
-    //     _generateYield(0.5e18);
-    //     _executeDcaAtExchangeRate(5e18);
+        _generateYield(0.5e18);
+        _executeDcaAtExchangeRate(5e18);
 
-    //     vm.expectEmit(true, true, true, true);
-    //     emit Withdraw(alice, 2, principal, vault.convertToShares(principal), 0);
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
-    //     vm.prank(alice);
-    //     yieldDca.closePosition(positionId);
-    // }
+        vm.expectEmit(true, true, true, true);
+        emit PositionClosed(alice, positionId, yieldDca.currentEpoch(), shares, dcaAmount);
 
-    // TODO: emits event
+        vm.prank(alice);
+        yieldDca.closePosition(positionId);
+    }
 
-    /// *** #claimDCATokens *** //
+    /*
+     * --------------------
+     *   #claimDCATokens
+     * --------------------
+     */
 
     function test_claimDCATokens_failsIfPositionDoesNotExist() public {
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
@@ -1648,7 +1698,7 @@ contract YieldDCATest is TestCommon {
         yieldDca.claimDCATokens(positionId);
     }
 
-    function test_claimDCATokens_failsIfNoDCAIsAvailable() public {
+    function test_claimDCATokens_failsIfNothingToClaim() public {
         uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
@@ -1676,6 +1726,11 @@ contract YieldDCATest is TestCommon {
         (uint256 sharesAfterClaim, uint256 dcaAmountAfterClaim) = yieldDca.balancesOf(positionId);
         assertEq(sharesAfterClaim, sharesRemaining, "alice's position balance");
         assertEq(dcaAmountAfterClaim, 0, "alice's position dca balance");
+
+        // claim again should fail
+        vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
+        vm.prank(alice);
+        yieldDca.claimDCATokens(positionId);
     }
 
     function test_claimDCATokens_worksInConsequtiveEpochs() public {
@@ -1711,9 +1766,27 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaAmountAfterClaim, 0, "alice's position dca balance");
     }
 
-    // TODO: emit event
+    function test_claimDCATokens_emitsEvent() public {
+        uint256 principal = 1 ether;
+        uint256 positionId = _depositAndOpenPosition(alice, principal);
 
-    /// *** #transfer *** //
+        _generateYield(0.5e18);
+        _executeDcaAtExchangeRate(5e18);
+
+        (, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
+
+        vm.expectEmit(true, true, true, true);
+        emit DCATokensClaimed(alice, positionId, yieldDca.currentEpoch(), dcaAmount);
+
+        vm.prank(alice);
+        yieldDca.claimDCATokens(positionId);
+    }
+
+    /*
+     * --------------------
+     *     #transfer
+     * --------------------
+     */
 
     function test_transfer_changesOwner() public {
         uint256 principal = 1 ether;
@@ -1740,7 +1813,11 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca balance");
     }
 
-    /// *** helper functions *** ///
+    /*
+     * --------------------
+     *   helper functions
+     * --------------------
+     */
 
     function _depositAndOpenPosition(address _account, uint256 _amount) public returns (uint256 positionId) {
         uint256 shares = _depositToVault(IERC4626(address(vault)), _account, _amount);
@@ -1751,6 +1828,10 @@ contract YieldDCATest is TestCommon {
         positionId = yieldDca.openPosition(shares);
 
         vm.stopPrank();
+    }
+
+    function _depositToVault(address _account, uint256 _amount) public returns (uint256 shares) {
+        return _depositToVault(IERC4626(address(vault)), _account, _amount);
     }
 
     function _topUp(address _account, uint256 _amount, uint256 _positionId) public {
