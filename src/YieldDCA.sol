@@ -55,24 +55,6 @@ contract YieldDCA is ERC721, AccessControl {
         uint128 sharePrice;
     }
 
-    error DCATokenAddressZero();
-    error VaultAddressZero();
-    error SwapperAddressZero();
-    error DCATokenSameAsVaultAsset();
-    error InvalidDCAInterval();
-    error KeeperAddressZero();
-    error AdminAddressZero();
-    error InvalidMinYieldPerEpoch();
-
-    error MinEpochDurationNotReached();
-    error InsufficientYield();
-    error NoYield();
-    error NoPrincipalDeposited();
-    error AmountReceivedTooLow();
-    error InsufficientSharesToWithdraw();
-    error CallerNotTokenOwner();
-    error NothingToClaim();
-
     event PositionOpened(
         address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
     );
@@ -82,7 +64,6 @@ contract YieldDCA is ERC721, AccessControl {
     event PositionReduced(
         address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
     );
-    // TODO: should last param be dcaTokens?
     event PositionClosed(
         address indexed caller,
         uint256 indexed positionId,
@@ -105,10 +86,28 @@ contract YieldDCA is ERC721, AccessControl {
         uint256 sharePrice
     );
 
+    error DCATokenAddressZero();
+    error VaultAddressZero();
+    error SwapperAddressZero();
+    error DCATokenSameAsVaultAsset();
+    error InvalidDCAInterval();
+    error KeeperAddressZero();
+    error AdminAddressZero();
+    error InvalidMinYieldPerEpoch();
+
+    error MinEpochDurationNotReached();
+    error InsufficientYield();
+    error NoYield();
+    error NoPrincipalDeposited();
+    error AmountReceivedTooLow();
+    error InsufficientSharesToWithdraw();
+    error CallerNotTokenOwner();
+    error NothingToClaim();
+
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
-    uint256 public constant MIN_DCA_INTERVAL_LOWER_BOUND = 1 weeks;
-    uint256 public constant MIN_DCA_INTERVAL_UPPER_BOUND = 10 weeks;
+    uint256 public constant EPOCH_DURATION_LOWER_BOUND = 1 weeks;
+    uint256 public constant EPOCH_DURATION_UPPER_BOUND = 10 weeks;
     uint256 public constant MIN_YIELD_PER_EPOCH_LOWER_BOUND = 0.0001e18; // 0.01%
     uint256 public constant MIN_YIELD_PER_EPOCH_UPPER_BOUND = 0.01e18; // 1%
 
@@ -116,18 +115,18 @@ contract YieldDCA is ERC721, AccessControl {
     IERC4626 public immutable vault;
     ISwapper public swapper;
 
-    /// @dev The minimum interval between executing the DCA strategy (epoch duration)
-    uint256 public minEpochDuration = 2 weeks;
-    /// @dev The minimum yield required to execute the DCA strategy in an epoch
-    uint256 public minYieldPerEpoch = 0.001e18; // 0.1%
     uint256 public currentEpoch = 1; // starts from 1
     uint256 public currentEpochTimestamp = block.timestamp;
+    /// @dev The minimum interval between executing the DCA strategy (epoch duration)
+    uint256 public epochDuration = 2 weeks;
+    /// @dev The minimum yield required to execute the DCA strategy in an epoch
+    uint256 public minYieldPerEpoch = 0.001e18; // 0.1%
 
     mapping(uint256 => EpochInfo) public epochDetails;
 
     uint256 public nextPositionId = 1;
-    uint256 public totalPrincipal;
     mapping(uint256 => Position) public positions;
+    uint256 public totalPrincipal;
 
     constructor(
         IERC20 _dcaToken,
@@ -148,7 +147,7 @@ contract YieldDCA is ERC721, AccessControl {
         vault = _vault;
         swapper = _swapper;
 
-        _setMinEpochDuration(_minEpochDuration);
+        _setEpochDuration(_minEpochDuration);
 
         IERC20(vault.asset()).forceApprove(address(_swapper), type(uint256).max);
 
@@ -193,20 +192,20 @@ contract YieldDCA is ERC721, AccessControl {
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The duration must be between defined upper and lower bounds. Emits the DCAIntervalUpdated event.
      * @param _duration The new minimum duration in seconds
      */
-    function setMinEpochDuration(uint256 _duration) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setMinEpochDuration(_duration);
+    function setEpochDuration(uint256 _duration) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setEpochDuration(_duration);
 
         emit DCAIntervalUpdated(msg.sender, _duration);
 
-        minEpochDuration = _duration;
+        epochDuration = _duration;
     }
 
-    function _setMinEpochDuration(uint256 _duration) internal {
-        if (_duration < MIN_DCA_INTERVAL_LOWER_BOUND || _duration > MIN_DCA_INTERVAL_UPPER_BOUND) {
+    function _setEpochDuration(uint256 _duration) internal {
+        if (_duration < EPOCH_DURATION_LOWER_BOUND || _duration > EPOCH_DURATION_UPPER_BOUND) {
             revert InvalidDCAInterval();
         }
 
-        minEpochDuration = _duration;
+        epochDuration = _duration;
     }
 
     /**
@@ -418,7 +417,7 @@ contract YieldDCA is ERC721, AccessControl {
      */
     function canExecuteDCA() external view returns (bool) {
         if (totalPrincipal == 0) revert NoPrincipalDeposited();
-        if (block.timestamp < currentEpochTimestamp + minEpochDuration) revert MinEpochDurationNotReached();
+        if (block.timestamp < currentEpochTimestamp + epochDuration) revert MinEpochDurationNotReached();
 
         uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal);
 
@@ -442,7 +441,7 @@ contract YieldDCA is ERC721, AccessControl {
         uint256 totalPrincipal_ = totalPrincipal;
 
         if (totalPrincipal_ == 0) revert NoPrincipalDeposited();
-        if (block.timestamp < currentEpochTimestamp + minEpochDuration) revert MinEpochDurationNotReached();
+        if (block.timestamp < currentEpochTimestamp + epochDuration) revert MinEpochDurationNotReached();
 
         uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal_);
 

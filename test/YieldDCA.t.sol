@@ -211,7 +211,7 @@ contract YieldDCATest is TestCommon {
 
         // dca - buy 1 DCA tokens for 0.5 yield
         newSwapper.setExchangeRate(2e18);
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -221,11 +221,11 @@ contract YieldDCATest is TestCommon {
 
     /*
      * --------------------
-     *  #setMinEpochDuration
+     *  #setEpochDuration
      * --------------------
      */
 
-    function test_setMinEpochDuration_failsIfCallerIsNotAdmin() public {
+    function test_setEpochDuration_failsIfCallerIsNotAdmin() public {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, alice, yieldDca.DEFAULT_ADMIN_ROLE()
@@ -233,42 +233,42 @@ contract YieldDCATest is TestCommon {
         );
 
         vm.prank(alice);
-        yieldDca.setMinEpochDuration(1 weeks);
+        yieldDca.setEpochDuration(1 weeks);
     }
 
-    function test_setMinEpochDuration_updatesDcaInterval() public {
+    function test_setEpochDuration_updatesDcaInterval() public {
         uint256 newInterval = 2 weeks;
 
         vm.prank(admin);
-        yieldDca.setMinEpochDuration(newInterval);
+        yieldDca.setEpochDuration(newInterval);
 
-        assertEq(yieldDca.minEpochDuration(), newInterval);
+        assertEq(yieldDca.epochDuration(), newInterval);
     }
 
-    function test_setMinEpochDuration_emitsEvent() public {
+    function test_setEpochDuration_emitsEvent() public {
         uint256 newInterval = 3 weeks;
 
         vm.expectEmit(true, true, true, true);
         emit DCAIntervalUpdated(admin, newInterval);
 
         vm.prank(admin);
-        yieldDca.setMinEpochDuration(newInterval);
+        yieldDca.setEpochDuration(newInterval);
     }
 
-    function test_setMinEpochDuration_failsIfIntervalIsBelowLowerBound() public {
-        uint256 invalidInterval = yieldDca.MIN_DCA_INTERVAL_LOWER_BOUND() - 1;
+    function test_setEpochDuration_failsIfIntervalIsBelowLowerBound() public {
+        uint256 invalidInterval = yieldDca.EPOCH_DURATION_LOWER_BOUND() - 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.InvalidDCAInterval.selector);
-        yieldDca.setMinEpochDuration(invalidInterval);
+        yieldDca.setEpochDuration(invalidInterval);
     }
 
-    function test_setMinEpochDuration_failsIfIntervalIsAboveUpperBound() public {
-        uint256 invalidInterval = yieldDca.MIN_DCA_INTERVAL_UPPER_BOUND() + 1;
+    function test_setEpochDuration_failsIfIntervalIsAboveUpperBound() public {
+        uint256 invalidInterval = yieldDca.EPOCH_DURATION_UPPER_BOUND() + 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.InvalidDCAInterval.selector);
-        yieldDca.setMinEpochDuration(invalidInterval);
+        yieldDca.setEpochDuration(invalidInterval);
     }
 
     /*
@@ -587,7 +587,7 @@ contract YieldDCATest is TestCommon {
         _depositAndOpenPosition(alice, 1 ether);
 
         // shift time by less than min epoch duration
-        _shiftTime(yieldDca.minEpochDuration() - 1);
+        _shiftTime(yieldDca.epochDuration() - 1);
 
         vm.expectRevert(YieldDCA.MinEpochDurationNotReached.selector);
         yieldDca.canExecuteDCA();
@@ -596,7 +596,7 @@ contract YieldDCATest is TestCommon {
     function test_canExecuteDCA_revertIfNoYieldGenerated() public {
         _depositAndOpenPosition(alice, 1 ether);
 
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         vm.expectRevert(YieldDCA.NoYield.selector);
         yieldDca.canExecuteDCA();
@@ -605,7 +605,7 @@ contract YieldDCATest is TestCommon {
     function test_canExecuteDCA_revertsIfYieldIsBelowMin() public {
         _depositAndOpenPosition(alice, 1 ether);
 
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         _generateYield(int256(yieldDca.minYieldPerEpoch() - 2));
 
@@ -618,7 +618,7 @@ contract YieldDCATest is TestCommon {
         _depositAndOpenPosition(alice, 1 ether);
 
         // dca interval passed
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         // yield >= min yield
         _generateYield(int256(yieldDca.minYieldPerEpoch()));
@@ -646,7 +646,7 @@ contract YieldDCATest is TestCommon {
     function test_executeDCA_failsIfNotEnoughTimeHasPassed() public {
         _depositAndOpenPosition(alice, 1 ether);
 
-        _shiftTime(yieldDca.minEpochDuration() - 1);
+        _shiftTime(yieldDca.epochDuration() - 1);
 
         vm.expectRevert(YieldDCA.MinEpochDurationNotReached.selector);
 
@@ -663,7 +663,7 @@ contract YieldDCATest is TestCommon {
         // send shares directly to the yieldDca contract
         vault.transfer(address(yieldDca), shares);
 
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
         assertEq(yieldDca.totalPrincipal(), 0, "total principal deposited");
@@ -677,7 +677,7 @@ contract YieldDCATest is TestCommon {
     function test_executeDCA_failsIfYieldIsZero() public {
         _depositAndOpenPosition(alice, 1 ether);
 
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         vm.expectRevert(YieldDCA.NoYield.selector);
 
@@ -688,7 +688,7 @@ contract YieldDCATest is TestCommon {
     function test_executeDCA_failsIfYieldIsNegative() public {
         _depositAndOpenPosition(alice, 1 ether);
 
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         uint256 totalAssets = vault.totalAssets();
         // remove 10% of total assets
@@ -705,7 +705,7 @@ contract YieldDCATest is TestCommon {
         uint256 principal = 1 ether;
         _depositAndOpenPosition(alice, principal);
 
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
         swapper.setExchangeRate(2e18);
 
         _generateYield(int256(yieldDca.minYieldPerEpoch() - 2));
@@ -719,7 +719,7 @@ contract YieldDCATest is TestCommon {
     function test_executeDCA_failsIfAmountReceivedIsBelowMin() public {
         _depositAndOpenPosition(alice, 1 ether);
 
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
         _generateYield(1e18);
 
         uint256 expectedToReceive = 2 ether;
@@ -754,7 +754,7 @@ contract YieldDCATest is TestCommon {
         uint256 currentEpoch = yieldDca.currentEpoch();
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -797,7 +797,7 @@ contract YieldDCATest is TestCommon {
         uint256 currentEpoch = yieldDca.currentEpoch();
         uint256 exchangeRate = 5e18;
         swapper.setExchangeRate(exchangeRate);
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         uint256 expectedYield = principal.mulWadDown(yieldPct) + 1; // 1 is the rounding error
         uint256 expectedDcaAmount = expectedYield.mulWadDown(exchangeRate);
@@ -907,7 +907,7 @@ contract YieldDCATest is TestCommon {
         for (uint256 i = 0; i < epochs; i++) {
             _generateYield(int256(yieldPerEpoch));
 
-            _shiftTime(yieldDca.minEpochDuration());
+            _shiftTime(yieldDca.epochDuration());
 
             vm.prank(keeper);
             yieldDca.executeDCA(0, "");
@@ -947,7 +947,7 @@ contract YieldDCATest is TestCommon {
         for (uint256 i = 0; i < epochs; i++) {
             _generateYield(int256(yieldPerEpoch));
 
-            _shiftTime(yieldDca.minEpochDuration());
+            _shiftTime(yieldDca.epochDuration());
 
             vm.prank(keeper);
             yieldDca.executeDCA(0, "");
@@ -1491,7 +1491,7 @@ contract YieldDCATest is TestCommon {
         uint256 positionId = _depositAndOpenPosition(alice, principal);
 
         _generateYield(1e18);
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
         _executeDcaAtExchangeRate(3e18);
 
         uint256 shares = vault.convertToShares(principal);
@@ -1669,7 +1669,7 @@ contract YieldDCATest is TestCommon {
         uint256 positionId = _depositAndOpenPosition(alice, principal);
 
         _generateYield(1e18);
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
         _executeDcaAtExchangeRate(3e18);
 
         vm.prank(alice);
@@ -1761,7 +1761,7 @@ contract YieldDCATest is TestCommon {
         uint256 positionId = _depositAndOpenPosition(alice, principal);
 
         _generateYield(1e18);
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
         _executeDcaAtExchangeRate(3e18);
 
         (uint256 sharesRemaining, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
@@ -1770,7 +1770,7 @@ contract YieldDCATest is TestCommon {
         uint256 totalClaimed = yieldDca.claimDCATokens(positionId);
 
         _generateYield(1e18);
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
         _executeDcaAtExchangeRate(5e18);
 
         (sharesRemaining, dcaAmount) = yieldDca.balancesOf(positionId);
@@ -1896,7 +1896,7 @@ contract YieldDCATest is TestCommon {
 
     function _executeDcaAtExchangeRate(uint256 _exchangeRate) internal {
         swapper.setExchangeRate(_exchangeRate);
-        _shiftTime(yieldDca.minEpochDuration());
+        _shiftTime(yieldDca.epochDuration());
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
