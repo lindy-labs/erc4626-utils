@@ -1807,6 +1807,81 @@ contract YieldDCATest is TestCommon {
 
     /*
      * --------------------
+     *     #balancesOf
+     * --------------------
+     */
+
+    function test_balancesOf_returnsZerosIfPositionDoesNotExist() public {
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(1);
+        assertEq(shares, 0, "shares");
+        assertEq(dcaAmount, 0, "dca amount");
+    }
+
+    function test_balancesOf_returnsSharesIfDcaNotExecuted() public {
+        uint256 principal = 1 ether;
+        uint256 positionId = _depositAndOpenPosition(alice, principal);
+
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
+        assertEq(shares, vault.convertToShares(principal), "shares");
+        assertEq(dcaAmount, 0, "dca amount");
+    }
+
+    function test_balancesOf_returnsSharesAndDcaAmountIfDcaExecuted() public {
+        uint256 principal = 1 ether;
+        uint256 positionId = _depositAndOpenPosition(alice, principal);
+
+        _generateYield(1e18);
+        _executeDcaAtExchangeRate(3e18);
+
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
+        assertEq(shares, vault.convertToShares(principal), "shares");
+        assertEq(dcaAmount, 3 ether, "dca amount");
+    }
+
+    function test_balancesOf_worksTrhuMultipleEpochs() public {
+        uint256 principal = 1 ether;
+        uint256 positionId = _depositAndOpenPosition(alice, principal);
+
+        _generateYield(1e18);
+        _shiftTime(yieldDca.epochDuration());
+        _executeDcaAtExchangeRate(3e18);
+
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
+        assertEq(shares, vault.convertToShares(principal), "shares");
+        assertEq(dcaAmount, 3 ether, "dca amount");
+
+        _generateYield(1e18);
+        _shiftTime(yieldDca.epochDuration());
+        _executeDcaAtExchangeRate(5e18);
+
+        (shares, dcaAmount) = yieldDca.balancesOf(positionId);
+        assertEq(shares, vault.convertToShares(principal), "shares");
+        assertEq(dcaAmount, 8 ether, "dca amount");
+    }
+
+    function test_balancesOf_returnsZeroDcaAmountIfYieldWasNegative() public {
+        uint256 alicesPrincipal = 1 ether;
+        uint256 alicesPosition = _depositAndOpenPosition(alice, alicesPrincipal);
+
+        _generateYield(1e18);
+
+        uint256 bobsPrincipal = 1 ether;
+        uint256 bobsPosition = _depositAndOpenPosition(bob, bobsPrincipal);
+
+        _generateYield(-0.2e18);
+        _executeDcaAtExchangeRate(2e18);
+
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(alicesPosition);
+        assertEq(shares, vault.convertToShares(alicesPrincipal), "alice's shares");
+        assertEq(dcaAmount, 1.2e18, "alice's dca amount");
+
+        (shares, dcaAmount) = yieldDca.balancesOf(bobsPosition);
+        assertEq(shares, vault.convertToShares(bobsPrincipal.mulWadDown(0.8e18)), "bob's shares");
+        assertEq(dcaAmount, 0, "bob's dca amount");
+    }
+
+    /*
+     * --------------------
      *     #transfer
      * --------------------
      */
