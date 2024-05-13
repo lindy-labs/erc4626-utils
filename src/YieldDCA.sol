@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
@@ -328,7 +328,7 @@ contract YieldDCA is ERC721, AccessControl {
     ) internal returns (uint256 principalReduction) {
         if (_shares > _sharesAvailable) revert InsufficientSharesToWithdraw();
 
-        principalReduction = position_.principal.mulDivDown(_shares, _sharesAvailable);
+        principalReduction = position_.principal.mulDiv(_shares, _sharesAvailable);
 
         unchecked {
             // cannot underflow because sharesAvailable > _shares
@@ -425,7 +425,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         uint256 yield = vault.previewRedeem(yieldInShares);
 
-        if (yield < totalPrincipal.mulWadDown(minYieldPerEpoch)) revert InsufficientYield();
+        if (yield < totalPrincipal.mulWad(minYieldPerEpoch)) revert InsufficientYield();
 
         return true;
     }
@@ -451,11 +451,11 @@ contract YieldDCA is ERC721, AccessControl {
 
         uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
 
-        if (yield < totalPrincipal_.mulWadDown(minYieldPerEpoch)) revert InsufficientYield();
+        if (yield < totalPrincipal_.mulWad(minYieldPerEpoch)) revert InsufficientYield();
 
         uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin, _swapData);
-        uint256 dcaPrice = amountOut.divWadDown(yield);
-        uint256 sharePrice = yield.divWadDown(yieldInShares);
+        uint256 dcaPrice = amountOut.divWad(yield);
+        uint256 sharePrice = yield.divWad(yieldInShares);
         uint256 currentEpoch_ = currentEpoch;
 
         epochDetails[currentEpoch_] = EpochInfo({dcaPrice: uint128(dcaPrice), sharePrice: uint128(sharePrice)});
@@ -538,17 +538,16 @@ contract YieldDCA is ERC721, AccessControl {
         dcaTokens = _position.dcaAmountAtEpoch;
         uint256 principal = _position.principal;
 
-        // NOTE: one iteration costs around 2480 gas when called from a non-view function
+        // NOTE: one iteration costs around 2600 gas
         for (uint256 i = _position.epoch; i < _latestEpoch;) {
             EpochInfo memory info = epochDetails[i];
             // save gas on sload
             uint256 sharePrice = info.sharePrice;
 
-            unchecked {
-                // use plain arithmetic instead of FixedPointMathLib to lower gas costs
-                // since we are only working with yield, it is not realistic to expect values large enough to overflow on multiplication
-                uint256 sharesValue = shares * sharePrice / 1e18;
+            // round up to minimize the impact on rounding errors
+            uint256 sharesValue = shares.mulWadUp(sharePrice);
 
+            unchecked {
                 if (sharesValue > principal) {
                     // cannot underflow because of the check above
                     uint256 usersYield = sharesValue - principal;
