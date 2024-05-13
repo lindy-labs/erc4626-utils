@@ -64,7 +64,6 @@ contract YieldDCA is ERC721, AccessControl {
     error AdminAddressZero();
     error InvalidMinYieldPerEpoch();
 
-    // TODO: add DCA where needed?
     error MinEpochDurationNotReached();
     error InsufficientYield();
     error NoYield();
@@ -85,7 +84,12 @@ contract YieldDCA is ERC721, AccessControl {
     );
     // TODO: should last param be dcaTokens?
     event PositionClosed(
-        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 dcaTokens
+        address indexed caller,
+        uint256 indexed positionId,
+        uint256 epoch,
+        uint256 shares,
+        uint256 princpal,
+        uint256 dcaTokens
     );
     event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 dcaTokens);
 
@@ -370,7 +374,7 @@ contract YieldDCA is ERC721, AccessControl {
         // TODO: check event emmision on rounding errors
         _transferDcaTokens(_dcaAmount);
 
-        emit PositionClosed(msg.sender, _positionId, currentEpoch, _shares, _dcaAmount);
+        emit PositionClosed(msg.sender, _positionId, currentEpoch, _shares, _principal, _dcaAmount);
     }
 
     function _transferShares(uint256 _shares) internal returns (uint256 actualShares) {

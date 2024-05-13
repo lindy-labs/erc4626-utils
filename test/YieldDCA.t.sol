@@ -33,7 +33,12 @@ contract YieldDCATest is TestCommon {
     );
     // TODO: should last param be dcaTokens?
     event PositionClosed(
-        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 dcaTokens
+        address indexed caller,
+        uint256 indexed positionId,
+        uint256 epoch,
+        uint256 shares,
+        uint256 principal,
+        uint256 dcaTokens
     );
     event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 dcaTokens);
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
@@ -1607,7 +1612,8 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_reducePosition_emitsPositionClosedEventIfWithdrawingAll() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        uint256 principal = 1 ether;
+        _depositAndOpenPosition(alice, principal);
 
         _generateYield(0.5e18);
         _executeDcaAtExchangeRate(5e18);
@@ -1615,7 +1621,7 @@ contract YieldDCATest is TestCommon {
         (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(1);
 
         vm.expectEmit(true, true, true, true);
-        emit PositionClosed(alice, 1, yieldDca.currentEpoch(), shares, dcaAmount);
+        emit PositionClosed(alice, 1, yieldDca.currentEpoch(), shares, principal, dcaAmount);
 
         vm.prank(alice);
         yieldDca.reducePosition(1, shares);
@@ -1690,7 +1696,7 @@ contract YieldDCATest is TestCommon {
         (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.expectEmit(true, true, true, true);
-        emit PositionClosed(alice, positionId, yieldDca.currentEpoch(), shares, dcaAmount);
+        emit PositionClosed(alice, positionId, yieldDca.currentEpoch(), shares, principal, dcaAmount);
 
         vm.prank(alice);
         yieldDca.closePosition(positionId);
