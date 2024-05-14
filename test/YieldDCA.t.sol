@@ -838,7 +838,7 @@ contract YieldDCATest is TestCommon {
         _executeDcaAtExchangeRate(2e18);
 
         // step 5 - alice withdraws and gets 2 DCA tokens
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 2e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
@@ -879,7 +879,7 @@ contract YieldDCATest is TestCommon {
         _executeDcaAtExchangeRate(2e18);
 
         // step 7 - alice withdraws
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 7e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
@@ -916,7 +916,7 @@ contract YieldDCATest is TestCommon {
         assertEq(yieldDca.currentEpoch(), epochs + 1, "epoch not incremented");
 
         // step 4 - alice withdraws and gets 30 DCA tokens
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         uint256 expectedDcaTokenBalance = epochs * principal.mulWadDown(yieldPerEpoch).mulWadDown(exchangeRate);
         assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaTokenBalance, 0.00001e18, "dca token balance");
@@ -954,7 +954,7 @@ contract YieldDCATest is TestCommon {
         }
 
         // step 4 - alice withdraws and gets 30 DCA tokens
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         uint256 expectedDcaTokenBalance = epochs * principal.mulWadDown(yieldPerEpoch).mulWadDown(exchangeRate);
         assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaTokenBalance, 0.00001e18, "dca token balance");
@@ -999,13 +999,13 @@ contract YieldDCATest is TestCommon {
         _executeDcaAtExchangeRate(2e18);
 
         // step 7 - alice withdraws and gets 5 DCA tokens
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 5e18, 0.00001e18, "alice's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 1, "alice's principal");
 
         // step 8 - bob withdraws and gets 2 DCA tokens
-        _withdrawAll(bob, 2);
+        _closePosition(bob, 2);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 2e18, 0.00001e18, "bob's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 1, "bob's principal");
@@ -1046,13 +1046,13 @@ contract YieldDCATest is TestCommon {
         _executeDcaAtExchangeRate(3e18);
 
         // step 5 - alice withdraws and gets 5 DCA tokens
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 3e18, 0.00001e18, "alice's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 1, "alice's principal");
 
         // step 6 - bob withdraws and gets 2 DCA tokens
-        _withdrawAll(bob, 2);
+        _closePosition(bob, 2);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 0, 0.00001e18, "bob's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), 2 * bobsPrincipal, 1, "bob's principal");
@@ -1098,19 +1098,19 @@ contract YieldDCATest is TestCommon {
         _executeDcaAtExchangeRate(2e18);
 
         // step 8 - alice withdraws and gets 5 DCA tokens
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 5e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 1e18, 1, "principal");
 
         // step 9 - bob withdraws and gets 4 DCA tokens
-        _withdrawAll(bob, 2);
+        _closePosition(bob, 2);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 4e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), 2e18, 1, "principal");
 
         // step 10 - carol withdraws and gets 2 DCA tokens
-        _withdrawAll(carol, 3);
+        _closePosition(carol, 3);
 
         assertApproxEqRel(dcaToken.balanceOf(carol), 2e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(carol), 1e18, 1, "principal");
@@ -1173,7 +1173,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), alicesPrincipal, 2, "bw: alice's principal");
         assertApproxEqRel(dcaAmount, 5e18, 0.00001e18, "bw: alice's dca token balance");
 
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 2, "aw: alice's principal");
         assertApproxEqRel(dcaToken.balanceOf(alice), 4.5e18, 0.00001e18, "aw: alice's dca token balance");
@@ -1183,7 +1183,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqRel(vault.convertToAssets(shares), 0.75e18, 0.00001e18, "bob's principal");
         assertEq(dcaAmount, 0, "bob's dca token balance");
 
-        _withdrawAll(bob, 2);
+        _closePosition(bob, 2);
 
         assertEq(_convertSharesToAssetsFor(bob), bobsPrincipal.mulWadDown(0.75e18), "aw: bob's principal");
         assertEq(dcaToken.balanceOf(bob), 0, "aw: bob's dca token balance");
@@ -1273,7 +1273,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), alicesPrincipal, 3, "bw: alice's principal");
         assertApproxEqRel(dcaAmount, 2.2e18, 0.00001e18, "bw: alice's dca token balance");
 
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 3, "aw: alice's principal");
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "aw: alice's dca token balance");
@@ -1283,7 +1283,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), bobsPrincipal, 3, "bw: bob's principal");
         assertApproxEqRel(dcaAmount, 0.4e18, 0.00001e18, "bw: bob's dca token balance");
 
-        _withdrawAll(bob, 2);
+        _closePosition(bob, 2);
 
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 3, "aw: bob's principal");
         assertEq(dcaToken.balanceOf(bob), dcaAmount, "aw: bob's dca token balance");
@@ -1293,7 +1293,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), carolsPrincipal, 3, "bw: carol's principal");
         assertApproxEqRel(dcaAmount, 0.4e18, 0.00001e18, "bw: carol's dca token balance");
 
-        _withdrawAll(carol, 3);
+        _closePosition(carol, 3);
 
         assertApproxEqAbs(_convertSharesToAssetsFor(carol), carolsPrincipal, 7, "aw: carol's principal");
         assertEq(dcaToken.balanceOf(carol), dcaAmount, "aw: carol's dca token balance");
@@ -1379,7 +1379,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), alicesPrincipal, 3, "bw: alice's principal");
         assertApproxEqRel(dcaAmount, 1.7e18, 0.00001e18, "bw: alice's dca token balance");
 
-        _withdrawAll(alice, 1);
+        _closePosition(alice, 1);
 
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 3, "aw: alice's principal");
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "aw: alice's dca token balance");
@@ -1389,7 +1389,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), bobsPrincipal, 3, "bob's principal");
         assertApproxEqRel(dcaAmount, 0.2e18, 0.00001e18, "bob's dca token balance");
 
-        _withdrawAll(bob, 2);
+        _closePosition(bob, 2);
 
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 3, "aw: bob's principal");
         assertEq(dcaToken.balanceOf(bob), dcaAmount, "aw: bob's dca token balance");
@@ -1399,7 +1399,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), carolsPrincipal, 3, "carol's principal");
         assertEq(dcaAmount, 0.2e18, "carol's dca token balance");
 
-        _withdrawAll(carol, 3);
+        _closePosition(carol, 3);
 
         assertApproxEqAbs(_convertSharesToAssetsFor(carol), carolsPrincipal, 7, "aw: carol's principal");
         assertEq(dcaToken.balanceOf(carol), 0, "aw: carol's dca token balance");
@@ -1513,7 +1513,7 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaToken.balanceOf(address(yieldDca)), 3e18, "contract's dca balance after");
     }
 
-    function test_reducePosition_withdrawAllBurnsNftAndWithdrawsDcaAmount() public {
+    function test_reducePosition_closePositionBurnsNftAndWithdrawsDcaAmount() public {
         uint256 principal = 1 ether;
         uint256 positionId = _depositAndOpenPosition(alice, principal);
 
@@ -1620,8 +1620,11 @@ contract YieldDCATest is TestCommon {
 
         (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(1);
 
+        assertApproxEqAbs(shares, vault.balanceOf(address(yieldDca)), 1, "contract's balance");
+
         vm.expectEmit(true, true, true, true);
-        emit PositionClosed(alice, 1, yieldDca.currentEpoch(), shares, principal, dcaAmount);
+        // use vault.balanceOf(address(yieldDca)) instead of shares to account for rounding error
+        emit PositionClosed(alice, 1, yieldDca.currentEpoch(), vault.balanceOf(address(yieldDca)), principal, dcaAmount);
 
         vm.prank(alice);
         yieldDca.reducePosition(1, shares);
@@ -1695,8 +1698,13 @@ contract YieldDCATest is TestCommon {
 
         (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
+        assertApproxEqAbs(shares, vault.balanceOf(address(yieldDca)), 1, "contract's balance");
+
         vm.expectEmit(true, true, true, true);
-        emit PositionClosed(alice, positionId, yieldDca.currentEpoch(), shares, principal, dcaAmount);
+        // use vault.balanceOf(address(yieldDca)) instead of shares to account for rounding error
+        emit PositionClosed(
+            alice, positionId, yieldDca.currentEpoch(), vault.balanceOf(address(yieldDca)), principal, dcaAmount
+        );
 
         vm.prank(alice);
         yieldDca.closePosition(positionId);
@@ -1710,7 +1718,7 @@ contract YieldDCATest is TestCommon {
 
     function test_claimDCATokens_failsIfPositionDoesNotExist() public {
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
-        yieldDca.claimDCATokens(1);
+        yieldDca.claimDCATokens(1, 0);
     }
 
     function test_claimDCATokens_failsIfNotOwner() public {
@@ -1718,7 +1726,7 @@ contract YieldDCATest is TestCommon {
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.CallerNotTokenOwner.selector));
         vm.prank(bob);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCATokens(positionId, 0);
     }
 
     function test_claimDCATokens_failsIfNothingToClaim() public {
@@ -1726,7 +1734,7 @@ contract YieldDCATest is TestCommon {
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCATokens(positionId, 0);
     }
 
     function test_claimDCATokens_transfersOnlyDCAAmountToCaller() public {
@@ -1739,7 +1747,7 @@ contract YieldDCATest is TestCommon {
         (uint256 sharesRemaining, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCATokens(positionId, 0);
 
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "alice's dca balance");
         assertEq(yieldDca.totalPrincipal(), principal, "total principal deposited");
@@ -1753,7 +1761,7 @@ contract YieldDCATest is TestCommon {
         // claim again should fail
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCATokens(positionId, 0);
     }
 
     function test_claimDCATokens_worksInConsequtiveEpochs() public {
@@ -1767,7 +1775,7 @@ contract YieldDCATest is TestCommon {
         (uint256 sharesRemaining, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        uint256 totalClaimed = yieldDca.claimDCATokens(positionId);
+        uint256 totalClaimed = yieldDca.claimDCATokens(positionId, 0);
 
         _generateYield(1e18);
         _shiftTime(yieldDca.epochDuration());
@@ -1776,7 +1784,7 @@ contract YieldDCATest is TestCommon {
         (sharesRemaining, dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        totalClaimed += yieldDca.claimDCATokens(positionId);
+        totalClaimed += yieldDca.claimDCATokens(positionId, 0);
 
         assertEq(totalClaimed, 8e18, "total claimed");
         assertEq(dcaToken.balanceOf(alice), totalClaimed, "alice's dca balance");
@@ -1802,7 +1810,47 @@ contract YieldDCATest is TestCommon {
         emit DCATokensClaimed(alice, positionId, yieldDca.currentEpoch(), dcaAmount);
 
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCATokens(positionId, 0);
+    }
+
+    function test_claimDCATokens_failsIfDcaDiscrepancyIsAboveTolerated() public {
+        uint256 alicesPrincipal = 1 ether;
+        uint256 positionId = _depositAndOpenPosition(alice, alicesPrincipal);
+        uint256 dicrepancyTolerance = 0.01e18; // 1%
+
+        _generateYield(1e18);
+
+        uint256 bobsPrincipal = 1 ether;
+        _depositAndOpenPosition(bob, bobsPrincipal);
+
+        _generateYield(-int256(dicrepancyTolerance + 0.001e18));
+        _executeDcaAtExchangeRate(2e18);
+
+        vm.expectRevert(abi.encodeWithSelector(YieldDCA.DCADiscrepancyAboveTolerance.selector));
+        vm.prank(alice);
+        yieldDca.claimDCATokens(positionId, dicrepancyTolerance);
+    }
+
+    function test_claimDCATokens_worksIfDcaDiscrepancyBelowTolerated() public {
+        uint256 alicesPrincipal = 1 ether;
+        uint256 positionId = _depositAndOpenPosition(alice, alicesPrincipal);
+        uint256 dicrepancyTolerance = 0.01e18; // 1%
+
+        _generateYield(1e18);
+
+        uint256 bobsPrincipal = 1 ether;
+        _depositAndOpenPosition(bob, bobsPrincipal);
+
+        _generateYield(-int256(dicrepancyTolerance - 0.001e18));
+        _executeDcaAtExchangeRate(2e18);
+
+        (, uint256 entitled) = yieldDca.balancesOf(positionId);
+
+        vm.prank(alice);
+        uint256 claimed = yieldDca.claimDCATokens(positionId, dicrepancyTolerance);
+
+        assertTrue(entitled > claimed, "there was no discrepancy");
+        assertEq(dcaToken.balanceOf(alice), claimed, "alice's dca balance");
     }
 
     /*
@@ -1902,7 +1950,7 @@ contract YieldDCATest is TestCommon {
         assertEq(vault.convertToAssets(shares), principal, "principal");
         assertEq(dcaAmount, 3 ether, "dca amount");
 
-        _withdrawAll(bob, positionId);
+        _closePosition(bob, positionId);
 
         assertEq(vault.balanceOf(bob), vault.convertToShares(principal), "bob's balance");
         assertEq(dcaToken.balanceOf(bob), dcaAmount, "bob's dca balance");
@@ -1961,12 +2009,9 @@ contract YieldDCATest is TestCommon {
         (shares,) = yieldDca.balancesOf(_positionId);
     }
 
-    function _withdrawAll(address _account, uint256 _positionId) internal {
-        vm.startPrank(_account);
-
-        yieldDca.reducePosition(_positionId, _getSharesBalanceInDcaFor(_positionId));
-
-        vm.stopPrank();
+    function _closePosition(address _account, uint256 _positionId) internal {
+        vm.prank(_account);
+        yieldDca.closePosition(_positionId);
     }
 
     function _executeDcaAtExchangeRate(uint256 _exchangeRate) internal {
