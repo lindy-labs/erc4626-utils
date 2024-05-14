@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
+import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
@@ -113,6 +114,7 @@ contract YieldDCA is ERC721, AccessControl {
     uint256 public constant MIN_YIELD_PER_EPOCH_UPPER_BOUND = 0.01e18; // 1%
 
     IERC20 public immutable dcaToken;
+    IERC20 public immutable asset;
     IERC4626 public immutable vault;
     ISwapper public swapper;
 
@@ -145,12 +147,13 @@ contract YieldDCA is ERC721, AccessControl {
         if (_keeper == address(0)) revert KeeperAddressZero();
 
         dcaToken = _dcaToken;
+        asset = IERC20(_vault.asset());
         vault = _vault;
         swapper = _swapper;
 
         _setEpochDuration(_minEpochDuration);
 
-        IERC20(vault.asset()).forceApprove(address(_swapper), type(uint256).max);
+        asset.forceApprove(address(_swapper), type(uint256).max);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(KEEPER_ROLE, _keeper);
@@ -181,7 +184,6 @@ contract YieldDCA is ERC721, AccessControl {
         if (address(_swapper) == address(0)) revert SwapperAddressZero();
 
         // revoke previous swapper's approval and approve new swapper
-        IERC20 asset = IERC20(vault.asset());
         asset.forceApprove(address(swapper), 0);
         asset.forceApprove(address(_swapper), type(uint256).max);
 
@@ -224,33 +226,65 @@ contract YieldDCA is ERC721, AccessControl {
         emit MinYieldPerEpochUpdated(msg.sender, _minYield);
     }
 
+    // TODO: increasePositionUsingPermit, depositAndIncreasePosition, depositAndIncreasePositionUsingPermit
     /**
      * @notice Deposits shares of the vault's underlying asset into the DCA strategy
      * @dev Mints a unique ERC721 token representing the deposit. The deposit details are recorded, and the shares are transferred from the caller to the contract.
      * @param _shares The amount of shares to deposit
      * @return positionId The ID of the created deposit, represented by an ERC721 token
      */
-    function openPosition(uint256 _shares) external returns (uint256 positionId) {
+    function openPosition(uint256 _shares) public returns (uint256 positionId) {
         _shares.checkIsZero();
 
-        unchecked {
-            positionId = nextPositionId++;
-        }
+        positionId = _openPosition(_shares);
 
-        _mint(msg.sender, positionId);
+        vault.safeTransferFrom(msg.sender, address(this), _shares);
+    }
 
+    function _openPosition(uint256 _shares) internal returns (uint256 positionId) {
         uint256 currentEpoch_ = currentEpoch;
         uint256 principal = vault.convertToAssets(_shares);
 
         unchecked {
             totalPrincipal += principal;
+            positionId = nextPositionId++;
         }
+
+        _mint(msg.sender, positionId);
 
         positions[positionId] = Position({epoch: currentEpoch_, shares: _shares, principal: principal, dcaAmount: 0});
 
         emit PositionOpened(msg.sender, positionId, currentEpoch_, _shares, principal);
+    }
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
+    function openPositionUsingPermit(uint256 _shares, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
+        external
+        returns (uint256 positionId)
+    {
+        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
+
+        positionId = openPosition(_shares);
+    }
+
+    function depositAndOpenPosition(uint256 _principal) public returns (uint256 positionId) {
+        _principal.checkIsZero();
+
+        asset.safeTransferFrom(msg.sender, address(this), _principal);
+
+        asset.forceApprove(address(vault), _principal);
+
+        uint256 shares = vault.deposit(_principal, address(this));
+
+        positionId = _openPosition(shares);
+    }
+
+    function depositAndOpenPositionUsingPermit(uint256 _principal, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
+        public
+        returns (uint256 positionId)
+    {
+        IERC2612(address(asset)).permit(msg.sender, address(this), _principal, _deadline, _v, _r, _s);
+
+        positionId = depositAndOpenPosition(_principal);
     }
 
     /**
@@ -454,7 +488,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         vault.redeem(yieldInShares, address(this), address(this));
 
-        uint256 yield = IERC20(vault.asset()).balanceOf(address(this));
+        uint256 yield = asset.balanceOf(address(this));
 
         if (yield < totalPrincipal_.mulWad(minYieldPerEpoch)) revert InsufficientYield();
 

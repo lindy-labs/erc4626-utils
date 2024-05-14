@@ -64,7 +64,7 @@ contract YieldDCATest is TestCommon {
 
     function setUp() public {
         asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
-        vault = new MockERC4626(MockERC20(address(asset)), "ERC4626Mock", "ERC4626Mock");
+        vault = new MockERC4626(asset, "ERC4626Mock", "ERC4626Mock");
         dcaToken = new MockERC20("DCA Token", "DCA", 18);
         swapper = new SwapperMock();
 
@@ -339,7 +339,7 @@ contract YieldDCATest is TestCommon {
         yieldDca.openPosition(0);
     }
 
-    function test_openPosition_transfersSharesAndMitnsNft() public {
+    function test_openPosition_transfersSharesAndMintsPositionNft() public {
         uint256 principal = 1 ether;
         uint256 shares = _depositToVault(alice, principal);
 
@@ -440,6 +440,142 @@ contract YieldDCATest is TestCommon {
 
     /*
      * --------------------
+     *  #openPositionUsingPermit
+     * --------------------
+     */
+
+    function test_openPositionUsingPermit() public {
+        uint256 shares = _depositToVault(dave, 1 ether);
+        uint256 nonce = vault.nonces(dave);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            davesPrivateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    MockERC4626(address(vault)).DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(yieldDca), shares, nonce, deadline))
+                )
+            )
+        );
+
+        vm.prank(dave);
+        uint256 positionId = yieldDca.openPositionUsingPermit(shares, deadline, v, r, s);
+
+        assertEq(positionId, 1, "position id");
+        assertEq(yieldDca.nextPositionId(), 2, "next position id");
+
+        assertEq(yieldDca.ownerOf(positionId), dave, "nft owner");
+        assertEq(yieldDca.balanceOf(dave), 1, "dave's nft balance");
+
+        (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(positionId);
+        assertEq(balance, shares, "balance");
+        assertEq(dcaBalance, 0, "dca balance");
+
+        assertEq(vault.balanceOf(alice), 0, "alice's balance");
+        assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
+    }
+
+    /*
+     * --------------------
+     *  #depositAndOpenPosition
+     * --------------------
+     */
+
+    function test_depositAndOpenPosition_failsIfAmountZero() public {
+        uint256 principal = 1 ether;
+        deal(address(asset), alice, principal);
+
+        vm.startPrank(alice);
+        asset.approve(address(yieldDca), principal);
+
+        vm.expectRevert(CommonErrors.AmountZero.selector);
+        yieldDca.depositAndOpenPosition(0);
+    }
+
+    function test_depositAndOpenPosition_depositsAssetsAndMintsPositionNft() public {
+        uint256 principal = 1 ether;
+        uint256 shares = vault.previewDeposit(principal);
+        deal(address(asset), alice, principal);
+
+        vm.startPrank(alice);
+        asset.approve(address(yieldDca), principal);
+
+        uint256 positionId = yieldDca.depositAndOpenPosition(principal);
+
+        assertEq(positionId, 1, "token id");
+        assertEq(yieldDca.ownerOf(positionId), alice, "owner");
+        assertEq(yieldDca.balanceOf(alice), 1, "nft balance of");
+
+        assertEq(vault.balanceOf(alice), 0, "alice's balance");
+        assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
+
+        (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(1);
+        assertEq(balance, shares, "alice's contract balance");
+        assertEq(dcaBalance, 0, "alice's contract dca balance");
+        assertEq(yieldDca.totalPrincipal(), principal, "contract's total principal");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
+    }
+
+    function test_depositAndOpenPosition_emitsEvent() public {
+        uint256 principal = 1 ether;
+        uint256 shares = vault.previewDeposit(principal);
+        deal(address(asset), alice, principal);
+
+        vm.startPrank(alice);
+        asset.approve(address(yieldDca), principal);
+
+        vm.expectEmit(true, true, true, true);
+        emit PositionOpened(alice, yieldDca.nextPositionId(), yieldDca.currentEpoch(), shares, principal);
+
+        yieldDca.depositAndOpenPosition(principal);
+    }
+
+    /*
+     * --------------------
+     *  #depositAndOpenPositionUsingPermit
+     * --------------------
+     */
+
+    function test_depositAndOpenPositionUsingPermit_() public {
+        uint256 principal = 1 ether;
+        deal(address(asset), dave, principal);
+        uint256 shares = vault.previewDeposit(principal);
+        uint256 nonce = asset.nonces(dave);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            davesPrivateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    MockERC4626(address(asset)).DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(yieldDca), principal, nonce, deadline))
+                )
+            )
+        );
+
+        vm.prank(dave);
+        uint256 positionId = yieldDca.depositAndOpenPositionUsingPermit(principal, deadline, v, r, s);
+
+        assertEq(positionId, 1, "position id");
+        assertEq(yieldDca.nextPositionId(), 2, "next position id");
+
+        assertEq(yieldDca.ownerOf(positionId), dave, "nft owner");
+        assertEq(yieldDca.balanceOf(dave), 1, "dave's nft balance");
+
+        (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(positionId);
+        assertEq(balance, shares, "balance");
+        assertEq(dcaBalance, 0, "dca balance");
+
+        assertEq(vault.balanceOf(alice), 0, "alice's balance");
+        assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
+        assertEq(yieldDca.totalPrincipal(), principal, "total principal");
+    }
+
+    /*
+     * --------------------
      *  #increasePosition
      * --------------------
      */
@@ -531,7 +667,7 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaBalance, expectedDcaAmount, "alice's dca balance");
 
         uint256 firstTopUp = 3 ether;
-        _topUp(alice, firstTopUp, positionId);
+        _increasePosition(alice, firstTopUp, positionId);
 
         (balance, dcaBalance) = yieldDca.balancesOf(positionId);
         assertEq(balance, vault.convertToShares(principal + firstTopUp), "1st: alice's balance");
@@ -543,7 +679,7 @@ contract YieldDCATest is TestCommon {
         expectedDcaAmount += 2 ether;
 
         uint256 secondTopUp = 2 ether;
-        _topUp(alice, secondTopUp, positionId);
+        _increasePosition(alice, secondTopUp, positionId);
 
         (balance, dcaBalance) = yieldDca.balancesOf(positionId);
         assertApproxEqAbs(
@@ -829,7 +965,7 @@ contract YieldDCATest is TestCommon {
 
         // step 3 - alice deposits again (this one doesn't generate yield)
 
-        _topUp(alice, 1 ether, positionId);
+        _increasePosition(alice, 1 ether, positionId);
 
         assertEq(vault.balanceOf(alice), 0, "shares balance");
         assertEq(dcaToken.balanceOf(alice), 0, "dca token balance");
@@ -867,7 +1003,7 @@ contract YieldDCATest is TestCommon {
         _executeDcaAtExchangeRate(3e18);
 
         // step 4 - alice deposits again
-        _topUp(alice, principal, positionId);
+        _increasePosition(alice, principal, positionId);
 
         assertEq(vault.balanceOf(alice), 0, "shares balance");
         assertApproxEqRel(dcaToken.balanceOf(alice), 0, 0.00001e18, "dca token balance");
@@ -1980,10 +2116,11 @@ contract YieldDCATest is TestCommon {
         return _depositToVault(IERC4626(address(vault)), _account, _amount);
     }
 
-    function _topUp(address _account, uint256 _amount, uint256 _positionId) public {
+    function _increasePosition(address _account, uint256 _amount, uint256 _positionId) public {
         vm.startPrank(_account);
 
-        asset.mint(_account, _amount);
+        // asset.mint(_account, _amount);
+        deal(address(asset), _account, _amount);
         asset.approve(address(vault), _amount);
         uint256 shares = vault.deposit(_amount, _account);
 
