@@ -47,15 +47,20 @@ It has the following view functions, which do not change state:
 
 ## Properties
 
-| No. | Property  | Category | Priority | Specified | Verified | Report |
-| ---- | --------  | -------- | -------- | -------- | -------- | -------- |
-| | `open(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)` should create a new yield stream with the correct parameters and update the contract state accordingly, regardless of the caller | high level | high | N | N | [Link]() |
-| | `openMultiple(uint256 _shares, address[] calldata _receivers, uint256[] calldata _allocations, uint256 _maxLossOnOpenTolerance)` should create multiple new yield streams with the correct parameters and update the contract state accordingly, regardless of the caller | high level | high | N | N | [Link]() |
-| | `depositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)` should create a new yield stream with the correct parameters, deposit the specified principal amount, and update the contract state accordingly, regardless of the caller | high level | high | N | N | [Link]() |
-| | `depositAndOpenMultiple(uint256 _principal, address[] calldata _receivers, uint256[] calldata _allocations, uint256 _maxLossOnOpenTolerance)` should create multiple new yield streams with the correct parameters, deposit the specified principal amount, and update the contract state accordingly, regardless of the caller | high level | high | N | N | [Link]() |
-| | `topUp(uint256 _streamId, uint256 _shares)` should add the specified shares to the existing yield stream and update the contract state accordingly, if the caller is the owner of the stream | high level | high | N | N | [Link]() |
-| | `depositAndTopUp(uint256 _streamId, uint256 _principal)` should add the specified principal amount to the existing yield stream, deposit the principal, and update the contract state accordingly, if the caller is the owner of the stream | high level | high | N | N | [Link]() |
-| | `close(uint256 _streamId)` should close the specified yield stream, return the remaining shares to the caller (if the caller is the owner), and update the contract state accordingly | high level | high | N | N | [Link]() |
-| | `claimYield(address _sendTo)` should calculate and transfer the total yield generated for the caller across all their yield streams to the specified address, and update the contract state accordingly | high level | high | N | N | [Link]() |
-| | `claimYieldInShares(address _sendTo)` should calculate and transfer the total yield generated for the caller across all their yield streams in the form of shares to the specified address, and update the contract state accordingly | high level | high | N | N | [Link]() |
+* Note that we are focusing only on the positive properties as long as we have test cases that showed the revert cases.
 
+* The result of this formal verification can be found [here]().
+
+| No. | Property  | Category | Priority | Specified | Verified |
+| ---- | --------  | -------- | -------- | -------- | -------- |
+| 1 | `open(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)` should create a new yield stream with the correct parameters and update the contract state accordingly, regardless of the caller | high level | high | Y | Y |
+| 2 | `openUsingPermit(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external returns (uint256 streamId)` should open a new yield stream using ERC4626 permit for approval | high level | high | Y | Y |
+| 3 | `openMultiple(uint256 _shares, address[] calldata _receivers, uint256[] calldata _allocations, uint256 _maxLossOnOpenTolerance)` should create multiple new yield streams with the correct parameters and update the contract state accordingly, regardless of the caller | high level | high | N | N (Timeout) |
+| 4 | `depositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)` should create a new yield stream with the correct parameters, deposit the specified principal amount, and update the contract state accordingly, regardless of the caller | high level | high | Y | Y |
+| 5 | `depositAndOpenMultiple(uint256 _principal, address[] calldata _receivers, uint256[] calldata _allocations, uint256 _maxLossOnOpenTolerance)` should create multiple new yield streams with the correct parameters, deposit the specified principal amount, and update the contract state accordingly, regardless of the caller | high level | high | Y | Y |
+| 6 | `topUp(uint256 _streamId, uint256 _shares)` should add the specified shares to the existing yield stream and update the contract state accordingly, if the caller is the owner of the stream | high level | high | Y | Y |
+| 7 | `topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external returns (uint256 principal)` should add additional ERC4626 shares to an existing yield stream using permit for approval | high level | high | Y | Y |
+| 8 | `depositAndTopUp(uint256 _streamId, uint256 _principal)` should add the specified principal amount to the existing yield stream, deposit the principal, and update the contract state accordingly, if the caller is the owner of the stream | high level | high | Y | Y |
+| 9 | `close(uint256 _streamId)` should close the specified yield stream, return the remaining shares to the caller (if the caller is the owner), and update the contract state accordingly | high level | high | Y | Y |
+| 10 | `claimYield(address _sendTo)` should calculate and transfer the total yield generated for the caller across all their yield streams to the specified address, and update the contract state accordingly | high level | high | Y | Y |
+| 11 | `claimYieldInShares(address _sendTo)` should calculate and transfer the total yield generated for the caller across all their yield streams in the form of shares to the specified address, and update the contract state accordingly | high level | high | Y | Y |
