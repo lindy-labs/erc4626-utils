@@ -22,7 +22,26 @@ methods {
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) external returns (uint256[]);
+    function openMultipleUsingPermit(
+        uint256 _shares,
+        address[] _receivers,
+        uint256[] _allocations,
+        uint256 _maxLossOnOpenTolerance,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256[]);
     function depositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance) external returns (uint256);
+    function depositAndOpenUsingPermit(
+        address _receiver,
+        uint256 _principal,
+        uint256 _maxLossOnOpenTolerance,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256);
     function topUp(uint256 _streamId, uint256 _shares) external returns (uint256);
     function topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
         external
@@ -171,6 +190,61 @@ rule integrity_of_openMultiple(address alice, address bob, address carol, uint25
 }
 
 /**
+ * @Rule Integrity property for the `openMultipleUsingPermit` function
+ * @Category High
+ * @Description  The `openMultipleUsingPermit` function should open multiple yield streams using ERC4626 permit for approval.
+ */
+
+rule integrity_of_openMultipleUsingPermit(address alice, address bob, address carol, uint256 initFunds, uint256 amount1, uint256 amount2,
+        uint256 deadline, uint8 v, bytes32 r, bytes32 s) {
+    env e;
+    // Inputs
+    uint256[] allocations = [amount1, amount2];
+
+    mathint sumAmounts = amount1 + amount2;
+    require to_mathint(initFunds) >= sumAmounts;
+
+    // Preconditions
+    require(alice != bob && alice != carol && bob != carol);
+
+    // Set up the initial state
+    uint256 initialAliceShares = vault.balanceOf(alice);
+    uint256 initialContractShares = vault.balanceOf(currentContract);
+
+    require asset.allowance(alice, currentContract) >= initFunds;
+    require asset.balanceOf(alice) >= initFunds;
+
+    uint256 shares = vault.deposit(e, initFunds, currentContract);
+    asset.approve(e, currentContract, shares);
+
+    // Call the openMultiple function
+    address[] receivers = [bob, carol];
+
+    require nextStreamId() == 1;
+
+    // Call the function
+    uint256[] streamIds = openMultipleUsingPermit(e, shares, receivers, allocations, 0, deadline, v, r, s);
+
+    // Postconditions
+    assert streamIds.length == 1;
+    assert streamIds[0] == 1;
+    assert nextStreamId() == 2;
+
+    // Check the state updates
+    uint256 aliceSharesAfter = vault.balanceOf(alice);
+    uint256 contractSharesAfter = vault.balanceOf(currentContract);
+
+    // Alice's shares
+    assert to_mathint(aliceSharesAfter) == initialAliceShares - (shares * sumAmounts) / WAD() &&
+    // Contract's shares
+     to_mathint(contractSharesAfter) == initialContractShares + (shares * sumAmounts) / WAD() &&
+    // Bob's shares
+     to_mathint(receiverTotalShares(bob)) == shares * allocations[0] / WAD() &&
+    // Carol's shares
+     to_mathint(receiverTotalShares(carol)) == shares * allocations[1] / WAD();
+}
+
+/**
  * @Rule Integrity property for the `depositAndOpen` function
  * @Category High
  * @Description Ensures that the `depositAndOpen` function creates a new yield stream with the correct parameters, deposit the specified principal amount, and update the contract state accordingly, regardless of the caller.
@@ -195,6 +269,43 @@ rule integrity_of_depositAndOpen(address _receiver, uint256 _principal, uint256 
     //assert streamId > 0;
     assert streamIdToReceiver(streamId) == _receiver &&
      to_mathint(receiverTotalPrincipal(_receiver)) == initialTotalPrincipal + _principal;
+}
+
+/**
+ * @Rule Integrity property for the `depositAndOpenUsingPermit` function
+ * @Category High
+ * @Description Ensures that the `depositAndOpenUsingPermit` function opens a new yield stream using ERC20 permit for approval, allocating the underlying asset as principal.
+ */
+rule integrity_of_depositAndOpenUsingPermit(address dave, address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance,
+    uint256 deadline, uint8 v, bytes32 r, bytes32 s) {
+    env e;
+    require dave != _receiver;
+    address streamer = e.msg.sender;
+    uint256 streamId;
+    require to_mathint(deadline) == e.block.timestamp + 1;
+    require asset.balanceOf(dave) == _principal;
+
+    // Preconditions
+    require _receiver != 0;
+    require _principal > 0;
+
+    // Capture the initial state
+    uint256 initialTotalPrincipal = receiverTotalPrincipal(_receiver);
+    //uint256 initialTotalShares = receiverTotalShares(_receiver);
+    //uint256 initialPrincipal = receiverPrincipal(_receiver, 1);
+    //uint256 initialContractShares = vault.balanceOf(currentContract);
+    uint256 initialNextStreamId = nextStreamId();
+
+    // Call the `depositAndOpen` function
+    streamId = depositAndOpenUsingPermit(e, _receiver, _principal, 0/*_maxLossOnOpenTolerance*/, deadline, v, r, s);
+
+    uint256 shares = vault.convertToShares(_principal);
+    // Postconditions
+    assert streamId == initialNextStreamId;
+    assert streamIdToReceiver(streamId) == _receiver;
+    assert to_mathint(receiverTotalPrincipal(_receiver)) == initialTotalPrincipal + _principal;
+    //assert receiverPrincipal(_receiver, 1) == _principal;
+    //assert delta(to_mathint(vault.balanceOf(currentContract)), (initialContractShares + shares)) <= 1;
 }
 
 /**
@@ -297,7 +408,7 @@ rule integrity_of_depositAndTopUp(uint256 _streamId, uint256 _principal) {
  * @Category High
  * @Description Ensures that the `depositAndTopUpUsingPermit` function correctly adds additional principal to an existing yield stream using the permit mechanism and updates the contract state.
  */
-/* 
+
 rule integrity_of_depositAndTopUpPermit(uint256 _streamId, uint256 _principal, uint256 deadline, uint8 v, bytes32 r, bytes32 s) { //not ok
     env e;
     address streamer = e.msg.sender;
@@ -313,9 +424,6 @@ rule integrity_of_depositAndTopUpPermit(uint256 _streamId, uint256 _principal, u
     uint256 initialTotalShares = receiverTotalShares(receiver);
     uint256 initialTotalPrincipal = receiverTotalPrincipal(receiver);
     uint256 initialPrincipal = receiverPrincipal(receiver, _streamId);
-    //uint256 initialStreamerAssetBalance = asset.balanceOf(streamer);
-    //uint256 initialContractAssetBalance = asset.balanceOf(currentContract);
-    //uint256 initialContractShareBalance = vault.balanceOf(currentContract);
 
     // Call the `depositAndTopUpUsingPermit` function
     shares = depositAndTopUpUsingPermit(e, _streamId, _principal, deadline, v, r, s);
@@ -324,11 +432,7 @@ rule integrity_of_depositAndTopUpPermit(uint256 _streamId, uint256 _principal, u
     assert to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares;
     assert to_mathint(receiverTotalPrincipal(receiver)) == initialTotalPrincipal + _principal;
     assert to_mathint(receiverPrincipal(receiver, _streamId)) == initialPrincipal + _principal;
-     //to_mathint(asset.balanceOf(streamer)) == initialStreamerAssetBalance - _principal &&
-     //to_mathint(asset.balanceOf(currentContract)) == initialContractAssetBalance + _principal &&
-     //to_mathint(vault.balanceOf(currentContract)) == initialContractShareBalance + shares;
 }
-*/
 
 /**
  * @Rule Integrity property for the `close` function
