@@ -91,10 +91,10 @@ contract YieldDCA is ERC721, AccessControl {
     error VaultAddressZero();
     error SwapperAddressZero();
     error DCATokenSameAsVaultAsset();
-    error InvalidDCAInterval();
     error KeeperAddressZero();
     error AdminAddressZero();
-    error InvalidMinYieldPerEpoch();
+    error EpochDurationOutOfBounds();
+    error MinYieldPerEpochOutOfBounds();
 
     error MinEpochDurationNotReached();
     error InsufficientYield();
@@ -135,25 +135,22 @@ contract YieldDCA is ERC721, AccessControl {
         IERC20 _dcaToken,
         IERC4626 _vault,
         ISwapper _swapper,
-        uint256 _minEpochDuration,
+        uint256 _epochDuration,
         address _admin,
         address _keeper
     ) ERC721("YieldDCA", "YDCA") {
         if (address(_dcaToken) == address(0)) revert DCATokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
         if (address(_dcaToken) == _vault.asset()) revert DCATokenSameAsVaultAsset();
-        if (address(_swapper) == address(0)) revert SwapperAddressZero();
         if (_admin == address(0)) revert AdminAddressZero();
         if (_keeper == address(0)) revert KeeperAddressZero();
 
         dcaToken = _dcaToken;
         asset = IERC20(_vault.asset());
         vault = _vault;
-        swapper = _swapper;
 
-        _setEpochDuration(_minEpochDuration);
-
-        asset.forceApprove(address(_swapper), type(uint256).max);
+        _setEpochDuration(_epochDuration);
+        _setSwapper(_swapper);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(KEEPER_ROLE, _keeper);
@@ -172,61 +169,63 @@ contract YieldDCA is ERC721, AccessControl {
     /**
      * @notice Updates the address of the swapper contract used to exchange yield for DCA tokens
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. Emits the SwapperUpdated event.
-     * @param _swapper The address of the new swapper contract
+     * @param _newSwapper The address of the new swapper contract
      */
-    function setSwapper(ISwapper _swapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setSwapper(_swapper);
+    function setSwapper(ISwapper _newSwapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setSwapper(_newSwapper);
 
-        emit SwapperUpdated(msg.sender, address(_swapper));
+        emit SwapperUpdated(msg.sender, address(_newSwapper));
     }
 
-    function _setSwapper(ISwapper _swapper) internal {
-        if (address(_swapper) == address(0)) revert SwapperAddressZero();
+    function _setSwapper(ISwapper _newSwapper) internal {
+        if (address(_newSwapper) == address(0)) revert SwapperAddressZero();
 
         // revoke previous swapper's approval and approve new swapper
-        asset.forceApprove(address(swapper), 0);
-        asset.forceApprove(address(_swapper), type(uint256).max);
+        if (address(swapper) != address(0)) asset.forceApprove(address(swapper), 0);
+        asset.forceApprove(address(_newSwapper), type(uint256).max);
 
-        swapper = _swapper;
+        swapper = _newSwapper;
     }
 
     /**
      * @notice Sets the minimum duration between epochs in which the DCA can be executed
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The duration must be between defined upper and lower bounds. Emits the DCAIntervalUpdated event.
-     * @param _duration The new minimum duration in seconds
+     * @param _newDuration The new minimum duration in seconds
      */
-    function setEpochDuration(uint256 _duration) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setEpochDuration(_duration);
+    function setEpochDuration(uint256 _newDuration) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setEpochDuration(_newDuration);
 
-        emit DCAIntervalUpdated(msg.sender, _duration);
+        emit DCAIntervalUpdated(msg.sender, _newDuration);
 
-        epochDuration = _duration;
+        epochDuration = _newDuration;
     }
 
-    function _setEpochDuration(uint256 _duration) internal {
-        if (_duration < EPOCH_DURATION_LOWER_BOUND || _duration > EPOCH_DURATION_UPPER_BOUND) {
-            revert InvalidDCAInterval();
+    function _setEpochDuration(uint256 _newDuration) internal {
+        if (_newDuration < EPOCH_DURATION_LOWER_BOUND || _newDuration > EPOCH_DURATION_UPPER_BOUND) {
+            revert EpochDurationOutOfBounds();
         }
 
-        epochDuration = _duration;
+        epochDuration = _newDuration;
     }
 
     /**
      * @notice Sets the minimum yield required per epoch to execute the DCA strategy
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The yield must be between defined upper and lower bounds. Emits the MinYieldPerEpochUpdated event.
-     * @param _minYield The new minimum yield as a WAD-scaled percentage of the total principal
+     * @param _newMinYieldPercent The new minimum yield as a WAD-scaled percentage of the total principal
      */
-    function setMinYieldPerEpoch(uint256 _minYield) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_minYield < MIN_YIELD_PER_EPOCH_LOWER_BOUND || _minYield > MIN_YIELD_PER_EPOCH_UPPER_BOUND) {
-            revert InvalidMinYieldPerEpoch();
+    function setMinYieldPerEpoch(uint256 _newMinYieldPercent) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (
+            _newMinYieldPercent < MIN_YIELD_PER_EPOCH_LOWER_BOUND
+                || _newMinYieldPercent > MIN_YIELD_PER_EPOCH_UPPER_BOUND
+        ) {
+            revert MinYieldPerEpochOutOfBounds();
         }
 
-        minYieldPerEpoch = _minYield;
+        minYieldPerEpoch = _newMinYieldPercent;
 
-        emit MinYieldPerEpochUpdated(msg.sender, _minYield);
+        emit MinYieldPerEpochUpdated(msg.sender, _newMinYieldPercent);
     }
 
-    // TODO: increasePositionUsingPermit, depositAndIncreasePosition, depositAndIncreasePositionUsingPermit
     /**
      * @notice Deposits shares of the vault's underlying asset into the DCA strategy
      * @dev Mints a unique ERC721 token representing the deposit. The deposit details are recorded, and the shares are transferred from the caller to the contract.
@@ -295,7 +294,7 @@ contract YieldDCA is ERC721, AccessControl {
      */
     function increasePosition(uint256 _positionId, uint256 _shares) public {
         _shares.checkIsZero();
-        _checkOwnership(_positionId);
+        _checkIsOwner(_positionId);
 
         uint256 currentEpoch_ = currentEpoch;
         uint256 principal = vault.convertToAssets(_shares);
@@ -337,7 +336,7 @@ contract YieldDCA is ERC721, AccessControl {
 
     function depositAndIncreasePosition(uint256 _positionId, uint256 _assets) public {
         _assets.checkIsZero();
-        _checkOwnership(_positionId);
+        _checkIsOwner(_positionId);
 
         asset.safeTransferFrom(msg.sender, address(this), _assets);
 
@@ -389,7 +388,7 @@ contract YieldDCA is ERC721, AccessControl {
      */
     function reducePosition(uint256 _positionId, uint256 _shares) external {
         _shares.checkIsZero();
-        _checkOwnership(_positionId);
+        _checkIsOwner(_positionId);
 
         Position storage position = positions[_positionId];
         uint256 currentEpoch_ = currentEpoch;
@@ -438,7 +437,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _positionId The ID of the deposit to close
      */
     function closePosition(uint256 _positionId) external {
-        _checkOwnership(_positionId);
+        _checkIsOwner(_positionId);
 
         uint256 currentEpoch_ = currentEpoch;
         Position storage position = positions[_positionId];
@@ -475,7 +474,7 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function claimDCATokens(uint256 _positionId, uint256 _discrepancyTolerance) external returns (uint256 dcaAmount) {
-        _checkOwnership(_positionId);
+        _checkIsOwner(_positionId);
 
         Position storage position = positions[_positionId];
         uint256 currentEpoch_ = currentEpoch;
@@ -673,7 +672,7 @@ contract YieldDCA is ERC721, AccessControl {
         return vault.balanceOf(address(this));
     }
 
-    function _checkOwnership(uint256 _positionId) internal view {
+    function _checkIsOwner(uint256 _positionId) internal view {
         if (ownerOf(_positionId) != msg.sender) revert CallerNotTokenOwner();
     }
 }

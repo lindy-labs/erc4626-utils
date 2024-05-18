@@ -31,7 +31,6 @@ contract YieldDCATest is TestCommon {
     event PositionReduced(
         address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
     );
-    // TODO: should last param be dcaTokens?
     event PositionClosed(
         address indexed caller,
         uint256 indexed positionId,
@@ -255,19 +254,19 @@ contract YieldDCATest is TestCommon {
         yieldDca.setEpochDuration(newInterval);
     }
 
-    function test_setEpochDuration_failsIfIntervalIsBelowLowerBound() public {
+    function test_setEpochDuration_failsIfBelowLowerBound() public {
         uint256 invalidInterval = yieldDca.EPOCH_DURATION_LOWER_BOUND() - 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.InvalidDCAInterval.selector);
+        vm.expectRevert(YieldDCA.EpochDurationOutOfBounds.selector);
         yieldDca.setEpochDuration(invalidInterval);
     }
 
-    function test_setEpochDuration_failsIfIntervalIsAboveUpperBound() public {
+    function test_setEpochDuration_failsIfAboveUpperBound() public {
         uint256 invalidInterval = yieldDca.EPOCH_DURATION_UPPER_BOUND() + 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.InvalidDCAInterval.selector);
+        vm.expectRevert(YieldDCA.EpochDurationOutOfBounds.selector);
         yieldDca.setEpochDuration(invalidInterval);
     }
 
@@ -297,19 +296,19 @@ contract YieldDCATest is TestCommon {
         assertEq(yieldDca.minYieldPerEpoch(), newYield);
     }
 
-    function test_setMinYieldPerEpoch_failsIfNewMinYieldBelowLowerBound() public {
+    function test_setMinYieldPerEpoch_failsIfBelowLowerBound() public {
         uint256 belowMin = yieldDca.MIN_YIELD_PER_EPOCH_LOWER_BOUND() - 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.InvalidMinYieldPerEpoch.selector);
+        vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
         yieldDca.setMinYieldPerEpoch(belowMin);
     }
 
-    function test_setMinYieldPerEpoch_failsIfNewMinYieldAboveUpperBound() public {
+    function test_setMinYieldPerEpoch_failsIfAboveUpperBound() public {
         uint256 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.InvalidMinYieldPerEpoch.selector);
+        vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
         yieldDca.setMinYieldPerEpoch(aboveMax);
     }
 
