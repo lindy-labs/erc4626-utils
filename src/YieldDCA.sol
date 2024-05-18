@@ -293,7 +293,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _shares The amount of additional shares to add
      * @param _positionId The ID of the deposit to top up
      */
-    function increasePosition(uint256 _positionId, uint256 _shares) external {
+    function increasePosition(uint256 _positionId, uint256 _shares) public {
         _shares.checkIsZero();
         _checkOwnership(_positionId);
 
@@ -320,6 +320,61 @@ contract YieldDCA is ERC721, AccessControl {
         emit PositionIncreased(msg.sender, _positionId, currentEpoch_, _shares, principal);
 
         vault.safeTransferFrom(msg.sender, address(this), _shares);
+    }
+
+    function increasePositionUsingPermit(
+        uint256 _positionId,
+        uint256 _shares,
+        uint256 _deadline,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    ) external {
+        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
+
+        increasePosition(_positionId, _shares);
+    }
+
+    function depositAndIncreasePosition(uint256 _positionId, uint256 _assets) public {
+        _assets.checkIsZero();
+        _checkOwnership(_positionId);
+
+        asset.safeTransferFrom(msg.sender, address(this), _assets);
+
+        asset.forceApprove(address(vault), _assets);
+
+        uint256 shares = vault.deposit(_assets, address(this));
+
+        uint256 currentEpoch_ = currentEpoch;
+        Position storage position = positions[_positionId];
+
+        // if deposit is from a previous epoch, update the balances
+        if (position.epoch < currentEpoch_) {
+            (position.shares, position.dcaAmount) = _calculateBalances(position, currentEpoch_);
+        }
+
+        unchecked {
+            position.epoch = currentEpoch_;
+            position.shares += shares;
+            position.principal += _assets;
+
+            totalPrincipal += _assets;
+        }
+
+        emit PositionIncreased(msg.sender, _positionId, currentEpoch_, shares, _assets);
+    }
+
+    function depositAndIncreasePositionUsingPermit(
+        uint256 _positionId,
+        uint256 _assets,
+        uint256 _deadline,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    ) external {
+        IERC2612(address(asset)).permit(msg.sender, address(this), _assets, _deadline, _v, _r, _s);
+
+        depositAndIncreasePosition(_positionId, _assets);
     }
 
     // NOTE: uses around 610k gas while iterating thru 200 epochs. If epochs were to be 2 weeks long, 200 epochs would be about 7.6 years
