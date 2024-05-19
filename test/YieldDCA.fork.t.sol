@@ -51,12 +51,12 @@ contract YieldDCAForkTest is TestCommon {
 
         uint256 expectedYield = principal.mulWadDown(0.1e18);
 
-        assertEq(yieldDca.getYield(), expectedYield, "calculated yield");
+        assertEq(yieldDca.calculateYield(), expectedYield, "calculated yield");
 
         _shiftTime(DEFAULT_DCA_INTERVAL);
 
         // actual yield is less after time shift?
-        uint256 actualYield = yieldDca.getYield();
+        uint256 actualYield = yieldDca.calculateYield();
         assertTrue(actualYield < expectedYield, "actual yield < expected yield");
         assertApproxEqRel(actualYield, expectedYield, 0.02e18, "actual yield");
 

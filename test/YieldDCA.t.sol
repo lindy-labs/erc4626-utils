@@ -948,11 +948,6 @@ contract YieldDCATest is TestCommon {
      * --------------------
      */
 
-    function test_canExecuteDCA_rvertsIfNoPrincipalDeposited() public {
-        vm.expectRevert(YieldDCA.NoPrincipalDeposited.selector);
-        yieldDca.canExecuteDCA();
-    }
-
     function test_canExecuteDCA_revertsIfNotEnoughTimePassed() public {
         _depositAndOpenPosition(alice, 1 ether);
 
@@ -1019,26 +1014,6 @@ contract YieldDCATest is TestCommon {
         _shiftTime(yieldDca.epochDuration() - 1);
 
         vm.expectRevert(YieldDCA.MinEpochDurationNotReached.selector);
-
-        vm.prank(keeper);
-        yieldDca.executeDCA(0, "");
-    }
-
-    function test_executeDCA_failsIfNoPrincipalDeposited() public {
-        uint256 amount = 1 ether;
-        asset.mint(address(this), amount);
-        asset.approve(address(vault), amount);
-        uint256 shares = vault.deposit(amount, address(this));
-
-        // send shares directly to the yieldDca contract
-        vault.transfer(address(yieldDca), shares);
-
-        _shiftTime(yieldDca.epochDuration());
-
-        assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
-        assertEq(yieldDca.totalPrincipal(), 0, "total principal deposited");
-
-        vm.expectRevert(YieldDCA.NoPrincipalDeposited.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -1561,7 +1536,7 @@ contract YieldDCATest is TestCommon {
         // step 10 - 0.25 ether is left in the contract as surplus yield
         assertEq(yieldDca.totalPrincipal(), 0, "total principal deposited");
 
-        uint256 yieldInShares = yieldDca.getYieldInShares();
+        uint256 yieldInShares = yieldDca.calculateYieldInShares();
 
         assertEq(vault.balanceOf(address(yieldDca)), yieldInShares, "contract's balance");
         assertApproxEqAbs(vault.convertToAssets(yieldInShares), 0.25 ether, 5, "contract's assets");
