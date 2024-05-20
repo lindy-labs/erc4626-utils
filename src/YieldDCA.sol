@@ -220,16 +220,6 @@ contract YieldDCA is ERC721, AccessControl {
         emit SwapperUpdated(msg.sender, address(_newSwapper));
     }
 
-    function _setSwapper(ISwapper _newSwapper) internal {
-        if (address(_newSwapper) == address(0)) revert SwapperAddressZero();
-
-        // revoke previous swapper's approval and approve new swapper
-        if (address(swapper) != address(0)) asset.forceApprove(address(swapper), 0);
-        asset.forceApprove(address(_newSwapper), type(uint256).max);
-
-        swapper = _newSwapper;
-    }
-
     /**
      * @notice Sets the minimum duration between epochs in which the DCA can be executed
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The duration must be between defined upper and lower bounds. Emits the DCAIntervalUpdated event.
@@ -241,14 +231,6 @@ contract YieldDCA is ERC721, AccessControl {
         emit EpochDurationUpdated(msg.sender, _newDuration);
     }
 
-    function _setEpochDuration(uint32 _newDuration) internal {
-        if (_newDuration < EPOCH_DURATION_LOWER_BOUND || _newDuration > EPOCH_DURATION_UPPER_BOUND) {
-            revert EpochDurationOutOfBounds();
-        }
-
-        epochDuration = _newDuration;
-    }
-
     /**
      * @notice Sets the minimum yield required per epoch to execute the DCA strategy
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The yield must be between defined upper and lower bounds. Emits the MinYieldPerEpochUpdated event.
@@ -258,17 +240,6 @@ contract YieldDCA is ERC721, AccessControl {
         _setMinYieldPerEpoch(_newMinYieldPercent);
 
         emit MinYieldPerEpochUpdated(msg.sender, _newMinYieldPercent);
-    }
-
-    function _setMinYieldPerEpoch(uint64 _newMinYieldPercent) internal {
-        if (
-            _newMinYieldPercent < MIN_YIELD_PER_EPOCH_LOWER_BOUND
-                || _newMinYieldPercent > MIN_YIELD_PER_EPOCH_UPPER_BOUND
-        ) {
-            revert MinYieldPerEpochOutOfBounds();
-        }
-
-        minYieldPerEpoch = _newMinYieldPercent;
     }
 
     function setDiscrepancyTolerance(uint64 _newTolerance) external onlyAdmin {
@@ -535,6 +506,35 @@ contract YieldDCA is ERC721, AccessControl {
     * =======================================================
     */
 
+    function _setSwapper(ISwapper _newSwapper) internal {
+        if (address(_newSwapper) == address(0)) revert SwapperAddressZero();
+
+        // revoke previous swapper's approval and approve new swapper
+        if (address(swapper) != address(0)) asset.forceApprove(address(swapper), 0);
+        asset.forceApprove(address(_newSwapper), type(uint256).max);
+
+        swapper = _newSwapper;
+    }
+
+    function _setEpochDuration(uint32 _newDuration) internal {
+        if (_newDuration < EPOCH_DURATION_LOWER_BOUND || _newDuration > EPOCH_DURATION_UPPER_BOUND) {
+            revert EpochDurationOutOfBounds();
+        }
+
+        epochDuration = _newDuration;
+    }
+
+    function _setMinYieldPerEpoch(uint64 _newMinYieldPercent) internal {
+        if (
+            _newMinYieldPercent < MIN_YIELD_PER_EPOCH_LOWER_BOUND
+                || _newMinYieldPercent > MIN_YIELD_PER_EPOCH_UPPER_BOUND
+        ) {
+            revert MinYieldPerEpochOutOfBounds();
+        }
+
+        minYieldPerEpoch = _newMinYieldPercent;
+    }
+
     function _checkIsOwner(uint256 _positionId) internal view {
         if (ownerOf(_positionId) != msg.sender) revert CallerNotTokenOwner();
     }
@@ -566,6 +566,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         unchecked {
             position.epoch = epoch;
+            // owerflow here is not realistic to happen
             position.shares += _shares;
             position.principal += _principal;
 
@@ -640,6 +641,7 @@ contract YieldDCA is ERC721, AccessControl {
         // limit to available or revert if amount discrepancy is above set tolerance
         if (_amount > balance) {
             unchecked {
+                // cannot underflow because of the check above
                 if (_amount - balance > _amount.mulWad(discrepancyTolerance)) {
                     revert DCADiscrepancyAboveTolerance();
                 }
@@ -659,13 +661,13 @@ contract YieldDCA is ERC721, AccessControl {
     {
         uint256 balanceBefore = dcaBalance();
 
-        swapper.execute(vault.asset(), address(dcaToken), _amountIn, _dcaAmountOutMin, _swapData);
+        swapper.execute(address(asset), address(dcaToken), _amountIn, _dcaAmountOutMin, _swapData);
 
         uint256 balanceAfter = dcaBalance();
 
-        unchecked {
-            if (balanceAfter < balanceBefore + _dcaAmountOutMin) revert AmountReceivedTooLow();
+        if (balanceAfter < balanceBefore + _dcaAmountOutMin) revert AmountReceivedTooLow();
 
+        unchecked {
             return balanceAfter - balanceBefore;
         }
     }
@@ -687,6 +689,7 @@ contract YieldDCA is ERC721, AccessControl {
         }
 
         unchecked {
+            // cannot underflow because of the check above
             return balance - totalPrincipalInShares;
         }
     }
@@ -702,13 +705,13 @@ contract YieldDCA is ERC721, AccessControl {
         dcaAmount = _position.dcaBalance;
         uint256 principal = _position.principal;
 
-        // NOTE: one iteration costs around 2600 gas
+        // NOTE: one iteration costs around 2700 gas
         for (uint256 i = _position.epoch; i < _currentEpoch;) {
             EpochInfo memory info = epochDetails[i];
             // save gas on sload
             uint256 sharePrice = info.sharePrice;
 
-            // round up to minimize the impact on rounding errors
+            // round up to minimize rounding errors and prevent underestimation when calculating user's yield
             uint256 sharesValue = shares.mulWadUp(sharePrice);
 
             unchecked {
@@ -716,8 +719,10 @@ contract YieldDCA is ERC721, AccessControl {
                     // cannot underflow because of the check above
                     uint256 usersYield = sharesValue - principal;
 
-                    shares -= usersYield * 1e18 / sharePrice;
-                    dcaAmount += uint224(usersYield * info.dcaPrice / 1e18);
+                    // cannot underflow because (yield / sharePrice) <= shares (yield is always less than principal)
+                    shares -= usersYield.divWad(sharePrice);
+                    // not realistic to owerflow
+                    dcaAmount += uint224(usersYield.mulWad(info.dcaPrice));
                 }
 
                 i++;
