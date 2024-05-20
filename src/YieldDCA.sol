@@ -2,10 +2,11 @@
 pragma solidity ^0.8.19;
 
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
+import {IERC721} from "openzeppelin-contracts/interfaces/IERC721.sol";
+import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
-import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
@@ -39,7 +40,7 @@ contract YieldDCA is ERC721, AccessControl {
     using CommonErrors for uint256;
     using FixedPointMathLib for uint256;
     using SafeERC20 for IERC4626;
-    using SafeERC20 for IERC20;
+    using SafeERC20 for IERC20Metadata;
 
     struct Position {
         uint256 shares;
@@ -116,8 +117,8 @@ contract YieldDCA is ERC721, AccessControl {
     uint64 public constant MIN_YIELD_PER_EPOCH_UPPER_BOUND = 0.01e18; // 1%
     uint64 public constant DISCREPANCY_TOLERANCE_UPPER_BOUND = 1e18; // 100%
 
-    IERC20 public immutable dcaToken;
-    IERC20 public immutable asset;
+    IERC20Metadata public immutable dcaToken;
+    IERC20Metadata public immutable asset;
     IERC4626 public immutable vault;
 
     // slot 0
@@ -144,23 +145,30 @@ contract YieldDCA is ERC721, AccessControl {
         _;
     }
 
+    // ERC721 name and symbol
+    string private name_;
+    string private symbol_;
+
     constructor(
-        IERC20 _dcaToken,
+        IERC20Metadata _dcaToken,
         IERC4626 _vault,
         ISwapper _swapper,
         uint32 _epochDuration,
         uint64 _minYieldPerEpochPercent,
         address _admin,
         address _keeper
-    ) ERC721("YieldDCA", "YDCA") {
+    ) {
         if (address(_dcaToken) == address(0)) revert DCATokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
         if (address(_dcaToken) == _vault.asset()) revert DCATokenSameAsVaultAsset();
         if (_admin == address(0)) revert AdminAddressZero();
         if (_keeper == address(0)) revert KeeperAddressZero();
 
+        name_ = string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", _dcaToken.name()));
+        symbol_ = string(abi.encodePacked("ydca-", _vault.symbol(), "/", _dcaToken.symbol()));
+
         dcaToken = _dcaToken;
-        asset = IERC20(_vault.asset());
+        asset = IERC20Metadata(_vault.asset());
         vault = _vault;
 
         _setSwapper(_swapper);
@@ -171,6 +179,25 @@ contract YieldDCA is ERC721, AccessControl {
         _grantRole(KEEPER_ROLE, _keeper);
     }
 
+    /*
+    * =======================================================
+    *                   EXTERNAL FUNCTIONS
+    * =======================================================
+    */
+
+    /// @inheritdoc ERC721
+    function name() public view override returns (string memory) {
+        return name_;
+    }
+
+    /// @inheritdoc ERC721
+    function symbol() public view override returns (string memory) {
+        return symbol_;
+    }
+
+    /// @inheritdoc ERC721
+    function tokenURI(uint256 id) public view virtual override returns (string memory) {}
+
     /**
      * @notice Checks if the contract implements an interface
      * @dev Implements ERC165 standard for interface detection.
@@ -178,7 +205,8 @@ contract YieldDCA is ERC721, AccessControl {
      * @return bool True if the contract implements the requested interface, false otherwise
      */
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
-        return interfaceId == type(AccessControl).interfaceId || super.supportsInterface(interfaceId);
+        return interfaceId == type(AccessControl).interfaceId || interfaceId == type(IERC721).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     /**
@@ -500,6 +528,12 @@ contract YieldDCA is ERC721, AccessControl {
     function sharesBalance() public view returns (uint256) {
         return vault.balanceOf(address(this));
     }
+
+    /*
+    * =======================================================
+    *                   INTERNAL FUNCTIONS
+    * =======================================================
+    */
 
     function _checkIsOwner(uint256 _positionId) internal view {
         if (ownerOf(_positionId) != msg.sender) revert CallerNotTokenOwner();

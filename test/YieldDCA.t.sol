@@ -2,10 +2,10 @@
 pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
-import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
+import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
-import {IERC721Errors} from "openzeppelin-contracts/interfaces/draft-IERC6093.sol";
 import {IERC721} from "openzeppelin-contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "openzeppelin-contracts/token/ERC721/IERC721Receiver.sol";
 import {IAccessControl} from "openzeppelin-contracts/access/IAccessControl.sol";
@@ -73,7 +73,7 @@ contract YieldDCATest is TestCommon {
 
         dcaToken.mint(address(swapper), 10000 ether);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)),
+            IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
             DEFAULT_DCA_INTERVAL,
@@ -111,7 +111,7 @@ contract YieldDCATest is TestCommon {
     function test_constructor_revertsIfDcaTokenZeroAddress() public {
         vm.expectRevert(YieldDCA.DCATokenAddressZero.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(0)),
+            IERC20Metadata(address(0)),
             IERC4626(address(vault)),
             swapper,
             DEFAULT_DCA_INTERVAL,
@@ -124,7 +124,7 @@ contract YieldDCATest is TestCommon {
     function test_constructor_revertsIfVaultZeroAddress() public {
         vm.expectRevert(YieldDCA.VaultAddressZero.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)),
+            IERC20Metadata(address(dcaToken)),
             IERC4626(address(0)),
             swapper,
             DEFAULT_DCA_INTERVAL,
@@ -137,7 +137,7 @@ contract YieldDCATest is TestCommon {
     function test_constructor_revertsIfSwapperZeroAddress() public {
         vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)),
+            IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             ISwapper(address(0)),
             DEFAULT_DCA_INTERVAL,
@@ -152,14 +152,20 @@ contract YieldDCATest is TestCommon {
 
         vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, aboveMax, admin, keeper
+            IERC20Metadata(address(dcaToken)),
+            IERC4626(address(vault)),
+            swapper,
+            DEFAULT_DCA_INTERVAL,
+            aboveMax,
+            admin,
+            keeper
         );
     }
 
     function test_constructor_revertsIfDCATokenSameAsVaultAsset() public {
         vm.expectRevert(YieldDCA.DCATokenSameAsVaultAsset.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(asset)),
+            IERC20Metadata(address(asset)),
             IERC4626(address(vault)),
             swapper,
             DEFAULT_DCA_INTERVAL,
@@ -172,7 +178,7 @@ contract YieldDCATest is TestCommon {
     function test_constructor_revertsIfKeeperIsZeroAddress() public {
         vm.expectRevert(YieldDCA.KeeperAddressZero.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)),
+            IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
             DEFAULT_DCA_INTERVAL,
@@ -185,7 +191,7 @@ contract YieldDCATest is TestCommon {
     function test_constructor_revertsIfAdminIsZeroAddress() public {
         vm.expectRevert(YieldDCA.AdminAddressZero.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)),
+            IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
             DEFAULT_DCA_INTERVAL,
@@ -1877,7 +1883,7 @@ contract YieldDCATest is TestCommon {
     function test_reducePosition_failsIfInvalidPositionId() public {
         uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 2));
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         vm.prank(alice);
         yieldDca.reducePosition(positionId + 1, 1);
     }
@@ -1940,7 +1946,8 @@ contract YieldDCATest is TestCommon {
         yieldDca.reducePosition(positionId, toWithdraw);
 
         assertEq(yieldDca.balanceOf(alice), 0, "aw: alice's nft balance");
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, positionId));
+
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         yieldDca.ownerOf(positionId);
     }
 
@@ -1987,7 +1994,7 @@ contract YieldDCATest is TestCommon {
         assertEq(vault.balanceOf(alice), toWithdraw, "alice's balance");
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "alice's dca balance");
 
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, positionId));
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         yieldDca.ownerOf(positionId);
     }
 
@@ -2095,7 +2102,7 @@ contract YieldDCATest is TestCommon {
      */
 
     function test_closePosition_failsIfPositionDoesNotExist() public {
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         yieldDca.closePosition(1);
     }
 
@@ -2175,7 +2182,7 @@ contract YieldDCATest is TestCommon {
      */
 
     function test_claimDCATokens_failsIfPositionDoesNotExist() public {
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         yieldDca.claimDCATokens(1);
     }
 
