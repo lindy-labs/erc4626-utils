@@ -23,39 +23,39 @@ contract YieldDCATest is TestCommon {
     using FixedPointMathLib for uint256;
 
     event PositionOpened(
-        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
     );
     event PositionIncreased(
-        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
     );
     event PositionReduced(
-        address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 shares, uint256 principal
+        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
     );
     event PositionClosed(
         address indexed caller,
         uint256 indexed positionId,
-        uint256 epoch,
+        uint32 epoch,
         uint256 shares,
         uint256 principal,
         uint256 dcaTokens
     );
-    event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint256 epoch, uint256 dcaTokens);
-    event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
+    event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 dcaTokens);
+    event EpochDurationUpdated(address indexed admin, uint32 newDuration);
     event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
     event DiscrepancyToleranceUpdated(address indexed admin, uint256 newTolerance);
 
     event DCAExecuted(
         address indexed keeper,
-        uint256 epoch,
+        uint32 epoch,
         uint256 yieldSpent,
         uint256 dcaBought,
         uint256 dcaPrice,
         uint256 sharePrice
     );
 
-    uint256 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
-    uint256 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
+    uint32 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
+    uint64 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
     uint256 public constant DEFAULT_DISCREPANCY_TOLERANCE = 0.01e18; // 1%
 
     YieldDCA yieldDca;
@@ -148,7 +148,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfMinYieldPercentOutOfBounds() public {
-        uint256 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
+        uint64 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
 
         vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
         yieldDca = new YieldDCA(
@@ -289,7 +289,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setEpochDuration_updatesDcaInterval() public {
-        uint256 newInterval = 2 weeks;
+        uint32 newInterval = 1 weeks;
 
         vm.prank(admin);
         yieldDca.setEpochDuration(newInterval);
@@ -298,17 +298,17 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setEpochDuration_emitsEvent() public {
-        uint256 newInterval = 3 weeks;
+        uint32 newInterval = 3 weeks;
 
         vm.expectEmit(true, true, true, true);
-        emit DCAIntervalUpdated(admin, newInterval);
+        emit EpochDurationUpdated(admin, newInterval);
 
         vm.prank(admin);
         yieldDca.setEpochDuration(newInterval);
     }
 
     function test_setEpochDuration_failsIfBelowLowerBound() public {
-        uint256 invalidInterval = yieldDca.EPOCH_DURATION_LOWER_BOUND() - 1;
+        uint32 invalidInterval = yieldDca.EPOCH_DURATION_LOWER_BOUND() - 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.EpochDurationOutOfBounds.selector);
@@ -316,7 +316,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setEpochDuration_failsIfAboveUpperBound() public {
-        uint256 invalidInterval = yieldDca.EPOCH_DURATION_UPPER_BOUND() + 1;
+        uint32 invalidInterval = yieldDca.EPOCH_DURATION_UPPER_BOUND() + 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.EpochDurationOutOfBounds.selector);
@@ -341,7 +341,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setMinYieldPerEpoch_updatesMinYieldPerEpoch() public {
-        uint256 newYield = 0.005e18;
+        uint64 newYield = 0.005e18;
 
         vm.prank(admin);
         yieldDca.setMinYieldPerEpoch(newYield);
@@ -350,7 +350,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setMinYieldPerEpoch_failsIfBelowLowerBound() public {
-        uint256 belowMin = yieldDca.MIN_YIELD_PER_EPOCH_LOWER_BOUND() - 1;
+        uint64 belowMin = yieldDca.MIN_YIELD_PER_EPOCH_LOWER_BOUND() - 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
@@ -358,7 +358,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setMinYieldPerEpoch_failsIfAboveUpperBound() public {
-        uint256 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
+        uint64 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
@@ -366,7 +366,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setMinYieldPerEpoch_emitsEvent() public {
-        uint256 newYield = 0.01e18;
+        uint64 newYield = 0.01e18;
 
         vm.expectEmit(true, true, true, true);
         emit MinYieldPerEpochUpdated(admin, newYield);
@@ -393,7 +393,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setDiscrepancyTolerance_updatesDiscrepancyTolerance() public {
-        uint256 newTolerance = 0.005e18;
+        uint64 newTolerance = 0.005e18;
 
         vm.prank(admin);
         yieldDca.setDiscrepancyTolerance(newTolerance);
@@ -402,7 +402,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setDiscrepancyTolerance_failsIfAboveUpperBound() public {
-        uint256 aboveMax = yieldDca.DISCREPANCY_TOLERANCE_UPPER_BOUND() + 1;
+        uint64 aboveMax = yieldDca.DISCREPANCY_TOLERANCE_UPPER_BOUND() + 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.DiscrepancyToleranceOutOfBounds.selector);
@@ -410,7 +410,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setDiscrepancyTolerance_emitsEvent() public {
-        uint256 newTolerance = 0.01e18;
+        uint64 newTolerance = 0.01e18;
 
         vm.expectEmit(true, true, true, true);
         emit DiscrepancyToleranceUpdated(admin, newTolerance);
@@ -1051,7 +1051,7 @@ contract YieldDCATest is TestCommon {
         // shift time by less than min epoch duration
         _shiftTime(yieldDca.epochDuration() - 1);
 
-        vm.expectRevert(YieldDCA.MinEpochDurationNotReached.selector);
+        vm.expectRevert(YieldDCA.EpochDurationNotReached.selector);
         yieldDca.canExecuteDCA();
     }
 
@@ -1069,7 +1069,7 @@ contract YieldDCATest is TestCommon {
 
         _shiftTime(yieldDca.epochDuration());
 
-        _generateYield(int256(yieldDca.minYieldPerEpoch() - 2));
+        _generateYield(int256(uint256(yieldDca.minYieldPerEpoch() - 2)));
 
         vm.expectRevert(YieldDCA.InsufficientYield.selector);
         yieldDca.canExecuteDCA();
@@ -1083,7 +1083,7 @@ contract YieldDCATest is TestCommon {
         _shiftTime(yieldDca.epochDuration());
 
         // yield >= min yield
-        _generateYield(int256(yieldDca.minYieldPerEpoch()));
+        _generateYield(int256(uint256(yieldDca.minYieldPerEpoch())));
 
         assertTrue(yieldDca.canExecuteDCA());
     }
@@ -1110,7 +1110,7 @@ contract YieldDCATest is TestCommon {
 
         _shiftTime(yieldDca.epochDuration() - 1);
 
-        vm.expectRevert(YieldDCA.MinEpochDurationNotReached.selector);
+        vm.expectRevert(YieldDCA.EpochDurationNotReached.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -1150,7 +1150,7 @@ contract YieldDCATest is TestCommon {
         _shiftTime(yieldDca.epochDuration());
         swapper.setExchangeRate(2e18);
 
-        _generateYield(int256(yieldDca.minYieldPerEpoch() - 2));
+        _generateYield(int256(uint256(yieldDca.minYieldPerEpoch() - 2)));
 
         vm.expectRevert(YieldDCA.InsufficientYield.selector);
 
@@ -1236,7 +1236,7 @@ contract YieldDCATest is TestCommon {
         _generateYield(int256(yieldPct));
 
         // dca - buy 2.5 DCA tokens for 0.5 ether
-        uint256 currentEpoch = yieldDca.currentEpoch();
+        uint32 currentEpoch = yieldDca.currentEpoch();
         uint256 exchangeRate = 5e18;
         swapper.setExchangeRate(exchangeRate);
         _shiftTime(yieldDca.epochDuration());

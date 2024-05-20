@@ -14,8 +14,8 @@ import {TestCommon} from "./common/TestCommon.sol";
 contract YieldDCAForkTest is TestCommon {
     using FixedPointMathLib for uint256;
 
-    uint256 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
-    uint256 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
+    uint32 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
+    uint64 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
 
     bytes constant POOL_FEE = abi.encode(500); // 0.05% USDC/ETH uniswap pool fee
 
@@ -58,12 +58,12 @@ contract YieldDCAForkTest is TestCommon {
 
         uint256 expectedYield = principal.mulWadDown(0.1e18);
 
-        assertEq(yieldDca.calculateYield(), expectedYield, "calculated yield");
+        assertEq(uint256(yieldDca.calculateYield()), expectedYield, "calculated yield");
 
         _shiftTime(DEFAULT_DCA_INTERVAL);
 
         // actual yield is less after time shift?
-        uint256 actualYield = yieldDca.calculateYield();
+        uint256 actualYield = uint256(yieldDca.calculateYield());
         assertTrue(actualYield < expectedYield, "actual yield < expected yield");
         assertApproxEqRel(actualYield, expectedYield, 0.02e18, "actual yield");
 
