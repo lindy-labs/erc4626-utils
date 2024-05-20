@@ -78,6 +78,8 @@ contract YieldDCA is ERC721, AccessControl {
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
     event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
+    event DiscrepancyToleranceUpdated(address indexed admin, uint256 newTolerance);
+
     event DCAExecuted(
         address indexed keeper,
         uint256 epoch,
@@ -95,6 +97,7 @@ contract YieldDCA is ERC721, AccessControl {
     error AdminAddressZero();
     error EpochDurationOutOfBounds();
     error MinYieldPerEpochOutOfBounds();
+    error DiscrepancyToleranceOutOfBounds();
 
     //   TODO: find better names
     error MinEpochDurationNotReached();
@@ -112,6 +115,7 @@ contract YieldDCA is ERC721, AccessControl {
     uint256 public constant EPOCH_DURATION_UPPER_BOUND = 10 weeks;
     uint256 public constant MIN_YIELD_PER_EPOCH_LOWER_BOUND = 0.0001e18; // 0.01%
     uint256 public constant MIN_YIELD_PER_EPOCH_UPPER_BOUND = 0.01e18; // 1%
+    uint256 public constant DISCREPANCY_TOLERANCE_UPPER_BOUND = 1e18; // 100%
 
     IERC20 public immutable dcaToken;
     IERC20 public immutable asset;
@@ -124,6 +128,7 @@ contract YieldDCA is ERC721, AccessControl {
     uint256 public epochDuration = 2 weeks;
     /// @dev The minimum yield required to execute the DCA strategy in an epoch
     uint256 public minYieldPerEpoch = 0.001e18; // 0.1%
+    uint256 public discrepancyTolerance = 0.01e18; // 1%
 
     mapping(uint256 => EpochInfo) public epochDetails;
 
@@ -131,11 +136,17 @@ contract YieldDCA is ERC721, AccessControl {
     mapping(uint256 => Position) public positions;
     uint256 public totalPrincipal;
 
+    modifier onlyAdmin() {
+        _checkRole(DEFAULT_ADMIN_ROLE);
+        _;
+    }
+
     constructor(
         IERC20 _dcaToken,
         IERC4626 _vault,
         ISwapper _swapper,
         uint256 _epochDuration,
+        uint256 _minYieldPerEpochPercent,
         address _admin,
         address _keeper
     ) ERC721("YieldDCA", "YDCA") {
@@ -149,8 +160,9 @@ contract YieldDCA is ERC721, AccessControl {
         asset = IERC20(_vault.asset());
         vault = _vault;
 
-        _setEpochDuration(_epochDuration);
         _setSwapper(_swapper);
+        _setEpochDuration(_epochDuration);
+        _setMinYieldPerEpoch(_minYieldPerEpochPercent);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(KEEPER_ROLE, _keeper);
@@ -171,7 +183,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. Emits the SwapperUpdated event.
      * @param _newSwapper The address of the new swapper contract
      */
-    function setSwapper(ISwapper _newSwapper) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setSwapper(ISwapper _newSwapper) external onlyAdmin {
         _setSwapper(_newSwapper);
 
         emit SwapperUpdated(msg.sender, address(_newSwapper));
@@ -192,7 +204,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The duration must be between defined upper and lower bounds. Emits the DCAIntervalUpdated event.
      * @param _newDuration The new minimum duration in seconds
      */
-    function setEpochDuration(uint256 _newDuration) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setEpochDuration(uint256 _newDuration) external onlyAdmin {
         _setEpochDuration(_newDuration);
 
         emit DCAIntervalUpdated(msg.sender, _newDuration);
@@ -211,7 +223,13 @@ contract YieldDCA is ERC721, AccessControl {
      * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The yield must be between defined upper and lower bounds. Emits the MinYieldPerEpochUpdated event.
      * @param _newMinYieldPercent The new minimum yield as a WAD-scaled percentage of the total principal
      */
-    function setMinYieldPerEpoch(uint256 _newMinYieldPercent) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setMinYieldPerEpoch(uint256 _newMinYieldPercent) external onlyAdmin {
+        _setMinYieldPerEpoch(_newMinYieldPercent);
+
+        emit MinYieldPerEpochUpdated(msg.sender, _newMinYieldPercent);
+    }
+
+    function _setMinYieldPerEpoch(uint256 _newMinYieldPercent) internal {
         if (
             _newMinYieldPercent < MIN_YIELD_PER_EPOCH_LOWER_BOUND
                 || _newMinYieldPercent > MIN_YIELD_PER_EPOCH_UPPER_BOUND
@@ -220,8 +238,14 @@ contract YieldDCA is ERC721, AccessControl {
         }
 
         minYieldPerEpoch = _newMinYieldPercent;
+    }
 
-        emit MinYieldPerEpochUpdated(msg.sender, _newMinYieldPercent);
+    function setDiscrepancyTolerance(uint256 _newTolerance) external onlyAdmin {
+        if (_newTolerance > DISCREPANCY_TOLERANCE_UPPER_BOUND) revert DiscrepancyToleranceOutOfBounds();
+
+        discrepancyTolerance = _newTolerance;
+
+        emit DiscrepancyToleranceUpdated(msg.sender, _newTolerance);
     }
 
     /**
@@ -359,32 +383,19 @@ contract YieldDCA is ERC721, AccessControl {
         _closePosition(_positionId, position.principal, shares, dcaAmount);
     }
 
-    function claimDCATokens(uint256 _positionId, uint256 _discrepancyTolerance) external returns (uint256 dcaAmount) {
+    function claimDCATokens(uint256 _positionId) external returns (uint256 dcaAmount) {
         _checkIsOwner(_positionId);
 
         uint256 currentEpoch_ = currentEpoch;
         Position storage position = positions[_positionId];
-        uint256 sharesRemaining;
-        (sharesRemaining, dcaAmount) = _calculateBalances(position, currentEpoch_);
+        (position.shares, dcaAmount) = _calculateBalances(position, currentEpoch_);
 
         if (dcaAmount == 0) revert NothingToClaim();
 
-        position.shares = sharesRemaining;
         position.epoch = currentEpoch_;
         position.dcaAmount = 0;
 
-        uint256 dcaBalance_ = dcaBalance();
-
-        // limit to available shares because of possible discrepancies or revert if above set tolerance
-        if (dcaAmount > dcaBalance_) {
-            if (dcaAmount - dcaBalance_ > dcaAmount.mulWad(_discrepancyTolerance)) {
-                revert DCADiscrepancyAboveTolerance();
-            }
-
-            dcaAmount = dcaBalance_;
-        }
-
-        dcaToken.safeTransfer(msg.sender, dcaAmount);
+        dcaAmount = _transferDcaTokens(dcaAmount);
 
         emit DCATokensClaimed(msg.sender, _positionId, currentEpoch_, dcaAmount);
     }
@@ -429,7 +440,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         if (yield < totalPrincipal_.mulWad(minYieldPerEpoch)) revert InsufficientYield();
 
-        uint256 amountOut = _buyDcaToken(yield, _dcaAmountOutMin, _swapData);
+        uint256 amountOut = _buyDcaTokens(yield, _dcaAmountOutMin, _swapData);
         uint256 dcaPrice = amountOut.divWad(yield);
         uint256 sharePrice = yield.divWad(yieldInShares);
         uint256 currentEpoch_ = currentEpoch;
@@ -554,8 +565,9 @@ contract YieldDCA is ERC721, AccessControl {
             // cannot underflow because of sharesAvailable > _shares check
             position.shares = _sharesAvailable - _shares;
             position.principal -= principal;
-            totalPrincipal -= principal;
         }
+
+        totalPrincipal -= principal;
 
         _shares = _transferShares(_shares);
 
@@ -563,21 +575,13 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function _closePosition(uint256 _positionId, uint256 _principal, uint256 _shares, uint256 _dcaAmount) internal {
-        unchecked {
-            totalPrincipal -= _principal;
-        }
+        totalPrincipal -= _principal;
 
         delete positions[_positionId];
         _burn(_positionId);
 
         _shares = _transferShares(_shares);
-
-        // limit to available balance because of possible rounding errors & discrepancies
-        uint256 dcaBalance_ = dcaBalance();
-
-        if (_dcaAmount > dcaBalance_) _dcaAmount = dcaBalance_;
-
-        dcaToken.safeTransfer(msg.sender, _dcaAmount);
+        _dcaAmount = _transferDcaTokens(_dcaAmount);
 
         emit PositionClosed(msg.sender, _positionId, currentEpoch, _shares, _principal, _dcaAmount);
     }
@@ -601,7 +605,26 @@ contract YieldDCA is ERC721, AccessControl {
         return _shares;
     }
 
-    function _buyDcaToken(uint256 _amountIn, uint256 _dcaAmountOutMin, bytes calldata _swapData)
+    function _transferDcaTokens(uint256 _amount) internal returns (uint256) {
+        uint256 balance = dcaBalance();
+
+        // limit to available or revert if amount discrepancy is above set tolerance
+        if (_amount > balance) {
+            unchecked {
+                if (_amount - balance > _amount.mulWad(discrepancyTolerance)) {
+                    revert DCADiscrepancyAboveTolerance();
+                }
+            }
+
+            _amount = balance;
+        }
+
+        dcaToken.safeTransfer(msg.sender, _amount);
+
+        return _amount;
+    }
+
+    function _buyDcaTokens(uint256 _amountIn, uint256 _dcaAmountOutMin, bytes calldata _swapData)
         internal
         returns (uint256)
     {

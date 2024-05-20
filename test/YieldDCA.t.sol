@@ -43,6 +43,8 @@ contract YieldDCATest is TestCommon {
     event DCAIntervalUpdated(address indexed admin, uint256 newInterval);
     event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
+    event DiscrepancyToleranceUpdated(address indexed admin, uint256 newTolerance);
+
     event DCAExecuted(
         address indexed keeper,
         uint256 epoch,
@@ -53,6 +55,8 @@ contract YieldDCATest is TestCommon {
     );
 
     uint256 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
+    uint256 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
+    uint256 public constant DEFAULT_DISCREPANCY_TOLERANCE = 0.01e18; // 1%
 
     YieldDCA yieldDca;
     MockERC20 asset;
@@ -69,7 +73,13 @@ contract YieldDCATest is TestCommon {
 
         dcaToken.mint(address(swapper), 10000 ether);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper
+            IERC20(address(dcaToken)),
+            IERC4626(address(vault)),
+            swapper,
+            DEFAULT_DCA_INTERVAL,
+            DEFAULT_MIN_YIELD_PERCENT,
+            admin,
+            keeper
         );
 
         // make initial deposit to the vault
@@ -100,14 +110,28 @@ contract YieldDCATest is TestCommon {
 
     function test_constructor_revertsIfDcaTokenZeroAddress() public {
         vm.expectRevert(YieldDCA.DCATokenAddressZero.selector);
-        yieldDca =
-            new YieldDCA(IERC20(address(0)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
+        yieldDca = new YieldDCA(
+            IERC20(address(0)),
+            IERC4626(address(vault)),
+            swapper,
+            DEFAULT_DCA_INTERVAL,
+            DEFAULT_MIN_YIELD_PERCENT,
+            admin,
+            keeper
+        );
     }
 
     function test_constructor_revertsIfVaultZeroAddress() public {
         vm.expectRevert(YieldDCA.VaultAddressZero.selector);
-        yieldDca =
-            new YieldDCA(IERC20(address(dcaToken)), IERC4626(address(0)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
+        yieldDca = new YieldDCA(
+            IERC20(address(dcaToken)),
+            IERC4626(address(0)),
+            swapper,
+            DEFAULT_DCA_INTERVAL,
+            DEFAULT_MIN_YIELD_PERCENT,
+            admin,
+            keeper
+        );
     }
 
     function test_constructor_revertsIfSwapperZeroAddress() public {
@@ -117,28 +141,57 @@ contract YieldDCATest is TestCommon {
             IERC4626(address(vault)),
             ISwapper(address(0)),
             DEFAULT_DCA_INTERVAL,
+            DEFAULT_MIN_YIELD_PERCENT,
             admin,
             keeper
         );
     }
 
+    function test_constructor_revertsIfMinYieldPercentOutOfBounds() public {
+        uint256 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
+
+        vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
+        yieldDca = new YieldDCA(
+            IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, aboveMax, admin, keeper
+        );
+    }
+
     function test_constructor_revertsIfDCATokenSameAsVaultAsset() public {
         vm.expectRevert(YieldDCA.DCATokenSameAsVaultAsset.selector);
-        yieldDca =
-            new YieldDCA(IERC20(address(asset)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, keeper);
+        yieldDca = new YieldDCA(
+            IERC20(address(asset)),
+            IERC4626(address(vault)),
+            swapper,
+            DEFAULT_DCA_INTERVAL,
+            DEFAULT_MIN_YIELD_PERCENT,
+            admin,
+            keeper
+        );
     }
 
     function test_constructor_revertsIfKeeperIsZeroAddress() public {
         vm.expectRevert(YieldDCA.KeeperAddressZero.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, admin, address(0)
+            IERC20(address(dcaToken)),
+            IERC4626(address(vault)),
+            swapper,
+            DEFAULT_DCA_INTERVAL,
+            DEFAULT_MIN_YIELD_PERCENT,
+            admin,
+            address(0)
         );
     }
 
     function test_constructor_revertsIfAdminIsZeroAddress() public {
         vm.expectRevert(YieldDCA.AdminAddressZero.selector);
         yieldDca = new YieldDCA(
-            IERC20(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, address(0), keeper
+            IERC20(address(dcaToken)),
+            IERC4626(address(vault)),
+            swapper,
+            DEFAULT_DCA_INTERVAL,
+            DEFAULT_MIN_YIELD_PERCENT,
+            address(0),
+            keeper
         );
     }
 
@@ -320,6 +373,50 @@ contract YieldDCATest is TestCommon {
 
         vm.prank(admin);
         yieldDca.setMinYieldPerEpoch(newYield);
+    }
+
+    /*
+     * --------------------
+     *  #setDiscrepancyTolerance
+     * --------------------
+     */
+
+    function test_setDiscrepancyTolerance_failsIfCallerIsNotAdmin() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, alice, yieldDca.DEFAULT_ADMIN_ROLE()
+            )
+        );
+
+        vm.prank(alice);
+        yieldDca.setDiscrepancyTolerance(1e18);
+    }
+
+    function test_setDiscrepancyTolerance_updatesDiscrepancyTolerance() public {
+        uint256 newTolerance = 0.005e18;
+
+        vm.prank(admin);
+        yieldDca.setDiscrepancyTolerance(newTolerance);
+
+        assertEq(yieldDca.discrepancyTolerance(), newTolerance);
+    }
+
+    function test_setDiscrepancyTolerance_failsIfAboveUpperBound() public {
+        uint256 aboveMax = yieldDca.DISCREPANCY_TOLERANCE_UPPER_BOUND() + 1;
+
+        vm.prank(admin);
+        vm.expectRevert(YieldDCA.DiscrepancyToleranceOutOfBounds.selector);
+        yieldDca.setDiscrepancyTolerance(aboveMax);
+    }
+
+    function test_setDiscrepancyTolerance_emitsEvent() public {
+        uint256 newTolerance = 0.01e18;
+
+        vm.expectEmit(true, true, true, true);
+        emit DiscrepancyToleranceUpdated(admin, newTolerance);
+
+        vm.prank(admin);
+        yieldDca.setDiscrepancyTolerance(newTolerance);
     }
 
     /*
@@ -1518,6 +1615,14 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), alicesPrincipal, 2, "bw: alice's principal");
         assertApproxEqRel(dcaAmount, 5e18, 0.00001e18, "bw: alice's dca token balance");
 
+        vm.expectRevert(YieldDCA.DCADiscrepancyAboveTolerance.selector);
+        _closePosition(alice, 1);
+
+        // since alice is entitled to 5 DCA tokens but only 4.5 are available
+        // the discrepancy tolerance needs to be set at 10% for alice to be able to close her position
+        vm.prank(admin);
+        yieldDca.setDiscrepancyTolerance(0.1e18);
+
         _closePosition(alice, 1);
 
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 2, "aw: alice's principal");
@@ -1743,6 +1848,14 @@ contract YieldDCATest is TestCommon {
         (shares, dcaAmount) = yieldDca.balancesOf(3);
         assertApproxEqAbs(vault.convertToAssets(shares), carolsPrincipal, 3, "carol's principal");
         assertEq(dcaAmount, 0.2e18, "carol's dca token balance");
+
+        vm.expectRevert(YieldDCA.DCADiscrepancyAboveTolerance.selector);
+        _closePosition(carol, 3);
+
+        // since carol is entitled to 0.2 DCA tokens and 0.2 DCA tokens are missing
+        // the discrepancy tolerance needs to be set to 100% to allow carol to withdraw
+        vm.prank(admin);
+        yieldDca.setDiscrepancyTolerance(1e18); // 100%
 
         _closePosition(carol, 3);
 
@@ -2063,7 +2176,7 @@ contract YieldDCATest is TestCommon {
 
     function test_claimDCATokens_failsIfPositionDoesNotExist() public {
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 1));
-        yieldDca.claimDCATokens(1, 0);
+        yieldDca.claimDCATokens(1);
     }
 
     function test_claimDCATokens_failsIfNotOwner() public {
@@ -2071,7 +2184,7 @@ contract YieldDCATest is TestCommon {
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.CallerNotTokenOwner.selector));
         vm.prank(bob);
-        yieldDca.claimDCATokens(positionId, 0);
+        yieldDca.claimDCATokens(positionId);
     }
 
     function test_claimDCATokens_failsIfNothingToClaim() public {
@@ -2079,7 +2192,7 @@ contract YieldDCATest is TestCommon {
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId, 0);
+        yieldDca.claimDCATokens(positionId);
     }
 
     function test_claimDCATokens_transfersOnlyDCAAmountToCaller() public {
@@ -2092,7 +2205,7 @@ contract YieldDCATest is TestCommon {
         (uint256 sharesRemaining, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId, 0);
+        yieldDca.claimDCATokens(positionId);
 
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "alice's dca balance");
         assertEq(yieldDca.totalPrincipal(), principal, "total principal deposited");
@@ -2106,7 +2219,7 @@ contract YieldDCATest is TestCommon {
         // claim again should fail
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId, 0);
+        yieldDca.claimDCATokens(positionId);
     }
 
     function test_claimDCATokens_worksInConsequtiveEpochs() public {
@@ -2120,7 +2233,7 @@ contract YieldDCATest is TestCommon {
         (uint256 sharesRemaining, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        uint256 totalClaimed = yieldDca.claimDCATokens(positionId, 0);
+        uint256 totalClaimed = yieldDca.claimDCATokens(positionId);
 
         _generateYield(1e18);
         _shiftTime(yieldDca.epochDuration());
@@ -2129,7 +2242,7 @@ contract YieldDCATest is TestCommon {
         (sharesRemaining, dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        totalClaimed += yieldDca.claimDCATokens(positionId, 0);
+        totalClaimed += yieldDca.claimDCATokens(positionId);
 
         assertEq(totalClaimed, 8e18, "total claimed");
         assertEq(dcaToken.balanceOf(alice), totalClaimed, "alice's dca balance");
@@ -2155,44 +2268,44 @@ contract YieldDCATest is TestCommon {
         emit DCATokensClaimed(alice, positionId, yieldDca.currentEpoch(), dcaAmount);
 
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId, 0);
+        yieldDca.claimDCATokens(positionId);
     }
 
     function test_claimDCATokens_failsIfDcaDiscrepancyIsAboveTolerated() public {
         uint256 alicesPrincipal = 1 ether;
         uint256 positionId = _depositAndOpenPosition(alice, alicesPrincipal);
-        uint256 dicrepancyTolerance = 0.01e18; // 1%
+        assertEq(yieldDca.discrepancyTolerance(), DEFAULT_DISCREPANCY_TOLERANCE, "discrepancy tolerance not set");
 
         _generateYield(1e18);
 
         uint256 bobsPrincipal = 1 ether;
         _depositAndOpenPosition(bob, bobsPrincipal);
 
-        _generateYield(-int256(dicrepancyTolerance + 0.001e18));
+        _generateYield(-int256(DEFAULT_DISCREPANCY_TOLERANCE + 0.001e18));
         _executeDcaAtExchangeRate(2e18);
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.DCADiscrepancyAboveTolerance.selector));
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId, dicrepancyTolerance);
+        yieldDca.claimDCATokens(positionId);
     }
 
     function test_claimDCATokens_worksIfDcaDiscrepancyBelowTolerated() public {
         uint256 alicesPrincipal = 1 ether;
         uint256 positionId = _depositAndOpenPosition(alice, alicesPrincipal);
-        uint256 dicrepancyTolerance = 0.01e18; // 1%
+        assertEq(yieldDca.discrepancyTolerance(), DEFAULT_DISCREPANCY_TOLERANCE, "discrepancy tolerance not set");
 
         _generateYield(1e18);
 
         uint256 bobsPrincipal = 1 ether;
         _depositAndOpenPosition(bob, bobsPrincipal);
 
-        _generateYield(-int256(dicrepancyTolerance - 0.001e18));
+        _generateYield(-int256(DEFAULT_DISCREPANCY_TOLERANCE - 0.001e18));
         _executeDcaAtExchangeRate(2e18);
 
         (, uint256 entitled) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        uint256 claimed = yieldDca.claimDCATokens(positionId, dicrepancyTolerance);
+        uint256 claimed = yieldDca.claimDCATokens(positionId);
 
         assertTrue(entitled > claimed, "there was no discrepancy");
         assertEq(dcaToken.balanceOf(alice), claimed, "alice's dca balance");
