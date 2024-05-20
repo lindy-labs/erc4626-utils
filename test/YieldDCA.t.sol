@@ -66,9 +66,9 @@ contract YieldDCATest is TestCommon {
     SwapperMock swapper;
 
     function setUp() public {
-        asset = new MockERC20("ERC20Mock", "ERC20Mock", 18);
-        vault = new MockERC4626(asset, "ERC4626Mock", "ERC4626Mock");
-        dcaToken = new MockERC20("DCA Token", "DCA", 18);
+        asset = new MockERC20("Mock ERC20", "mERC20", 18);
+        vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
+        dcaToken = new MockERC20("Mock DCA", "mDCA", 18);
         swapper = new SwapperMock();
 
         dcaToken.mint(address(swapper), 10000 ether);
@@ -206,6 +206,11 @@ contract YieldDCATest is TestCommon {
         assertTrue(yieldDca.supportsInterface(type(IAccessControl).interfaceId), "supports AccessControl");
 
         assertTrue(!yieldDca.supportsInterface(type(IERC721Receiver).interfaceId), "shouldn't support IERC721Receiver");
+    }
+
+    function test_nameAndSymbol() public {
+        assertEq(yieldDca.name(), "Yield DCA - Mock ERC4626 / Mock DCA", "name");
+        assertEq(yieldDca.symbol(), "yDCA-mERC4626/mDCA", "symbol");
     }
 
     /*

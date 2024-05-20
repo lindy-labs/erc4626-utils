@@ -165,7 +165,7 @@ contract YieldDCA is ERC721, AccessControl {
         if (_keeper == address(0)) revert KeeperAddressZero();
 
         name_ = string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", _dcaToken.name()));
-        symbol_ = string(abi.encodePacked("ydca-", _vault.symbol(), "/", _dcaToken.symbol()));
+        symbol_ = string(abi.encodePacked("yDCA-", _vault.symbol(), "/", _dcaToken.symbol()));
 
         dcaToken = _dcaToken;
         asset = IERC20Metadata(_vault.asset());
