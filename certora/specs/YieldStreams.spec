@@ -42,6 +42,16 @@ methods {
         bytes32 r,
         bytes32 s
     ) external returns (uint256);
+    function depositAndOpenMultipleUsingPermit(
+        uint256 _principal,
+        address[] calldata _receivers,
+        uint256[] calldata _allocations,
+        uint256 _maxLossOnOpenTolerance,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256[]);
     function topUp(uint256 _streamId, uint256 _shares) external returns (uint256);
     function topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
         external
@@ -76,10 +86,17 @@ methods {
     function asset.balanceOf(address) external returns (uint256) envfree;
     function asset.allowance(address owner, address spender) external returns (uint256) envfree;
     function vault.balanceOf(address) external returns (uint256) envfree;
+    function vault.allowance(address owner, address spender) external returns (uint256) envfree;
+    //function vault.deposit(uint256, address) external returns (uint256);
+    function currentContract.balanceOf(address) external returns (uint256) envfree;
     function vault.convertToAssets(uint256) external returns (uint256) envfree;
+    function vault.convertToShares(uint256) external returns (uint256) envfree;
+    // Vault deposit
+    function _.deposit(uint256, address) external;// returns (uint256);
 }
 
 definition WAD() returns mathint = 10 ^ 18;
+definition delta(mathint a, mathint b) returns mathint = (a > b) ? (a - b) : (b - a);
 
 /**
  * @Rule Integrity property for the `open` function
@@ -249,26 +266,34 @@ rule integrity_of_openMultipleUsingPermit(address alice, address bob, address ca
  * @Category High
  * @Description Ensures that the `depositAndOpen` function creates a new yield stream with the correct parameters, deposit the specified principal amount, and update the contract state accordingly, regardless of the caller.
  */
-rule integrity_of_depositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance) {
-    env e;
-    address streamer = e.msg.sender;
-    uint256 streamId;
-    uint256 shares;
-
+rule depositAndOpenIntegrity(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance) {
     // Preconditions
-    require _receiver != 0;
-    require _principal > 0;
-
+    env e;
+    require _receiver != 0 && e.msg.sender != 0 && e.msg.sender != _receiver;
+    require _principal != 0;
+    require _maxLossOnOpenTolerance >= 0;
+    uint256 initialAssetBalance = asset.balanceOf(e.msg.sender);
+    require(initialAssetBalance >= _principal && asset.allowance(e.msg.sender, currentContract) >= _principal);
     // Capture the initial state
     uint256 initialTotalPrincipal = receiverTotalPrincipal(_receiver);
+    uint256 initialTotalShares = receiverTotalShares(_receiver);
 
-    // Call the `depositAndOpen` function
-    streamId = depositAndOpen(e, _receiver, _principal, _maxLossOnOpenTolerance);
+    uint256 shares = vault.convertToShares(_principal);
+
+    require shares != 0;
+    // Invoke the function
+    uint256 streamId = depositAndOpen(e, _receiver, _principal, _maxLossOnOpenTolerance);
+
+    require initialTotalShares != receiverTotalShares(_receiver); // shares must be not zero
 
     // Postconditions
-    //assert streamId > 0;
+
     assert streamIdToReceiver(streamId) == _receiver &&
-     to_mathint(receiverTotalPrincipal(_receiver)) == initialTotalPrincipal + _principal;
+     receiverTotalShares(_receiver) >= shares &&
+     to_mathint(receiverTotalPrincipal(_receiver)) == initialTotalPrincipal + _principal &&
+     receiverPrincipal(_receiver, streamId) == _principal &&
+     vault.balanceOf(currentContract) >= shares;
+    //assert delta(to_mathint(asset.balanceOf(e.msg.sender)), initialAssetBalance - _principal) <= 1 && receiverTotalShares(_receiver) == shares;
 }
 
 /**
@@ -306,6 +331,67 @@ rule integrity_of_depositAndOpenUsingPermit(address dave, address _receiver, uin
     assert to_mathint(receiverTotalPrincipal(_receiver)) == initialTotalPrincipal + _principal;
     //assert receiverPrincipal(_receiver, 1) == _principal;
     //assert delta(to_mathint(vault.balanceOf(currentContract)), (initialContractShares + shares)) <= 1;
+}
+
+/**
+ * @Rule Integrity property for the `depositAndOpenMultipleUsingPermit` function
+ * @Category High
+ * @Description Ensures that the `depositAndOpenMultipleUsingPermit` function opens multiple yield streams using ERC20 permit for approval, allocating the underlying asset as principal.
+ */
+rule integrity_of_depositAndOpenMultipleUsingPermit(address dave, address bob, uint256 principal,
+        address[] receivers,
+        uint256[] allocations,
+        //uint256 _maxLossOnOpenTolerance,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s) {
+    env e;
+    require dave != bob && dave == e.msg.sender;
+    require principal == 10 ^ 18;
+    require principal > 0;
+    require to_mathint(deadline) == e.block.timestamp + 1;
+    require asset.balanceOf(dave) == principal;
+    //require asset.allowance(dave, currentContract) >= principal;
+
+    require(asset.balanceOf(dave) >= principal && asset.allowance(dave, currentContract) >= principal);
+
+    require to_mathint(asset.balanceOf(vault)) == 2 * principal;
+ 
+    require receivers.length == allocations.length && allocations.length == 1;
+    require receivers[0] == bob && allocations[0] == principal;
+
+    uint256 shares = vault.deposit(e, principal, currentContract);
+    asset.approve(e, currentContract, shares);
+
+    // Capture the initial state
+    uint256 initialNextStreamId = nextStreamId();
+    uint256 initialBobShares = receiverTotalShares(bob);
+    uint256 initialBobPrincipal = receiverTotalPrincipal(bob);
+
+    // Call the depositAndOpenMultipleUsingPermit function
+    uint256[] streamIds = depositAndOpenMultipleUsingPermit(
+        e,
+        principal,
+        receivers,
+        allocations,
+        0,
+        deadline,
+        v,
+        r,
+        s
+    );
+
+    require ownerOf(streamIds[0]) == dave;
+
+    // Postconditions
+    assert streamIds.length == 1 &&
+     streamIds[0] == initialNextStreamId &&
+     to_mathint(nextStreamId()) == initialNextStreamId + 1;
+    assert to_mathint(receiverTotalPrincipal(bob)) == initialBobPrincipal + principal &&
+     receiverPrincipal(bob, streamIds[0]) == principal && vault.balanceOf(currentContract) == shares;
+     // assert asset.balanceOf(dave) == principal;
+    // currentContract.balanceOf(dave) == 1 && receiverTotalShares(bob) == shares;
 }
 
 /**
