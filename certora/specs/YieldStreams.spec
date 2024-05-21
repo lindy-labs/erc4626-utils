@@ -93,6 +93,12 @@ methods {
     function vault.convertToShares(uint256) external returns (uint256) envfree;
     // Vault deposit
     function _.deposit(uint256, address) external;// returns (uint256);
+   function _._ external => DISPATCH [
+      _.transferFrom(address, address, uint256),
+      _.safeTransferFrom(address, address, uint256),
+      _.convertToAssets(uint256),
+      _.convertToShares(uint256)
+   ] default NONDET;
 }
 
 definition WAD() returns mathint = 10 ^ 18;
@@ -103,17 +109,21 @@ definition delta(mathint a, mathint b) returns mathint = (a > b) ? (a - b) : (b 
  * @Category High
  * @Description  The `open` function should create a new yield stream with the correct parameters and update the contract state accordingly, regardless of the caller. This property ensures that the `open` function correctly creates a new yield stream, mints a new ERC721 token, updates the receiver's total shares and principal, and emits the `StreamOpened` event with the correct parameters.
  */
-rule integrity_of_open(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance) {
+rule integrity_of_openNew(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance) {
     env e; 
     // Preconditions
-    require _receiver != 0;
+    require _receiver != 0 && e.msg.sender != 0;
     require _shares > 0;
     require _maxLossOnOpenTolerance <= 10 ^ 17; // 10%
+    uint256 initialStreamerShareBalance = vault.balanceOf(e.msg.sender);
+    require initialStreamerShareBalance >= _shares;
+    uint256 initialThisShareBalance = vault.balanceOf(currentContract);
 
     // Get the initial state
     uint256 receiverTotalSharesBefore = receiverTotalShares(_receiver);
     uint256 receiverTotalPrincipalBefore = receiverTotalPrincipal(_receiver);
     uint256 nextStreamIdBefore = nextStreamId();
+    uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerance);
 
     // Call the `open` function
     uint256 streamId = open(e, _receiver, _shares, _maxLossOnOpenTolerance);
@@ -122,7 +132,11 @@ rule integrity_of_open(address _receiver, uint256 _shares, uint256 _maxLossOnOpe
     assert streamIdToReceiver(streamId) == _receiver;
     assert to_mathint(receiverTotalShares(_receiver)) == receiverTotalSharesBefore + _shares;
     assert to_mathint(nextStreamId()) == nextStreamIdBefore + 1;
-    assert debtFor(_receiver) <= receiverTotalPrincipal(_receiver);
+
+    uint256 receiverTotalPrincipalAfter = receiverTotalPrincipal(_receiver);
+
+    assert to_mathint(receiverTotalPrincipalAfter) == receiverTotalPrincipalBefore + principal &&
+     receiverPrincipal(_receiver, streamId) == principal;
 }
 
 /**
