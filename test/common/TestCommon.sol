@@ -7,6 +7,7 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
+import {IERC20Permit} from "openzeppelin-contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 abstract contract TestCommon is Test {
     using FixedPointMathLib for uint256;
@@ -24,22 +25,40 @@ abstract contract TestCommon is Test {
     bytes32 constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
-    function _depositToVault(IERC4626 _vault, address _from, uint256 _amount) internal returns (uint256 shares) {
-        vm.startPrank(_from);
+    function _signPermit(uint256 ownerKey, address _token, address _spender, uint256 _amount, uint256 _deadline)
+        internal
+        view
+        returns (uint8 v, bytes32 r, bytes32 s)
+    {
+        address owner = vm.addr(ownerKey);
+        bytes32 data = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                IERC20Permit(_token).DOMAIN_SEPARATOR(),
+                keccak256(
+                    abi.encode(PERMIT_TYPEHASH, owner, _spender, _amount, IERC20Permit(_token).nonces(owner), _deadline)
+                )
+            )
+        );
 
-        address asset = _vault.asset();
-
-        deal(asset, _from, _amount);
-        IERC20(asset).approve(address(_vault), _amount);
-
-        shares = _vault.deposit(_amount, _from);
-
-        vm.stopPrank();
+        return vm.sign(ownerKey, data);
     }
 
-    function _approve(IERC20 _token, address _spender, address _from, uint256 _shares) internal {
+    function _depositToVault(IERC4626 _vault, address _from, uint256 _amount) internal returns (uint256 shares) {
+        _dealAndApprove(IERC20(_vault.asset()), _from, address(_vault), _amount);
+
         vm.prank(_from);
-        _token.approve(address(_spender), _shares);
+        shares = _vault.deposit(_amount, _from);
+    }
+
+    function _approve(IERC20 _token,  address _owner,address _spender, uint256 _amount) internal {
+        vm.prank(_owner);
+        _token.approve(address(_spender), _amount);
+    }
+
+    function _dealAndApprove(IERC20 _token, address _owner, address _spender, uint256 _amount) internal {
+        deal(address(_token), _owner, _amount);
+        _approve(_token, _owner, _spender, _amount);
     }
 
     function _generateYield(IERC4626 _vault, int256 _percent) internal {

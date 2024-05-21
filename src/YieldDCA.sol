@@ -6,7 +6,7 @@ import {ERC721} from "solady/tokens/ERC721.sol";
 import {IERC721} from "openzeppelin-contracts/interfaces/IERC721.sol";
 import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
-import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
+import {IERC20Permit} from "openzeppelin-contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
@@ -57,6 +57,7 @@ contract YieldDCA is ERC721, AccessControl {
         uint128 sharePrice;
     }
 
+    // TODO: add old value?
     event EpochDurationUpdated(address indexed admin, uint32 newDuration);
     event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
     event SwapperUpdated(address indexed admin, address newSwapper);
@@ -71,6 +72,7 @@ contract YieldDCA is ERC721, AccessControl {
         uint256 sharePrice
     );
 
+    // TODO: add owner to events
     event PositionOpened(
         address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
     );
@@ -86,9 +88,9 @@ contract YieldDCA is ERC721, AccessControl {
         uint32 epoch,
         uint256 shares,
         uint256 principal,
-        uint256 dcaTokens
+        uint256 dcaAmount
     );
-    event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 dcaTokens);
+    event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 amount);
 
     error DCATokenAddressZero();
     error VaultAddressZero();
@@ -105,7 +107,6 @@ contract YieldDCA is ERC721, AccessControl {
     error NoYield();
     error AmountReceivedTooLow();
     error InsufficientSharesToWithdraw();
-    error CallerNotTokenOwner();
     error NothingToClaim();
     error DCADiscrepancyAboveTolerance();
 
@@ -145,6 +146,7 @@ contract YieldDCA is ERC721, AccessControl {
         _;
     }
 
+    // TODO: remove this from ys also
     // ERC721 name and symbol
     string private name_;
     string private symbol_;
@@ -268,7 +270,7 @@ contract YieldDCA is ERC721, AccessControl {
         external
         returns (uint256 positionId)
     {
-        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
+        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
 
         positionId = openPosition(_shares);
     }
@@ -276,7 +278,7 @@ contract YieldDCA is ERC721, AccessControl {
     function depositAndOpenPosition(uint256 _principal) public returns (uint256 positionId) {
         _principal.checkIsZero();
 
-        uint256 shares = _depositToVault(_principal);
+        uint256 shares = _depositToVault(msg.sender, _principal);
 
         positionId = _openPosition(shares);
     }
@@ -285,7 +287,7 @@ contract YieldDCA is ERC721, AccessControl {
         public
         returns (uint256 positionId)
     {
-        IERC2612(address(asset)).permit(msg.sender, address(this), _principal, _deadline, _v, _r, _s);
+        IERC20Permit(address(asset)).permit(msg.sender, address(this), _principal, _deadline, _v, _r, _s);
 
         positionId = depositAndOpenPosition(_principal);
     }
@@ -298,13 +300,13 @@ contract YieldDCA is ERC721, AccessControl {
      */
     function increasePosition(uint256 _positionId, uint256 _shares) public {
         _shares.checkIsZero();
-        _checkIsOwner(_positionId);
+        _checkApprovedOrOwner(msg.sender, _positionId);
 
         uint256 principal = vault.convertToAssets(_shares);
 
         _increasePosition(_positionId, _shares, principal);
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
+        vault.safeTransferFrom(ownerOf(_positionId), address(this), _shares);
     }
 
     function increasePositionUsingPermit(
@@ -315,16 +317,16 @@ contract YieldDCA is ERC721, AccessControl {
         bytes32 _r,
         bytes32 _s
     ) external {
-        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
+        IERC20Permit(address(vault)).permit(ownerOf(_positionId), address(this), _shares, _deadline, _v, _r, _s);
 
         increasePosition(_positionId, _shares);
     }
 
     function depositAndIncreasePosition(uint256 _positionId, uint256 _assets) public {
         _assets.checkIsZero();
-        _checkIsOwner(_positionId);
+        _checkApprovedOrOwner(msg.sender, _positionId);
 
-        uint256 shares = _depositToVault(_assets);
+        uint256 shares = _depositToVault(ownerOf(_positionId), _assets);
 
         _increasePosition(_positionId, shares, _assets);
     }
@@ -337,7 +339,7 @@ contract YieldDCA is ERC721, AccessControl {
         bytes32 _r,
         bytes32 _s
     ) external {
-        IERC2612(address(asset)).permit(msg.sender, address(this), _assets, _deadline, _v, _r, _s);
+        IERC20Permit(address(asset)).permit(ownerOf(_positionId), address(this), _assets, _deadline, _v, _r, _s);
 
         depositAndIncreasePosition(_positionId, _assets);
     }
@@ -354,7 +356,7 @@ contract YieldDCA is ERC721, AccessControl {
      */
     function reducePosition(uint256 _positionId, uint256 _shares) external {
         _shares.checkIsZero();
-        _checkIsOwner(_positionId);
+        _checkApprovedOrOwner(msg.sender, _positionId);
 
         Position storage position = positions[_positionId];
         uint32 currentEpoch_ = currentEpoch;
@@ -376,7 +378,7 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _positionId The ID of the deposit to close
      */
     function closePosition(uint256 _positionId) external {
-        _checkIsOwner(_positionId);
+        _checkApprovedOrOwner(msg.sender, _positionId);
 
         uint32 currentEpoch_ = currentEpoch;
         Position storage position = positions[_positionId];
@@ -386,7 +388,7 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function claimDCATokens(uint256 _positionId) external returns (uint256 dcaAmount) {
-        _checkIsOwner(_positionId);
+        _checkApprovedOrOwner(msg.sender, _positionId);
 
         uint32 currentEpoch_ = currentEpoch;
         Position storage position = positions[_positionId];
@@ -397,7 +399,7 @@ contract YieldDCA is ERC721, AccessControl {
         position.epoch = currentEpoch_;
         position.dcaBalance = 0;
 
-        dcaAmount = _transferDcaTokens(dcaAmount);
+        dcaAmount = _transferDcaTokens(ownerOf(_positionId), dcaAmount);
 
         emit DCATokensClaimed(msg.sender, _positionId, currentEpoch_, dcaAmount);
     }
@@ -500,6 +502,10 @@ contract YieldDCA is ERC721, AccessControl {
         return vault.balanceOf(address(this));
     }
 
+    function isApprovedOrOwner(address _account, uint256 _tokenId) public view returns (bool) {
+        return _isApprovedOrOwner(_account, _tokenId);
+    }
+
     /*
     * =======================================================
     *                   INTERNAL FUNCTIONS
@@ -533,10 +539,6 @@ contract YieldDCA is ERC721, AccessControl {
         }
 
         minYieldPerEpoch = _newMinYieldPercent;
-    }
-
-    function _checkIsOwner(uint256 _positionId) internal view {
-        if (ownerOf(_positionId) != msg.sender) revert CallerNotTokenOwner();
     }
 
     function _openPosition(uint256 _shares) internal returns (uint256 positionId) {
@@ -599,43 +601,44 @@ contract YieldDCA is ERC721, AccessControl {
 
         totalPrincipal -= principal;
 
-        _shares = _transferShares(_shares);
+        _shares = _transferShares(ownerOf(_positionId), _shares);
 
         emit PositionReduced(msg.sender, _positionId, _epoch, _shares, principal);
     }
 
     function _closePosition(uint256 _positionId, uint256 _principal, uint256 _shares, uint256 _dcaAmount) internal {
         totalPrincipal -= _principal;
+        address owner = ownerOf(_positionId);
 
         delete positions[_positionId];
         _burn(_positionId);
 
-        _shares = _transferShares(_shares);
-        _dcaAmount = _transferDcaTokens(_dcaAmount);
+        _shares = _transferShares(owner, _shares);
+        _dcaAmount = _transferDcaTokens(owner, _dcaAmount);
 
         emit PositionClosed(msg.sender, _positionId, currentEpoch, _shares, _principal, _dcaAmount);
     }
 
-    function _depositToVault(uint256 _principal) internal returns (uint256 shares) {
-        asset.safeTransferFrom(msg.sender, address(this), _principal);
+    function _depositToVault(address _from, uint256 _principal) internal returns (uint256 shares) {
+        asset.safeTransferFrom(_from, address(this), _principal);
 
         asset.forceApprove(address(vault), _principal);
 
         shares = vault.deposit(_principal, address(this));
     }
 
-    function _transferShares(uint256 _shares) internal returns (uint256) {
+    function _transferShares(address _to, uint256 _shares) internal returns (uint256) {
         // limit to available shares because of possible rounding errors
         uint256 sharesBalance_ = sharesBalance();
 
         if (_shares > sharesBalance_) _shares = sharesBalance_;
 
-        vault.safeTransfer(msg.sender, _shares);
+        vault.safeTransfer(_to, _shares);
 
         return _shares;
     }
 
-    function _transferDcaTokens(uint256 _amount) internal returns (uint256) {
+    function _transferDcaTokens(address _to, uint256 _amount) internal returns (uint256) {
         uint256 balance = dcaBalance();
 
         // limit to available or revert if amount discrepancy is above set tolerance
@@ -650,7 +653,7 @@ contract YieldDCA is ERC721, AccessControl {
             _amount = balance;
         }
 
-        dcaToken.safeTransfer(msg.sender, _amount);
+        dcaToken.safeTransfer(_to, _amount);
 
         return _amount;
     }
@@ -672,21 +675,11 @@ contract YieldDCA is ERC721, AccessControl {
         }
     }
 
-    function _checkEpochDuration() internal view {
-        if (block.timestamp < currentEpochTimestamp + epochDuration) revert EpochDurationNotReached();
-    }
-
-    function _checkMinYieldPerEpoch(uint256 _yield, uint256 _totalPrincipal) internal view {
-        if (_yield < _totalPrincipal.mulWad(minYieldPerEpoch)) revert InsufficientYield();
-    }
-
     function _calculateCurrentYieldInShares(uint256 _totalPrincipal) internal view returns (uint256) {
         uint256 balance = sharesBalance();
         uint256 totalPrincipalInShares = vault.convertToShares(_totalPrincipal);
 
-        if (balance <= totalPrincipalInShares) {
-            revert NoYield();
-        }
+        if (balance <= totalPrincipalInShares) revert NoYield();
 
         unchecked {
             // cannot underflow because of the check above
@@ -715,6 +708,8 @@ contract YieldDCA is ERC721, AccessControl {
             uint256 sharesValue = shares.mulWadUp(sharePrice);
 
             unchecked {
+                i++;
+
                 if (sharesValue > principal) {
                     // cannot underflow because of the check above
                     uint256 usersYield = sharesValue - principal;
@@ -724,9 +719,19 @@ contract YieldDCA is ERC721, AccessControl {
                     // not realistic to owerflow
                     dcaAmount += uint224(usersYield.mulWad(info.dcaPrice));
                 }
-
-                i++;
             }
         }
+    }
+
+    function _checkApprovedOrOwner(address _caller, uint256 _positionId) internal view {
+        if (!_isApprovedOrOwner(_caller, _positionId)) revert ERC721.NotOwnerNorApproved();
+    }
+
+    function _checkEpochDuration() internal view {
+        if (block.timestamp < currentEpochTimestamp + epochDuration) revert EpochDurationNotReached();
+    }
+
+    function _checkMinYieldPerEpoch(uint256 _yield, uint256 _totalPrincipal) internal view {
+        if (_yield < _totalPrincipal.mulWad(minYieldPerEpoch)) revert InsufficientYield();
     }
 }
