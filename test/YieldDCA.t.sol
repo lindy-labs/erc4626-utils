@@ -27,20 +27,33 @@ contract YieldDCATest is TestCommon {
         address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
     );
     event PositionIncreased(
-        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
+        address indexed caller,
+        address indexed owner,
+        uint256 indexed positionId,
+        uint32 epoch,
+        uint256 shares,
+        uint256 principal
     );
     event PositionReduced(
-        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
+        address indexed caller,
+        address indexed owner,
+        uint256 indexed positionId,
+        uint32 epoch,
+        uint256 shares,
+        uint256 principal
     );
     event PositionClosed(
         address indexed caller,
+        address indexed owner,
         uint256 indexed positionId,
         uint32 epoch,
         uint256 shares,
         uint256 principal,
-        uint256 dcaTokens
+        uint256 dcaAmount
     );
-    event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 dcaTokens);
+    event DCATokensClaimed(
+        address indexed caller, address indexed owner, uint256 indexed positionId, uint32 epoch, uint256 amount
+    );
 
     event EpochDurationUpdated(address indexed admin, uint32 oldDuration, uint32 newDuration);
     event MinYieldPerEpochUpdated(address indexed admin, uint64 oldMinYield, uint64 newMinYield);
@@ -783,10 +796,13 @@ contract YieldDCATest is TestCommon {
         uint256 topUpAmount = 2 ether;
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, topUpAmount);
 
-        vm.expectEmit(true, true, true, true);
-        emit PositionIncreased(alice, positionId, yieldDca.currentEpoch(), shares, topUpAmount);
-
         vm.prank(alice);
+        yieldDca.approve(bob, positionId);
+
+        vm.expectEmit(true, true, true, true);
+        emit PositionIncreased(bob, alice, positionId, yieldDca.currentEpoch(), shares, topUpAmount);
+
+        vm.prank(bob);
         yieldDca.increasePosition(positionId, shares);
     }
 
@@ -998,7 +1014,7 @@ contract YieldDCATest is TestCommon {
         _assetDealAndApproveYieldDca(alice, topUpAmount);
 
         vm.expectEmit(true, true, true, true);
-        emit PositionIncreased(alice, positionId, yieldDca.currentEpoch(), shares, topUpAmount);
+        emit PositionIncreased(alice, alice, positionId, yieldDca.currentEpoch(), shares, topUpAmount);
 
         vm.prank(alice);
         yieldDca.depositAndIncreasePosition(positionId, topUpAmount);
@@ -2085,7 +2101,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_reducePosition_emitsPositionReducedEvent() public {
-        _openPositionWithPrincipal(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         _generateYield(0.5e18);
 
@@ -2095,30 +2111,39 @@ contract YieldDCATest is TestCommon {
         uint256 toWithdraw = shares / 2;
         uint256 principalToWithdraw = vault.convertToAssets(toWithdraw) - 1; // -1 to account for rounding error
 
-        vm.expectEmit(true, true, true, true);
-        emit PositionReduced(alice, 1, yieldDca.currentEpoch(), toWithdraw, principalToWithdraw);
-
         vm.prank(alice);
-        yieldDca.reducePosition(1, toWithdraw);
+        yieldDca.approve(bob, positionId);
+
+        vm.expectEmit(true, true, true, true);
+        emit PositionReduced(bob, alice, positionId, yieldDca.currentEpoch(), toWithdraw, principalToWithdraw);
+
+        vm.prank(bob);
+        yieldDca.reducePosition(positionId, toWithdraw);
     }
 
     function test_reducePosition_emitsPositionClosedEventIfWithdrawingAll() public {
         uint256 principal = 1 ether;
-        _openPositionWithPrincipal(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(0.5e18);
         _executeDcaAtExchangeRate(5e18);
 
-        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(1);
+        (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
+        // account for rounding error
         assertApproxEqAbs(shares, vault.balanceOf(address(yieldDca)), 1, "contract's balance");
+
+        vm.prank(alice);
+        yieldDca.approve(bob, positionId);
 
         vm.expectEmit(true, true, true, true);
         // use vault.balanceOf(address(yieldDca)) instead of shares to account for rounding error
-        emit PositionClosed(alice, 1, yieldDca.currentEpoch(), vault.balanceOf(address(yieldDca)), principal, dcaAmount);
+        emit PositionClosed(
+            bob, alice, positionId, yieldDca.currentEpoch(), vault.balanceOf(address(yieldDca)), principal, dcaAmount
+        );
 
-        vm.prank(alice);
-        yieldDca.reducePosition(1, shares);
+        vm.prank(bob);
+        yieldDca.reducePosition(positionId, shares);
     }
 
     /*
@@ -2220,7 +2245,7 @@ contract YieldDCATest is TestCommon {
         vm.expectEmit(true, true, true, true);
         // use vault.balanceOf(address(yieldDca)) instead of shares to account for rounding error
         emit PositionClosed(
-            alice, positionId, yieldDca.currentEpoch(), vault.balanceOf(address(yieldDca)), principal, dcaAmount
+            alice, alice, positionId, yieldDca.currentEpoch(), vault.balanceOf(address(yieldDca)), principal, dcaAmount
         );
 
         vm.prank(alice);
@@ -2347,10 +2372,13 @@ contract YieldDCATest is TestCommon {
 
         (, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
-        vm.expectEmit(true, true, true, true);
-        emit DCATokensClaimed(alice, positionId, yieldDca.currentEpoch(), dcaAmount);
-
         vm.prank(alice);
+        yieldDca.approve(carol, positionId);
+
+        vm.expectEmit(true, true, true, true);
+        emit DCATokensClaimed(carol, alice, positionId, yieldDca.currentEpoch(), dcaAmount);
+
+        vm.prank(carol);
         yieldDca.claimDCATokens(positionId);
     }
 

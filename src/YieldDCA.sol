@@ -36,6 +36,9 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  *
  * The implementation focuses on optimizing gas costs and ensuring security through rigorous checks and balances, while accommodating a scalable number of epochs and user deposits.
  */
+// TODO: add multicall support to open and approve
+// TODO: receiver param on creating the position
+// TODO: receiver param on claiming the DCA tokens
 contract YieldDCA is ERC721, AccessControl {
     using CommonErrors for uint256;
     using FixedPointMathLib for uint256;
@@ -71,25 +74,42 @@ contract YieldDCA is ERC721, AccessControl {
         uint256 sharePrice
     );
 
-    // TODO: add owner to events
     event PositionOpened(
-        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
+        address indexed caller,
+        address indexed owner,
+        uint256 indexed positionId,
+        uint32 epoch,
+        uint256 shares,
+        uint256 principal
     );
     event PositionIncreased(
-        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
+        address indexed caller,
+        address indexed owner,
+        uint256 indexed positionId,
+        uint32 epoch,
+        uint256 shares,
+        uint256 principal
     );
     event PositionReduced(
-        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
+        address indexed caller,
+        address indexed owner,
+        uint256 indexed positionId,
+        uint32 epoch,
+        uint256 shares,
+        uint256 principal
     );
     event PositionClosed(
         address indexed caller,
+        address indexed owner,
         uint256 indexed positionId,
         uint32 epoch,
         uint256 shares,
         uint256 principal,
         uint256 dcaAmount
     );
-    event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 amount);
+    event DCATokensClaimed(
+        address indexed caller, address indexed owner, uint256 indexed positionId, uint32 epoch, uint256 amount
+    );
 
     error DCATokenAddressZero();
     error VaultAddressZero();
@@ -315,7 +335,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         _increasePosition(_positionId, _shares, principal);
 
-        vault.safeTransferFrom(ownerOf(_positionId), address(this), _shares);
+        vault.safeTransferFrom(_ownerOf(_positionId), address(this), _shares);
     }
 
     function increasePositionUsingPermit(
@@ -326,7 +346,7 @@ contract YieldDCA is ERC721, AccessControl {
         bytes32 _r,
         bytes32 _s
     ) external {
-        IERC20Permit(address(vault)).permit(ownerOf(_positionId), address(this), _shares, _deadline, _v, _r, _s);
+        IERC20Permit(address(vault)).permit(_ownerOf(_positionId), address(this), _shares, _deadline, _v, _r, _s);
 
         increasePosition(_positionId, _shares);
     }
@@ -335,7 +355,7 @@ contract YieldDCA is ERC721, AccessControl {
         _assets.checkIsZero();
         _checkApprovedOrOwner(msg.sender, _positionId);
 
-        uint256 shares = _depositToVault(ownerOf(_positionId), _assets);
+        uint256 shares = _depositToVault(_ownerOf(_positionId), _assets);
 
         _increasePosition(_positionId, shares, _assets);
     }
@@ -348,7 +368,7 @@ contract YieldDCA is ERC721, AccessControl {
         bytes32 _r,
         bytes32 _s
     ) external {
-        IERC20Permit(address(asset)).permit(ownerOf(_positionId), address(this), _assets, _deadline, _v, _r, _s);
+        IERC20Permit(address(asset)).permit(_ownerOf(_positionId), address(this), _assets, _deadline, _v, _r, _s);
 
         depositAndIncreasePosition(_positionId, _assets);
     }
@@ -408,9 +428,11 @@ contract YieldDCA is ERC721, AccessControl {
         position.epoch = currentEpoch_;
         position.dcaBalance = 0;
 
-        dcaAmount = _transferDcaTokens(ownerOf(_positionId), dcaAmount);
+        address owner = _ownerOf(_positionId);
 
-        emit DCATokensClaimed(msg.sender, _positionId, currentEpoch_, dcaAmount);
+        dcaAmount = _transferDcaTokens(owner, dcaAmount);
+
+        emit DCATokensClaimed(msg.sender, owner, _positionId, currentEpoch_, dcaAmount);
     }
 
     // *** keeper functions ***
@@ -573,7 +595,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         positions[positionId] = Position({epoch: currentEpoch_, shares: _shares, principal: principal, dcaBalance: 0});
 
-        emit PositionOpened(msg.sender, positionId, currentEpoch_, _shares, principal);
+        emit PositionOpened(msg.sender, msg.sender, positionId, currentEpoch_, _shares, principal);
     }
 
     function _increasePosition(uint256 _positionId, uint256 _shares, uint256 _principal) internal {
@@ -594,7 +616,7 @@ contract YieldDCA is ERC721, AccessControl {
             totalPrincipal += _principal;
         }
 
-        emit PositionIncreased(msg.sender, _positionId, epoch, _shares, _principal);
+        emit PositionIncreased(msg.sender, _ownerOf(_positionId), _positionId, epoch, _shares, _principal);
     }
 
     function _reducePosition(
@@ -620,14 +642,16 @@ contract YieldDCA is ERC721, AccessControl {
 
         totalPrincipal -= principal;
 
-        _shares = _transferShares(ownerOf(_positionId), _shares);
+        address owner = _ownerOf(_positionId);
 
-        emit PositionReduced(msg.sender, _positionId, _epoch, _shares, principal);
+        _shares = _transferShares(owner, _shares);
+
+        emit PositionReduced(msg.sender, owner, _positionId, _epoch, _shares, principal);
     }
 
     function _closePosition(uint256 _positionId, uint256 _principal, uint256 _shares, uint256 _dcaBalance) internal {
         totalPrincipal -= _principal;
-        address owner = ownerOf(_positionId);
+        address owner = _ownerOf(_positionId);
 
         delete positions[_positionId];
         _burn(_positionId);
@@ -635,7 +659,7 @@ contract YieldDCA is ERC721, AccessControl {
         _shares = _transferShares(owner, _shares);
         _dcaBalance = _transferDcaTokens(owner, _dcaBalance);
 
-        emit PositionClosed(msg.sender, _positionId, currentEpoch, _shares, _principal, _dcaBalance);
+        emit PositionClosed(msg.sender, owner, _positionId, currentEpoch, _shares, _principal, _dcaBalance);
     }
 
     function _calculateYieldInShares(uint256 _totalPrincipal) internal view returns (uint256) {
