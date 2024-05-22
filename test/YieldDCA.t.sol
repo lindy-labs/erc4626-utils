@@ -41,10 +41,11 @@ contract YieldDCATest is TestCommon {
         uint256 dcaTokens
     );
     event DCATokensClaimed(address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 dcaTokens);
-    event EpochDurationUpdated(address indexed admin, uint32 newDuration);
-    event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
-    event SwapperUpdated(address indexed admin, address newSwapper);
-    event DiscrepancyToleranceUpdated(address indexed admin, uint256 newTolerance);
+
+    event EpochDurationUpdated(address indexed admin, uint32 oldDuration, uint32 newDuration);
+    event MinYieldPerEpochUpdated(address indexed admin, uint64 oldMinYield, uint64 newMinYield);
+    event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
+    event DiscrepancyToleranceUpdated(address indexed admin, uint64 oldTolerance, uint64 newTolerance);
 
     event DCAExecuted(
         address indexed keeper,
@@ -202,16 +203,21 @@ contract YieldDCATest is TestCommon {
         );
     }
 
-    function test_supportsInterface() public {
-        assertTrue(yieldDca.supportsInterface(type(IERC721).interfaceId), "supports IERC721");
-        assertTrue(yieldDca.supportsInterface(type(IAccessControl).interfaceId), "supports AccessControl");
-
-        assertTrue(!yieldDca.supportsInterface(type(IERC721Receiver).interfaceId), "shouldn't support IERC721Receiver");
-    }
-
-    function test_nameAndSymbol() public {
+    function test_constructor_setsNameAndSymbol() public {
         assertEq(yieldDca.name(), "Yield DCA - Mock ERC4626 / Mock DCA", "name");
         assertEq(yieldDca.symbol(), "yDCA-mERC4626/mDCA", "symbol");
+    }
+
+    /*
+     * --------------------
+     *  #supportsInterface
+     * --------------------
+     */
+
+    function test_supportsInterface() public {
+        assertTrue(yieldDca.supportsInterface(type(IERC721).interfaceId), "supports IERC721");
+
+        assertTrue(!yieldDca.supportsInterface(type(IERC721Receiver).interfaceId), "shouldn't support IERC721Receiver");
     }
 
     /*
@@ -246,9 +252,10 @@ contract YieldDCATest is TestCommon {
 
     function test_setSwapper_emitsEvent() public {
         address newSwapper = address(0x03);
+        address oldSwapper = address(yieldDca.swapper());
 
         vm.expectEmit(true, true, true, true);
-        emit SwapperUpdated(admin, newSwapper);
+        emit SwapperUpdated(admin, oldSwapper, newSwapper);
 
         vm.prank(admin);
         yieldDca.setSwapper(ISwapper(newSwapper));
@@ -300,39 +307,43 @@ contract YieldDCATest is TestCommon {
         yieldDca.setEpochDuration(1 weeks);
     }
 
-    function test_setEpochDuration_updatesDcaInterval() public {
-        uint32 newInterval = 1 weeks;
+    function test_setEpochDuration_updatesEpochDuration() public {
+        uint32 newDuration = 1 weeks;
+        assertTrue(yieldDca.epochDuration() != newDuration, "old and new duration should be different");
 
         vm.prank(admin);
-        yieldDca.setEpochDuration(newInterval);
+        yieldDca.setEpochDuration(newDuration);
 
-        assertEq(yieldDca.epochDuration(), newInterval);
+        assertEq(yieldDca.epochDuration(), newDuration);
     }
 
     function test_setEpochDuration_emitsEvent() public {
-        uint32 newInterval = 3 weeks;
+        uint32 newDuration = 3 weeks;
+        uint32 oldDuration = yieldDca.epochDuration();
+
+        assertTrue(oldDuration != newDuration, "old and new duration should be different");
 
         vm.expectEmit(true, true, true, true);
-        emit EpochDurationUpdated(admin, newInterval);
+        emit EpochDurationUpdated(admin, oldDuration, newDuration);
 
         vm.prank(admin);
-        yieldDca.setEpochDuration(newInterval);
+        yieldDca.setEpochDuration(newDuration);
     }
 
     function test_setEpochDuration_failsIfBelowLowerBound() public {
-        uint32 invalidInterval = yieldDca.EPOCH_DURATION_LOWER_BOUND() - 1;
+        uint32 invalidDuration = yieldDca.EPOCH_DURATION_LOWER_BOUND() - 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.EpochDurationOutOfBounds.selector);
-        yieldDca.setEpochDuration(invalidInterval);
+        yieldDca.setEpochDuration(invalidDuration);
     }
 
     function test_setEpochDuration_failsIfAboveUpperBound() public {
-        uint32 invalidInterval = yieldDca.EPOCH_DURATION_UPPER_BOUND() + 1;
+        uint32 invalidDuration = yieldDca.EPOCH_DURATION_UPPER_BOUND() + 1;
 
         vm.prank(admin);
         vm.expectRevert(YieldDCA.EpochDurationOutOfBounds.selector);
-        yieldDca.setEpochDuration(invalidInterval);
+        yieldDca.setEpochDuration(invalidDuration);
     }
 
     /*
@@ -379,9 +390,10 @@ contract YieldDCATest is TestCommon {
 
     function test_setMinYieldPerEpoch_emitsEvent() public {
         uint64 newYield = 0.01e18;
+        uint64 oldYield = yieldDca.minYieldPerEpoch();
 
         vm.expectEmit(true, true, true, true);
-        emit MinYieldPerEpochUpdated(admin, newYield);
+        emit MinYieldPerEpochUpdated(admin, oldYield, newYield);
 
         vm.prank(admin);
         yieldDca.setMinYieldPerEpoch(newYield);
@@ -423,9 +435,10 @@ contract YieldDCATest is TestCommon {
 
     function test_setDiscrepancyTolerance_emitsEvent() public {
         uint64 newTolerance = 0.01e18;
+        uint64 oldTolerance = yieldDca.discrepancyTolerance();
 
         vm.expectEmit(true, true, true, true);
-        emit DiscrepancyToleranceUpdated(admin, newTolerance);
+        emit DiscrepancyToleranceUpdated(admin, oldTolerance, newTolerance);
 
         vm.prank(admin);
         yieldDca.setDiscrepancyTolerance(newTolerance);

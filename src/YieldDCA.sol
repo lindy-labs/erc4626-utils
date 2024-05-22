@@ -57,11 +57,10 @@ contract YieldDCA is ERC721, AccessControl {
         uint128 sharePrice;
     }
 
-    // TODO: add old value?
-    event EpochDurationUpdated(address indexed admin, uint32 newDuration);
-    event MinYieldPerEpochUpdated(address indexed admin, uint256 newMinYield);
-    event SwapperUpdated(address indexed admin, address newSwapper);
-    event DiscrepancyToleranceUpdated(address indexed admin, uint256 newTolerance);
+    event EpochDurationUpdated(address indexed admin, uint32 oldDuration, uint32 newDuration);
+    event MinYieldPerEpochUpdated(address indexed admin, uint64 oldMinYield, uint64 newMinYield);
+    event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
+    event DiscrepancyToleranceUpdated(address indexed admin, uint64 oldTolerance, uint64 newTolerance);
 
     event DCAExecuted(
         address indexed keeper,
@@ -225,9 +224,9 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _newSwapper The address of the new swapper contract
      */
     function setSwapper(ISwapper _newSwapper) external onlyAdmin {
-        _setSwapper(_newSwapper);
+        address oldSwapper = _setSwapper(_newSwapper);
 
-        emit SwapperUpdated(msg.sender, address(_newSwapper));
+        emit SwapperUpdated(msg.sender, oldSwapper, address(_newSwapper));
     }
 
     /**
@@ -236,9 +235,9 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _newDuration The new minimum duration in seconds
      */
     function setEpochDuration(uint32 _newDuration) external onlyAdmin {
-        _setEpochDuration(_newDuration);
+        uint32 oldDuration = _setEpochDuration(_newDuration);
 
-        emit EpochDurationUpdated(msg.sender, _newDuration);
+        emit EpochDurationUpdated(msg.sender, oldDuration, _newDuration);
     }
 
     /**
@@ -247,17 +246,17 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _newMinYieldPercent The new minimum yield as a WAD-scaled percentage of the total principal
      */
     function setMinYieldPerEpoch(uint64 _newMinYieldPercent) external onlyAdmin {
-        _setMinYieldPerEpoch(_newMinYieldPercent);
+        uint64 oldMinYield = _setMinYieldPerEpoch(_newMinYieldPercent);
 
-        emit MinYieldPerEpochUpdated(msg.sender, _newMinYieldPercent);
+        emit MinYieldPerEpochUpdated(msg.sender, oldMinYield, _newMinYieldPercent);
     }
 
     function setDiscrepancyTolerance(uint64 _newTolerance) external onlyAdmin {
         if (_newTolerance > DISCREPANCY_TOLERANCE_UPPER_BOUND) revert DiscrepancyToleranceOutOfBounds();
 
-        discrepancyTolerance = _newTolerance;
+        emit DiscrepancyToleranceUpdated(msg.sender, discrepancyTolerance, _newTolerance);
 
-        emit DiscrepancyToleranceUpdated(msg.sender, _newTolerance);
+        discrepancyTolerance = _newTolerance;
     }
 
     // *** user functions ***
@@ -527,25 +526,27 @@ contract YieldDCA is ERC721, AccessControl {
 
     // *** admin functons ***
 
-    function _setSwapper(ISwapper _newSwapper) internal {
+    function _setSwapper(ISwapper _newSwapper) internal returns (address oldSwapper) {
         if (address(_newSwapper) == address(0)) revert SwapperAddressZero();
+        oldSwapper = address(swapper);
 
         // revoke previous swapper's approval and approve new swapper
-        if (address(swapper) != address(0)) asset.forceApprove(address(swapper), 0);
+        if (oldSwapper != address(0)) asset.forceApprove(oldSwapper, 0);
         asset.forceApprove(address(_newSwapper), type(uint256).max);
 
         swapper = _newSwapper;
     }
 
-    function _setEpochDuration(uint32 _newDuration) internal {
+    function _setEpochDuration(uint32 _newDuration) internal returns (uint32 oldDuration) {
         if (_newDuration < EPOCH_DURATION_LOWER_BOUND || _newDuration > EPOCH_DURATION_UPPER_BOUND) {
             revert EpochDurationOutOfBounds();
         }
 
+        oldDuration = epochDuration;
         epochDuration = _newDuration;
     }
 
-    function _setMinYieldPerEpoch(uint64 _newMinYieldPercent) internal {
+    function _setMinYieldPerEpoch(uint64 _newMinYieldPercent) internal returns (uint64 oldMinYield) {
         if (
             _newMinYieldPercent < MIN_YIELD_PER_EPOCH_LOWER_BOUND
                 || _newMinYieldPercent > MIN_YIELD_PER_EPOCH_UPPER_BOUND
@@ -553,6 +554,7 @@ contract YieldDCA is ERC721, AccessControl {
             revert MinYieldPerEpochOutOfBounds();
         }
 
+        oldMinYield = minYieldPerEpoch;
         minYieldPerEpoch = _newMinYieldPercent;
     }
 
