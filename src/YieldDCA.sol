@@ -122,7 +122,8 @@ contract YieldDCA is ERC721, AccessControl {
     IERC20Metadata public immutable asset;
     IERC4626 public immutable vault;
 
-    // slot 0
+    // * SLOT 0
+    // TODO: test maximum amount of epochs
     uint32 public currentEpoch = 1; // starts from 1
     /// @dev The minimum interval between executing the DCA strategy (epoch duration)
     uint32 public epochDuration = 2 weeks;
@@ -131,11 +132,11 @@ contract YieldDCA is ERC721, AccessControl {
     uint64 public minYieldPerEpoch = 0.001e18; // 0.1%
     uint64 public discrepancyTolerance = 0.01e18; // 1%
 
-    // slot 1
+    // * SLOT 1
     ISwapper public swapper;
     uint96 public nextPositionId = 1;
 
-    // slot 2
+    // * SLOT 2 ...
     uint256 public totalPrincipal;
 
     mapping(uint256 => EpochInfo) public epochDetails;
@@ -146,7 +147,6 @@ contract YieldDCA is ERC721, AccessControl {
         _;
     }
 
-    // TODO: remove this from ys also
     // ERC721 name and symbol
     string private name_;
     string private symbol_;
@@ -166,9 +166,6 @@ contract YieldDCA is ERC721, AccessControl {
         if (_admin == address(0)) revert AdminAddressZero();
         if (_keeper == address(0)) revert KeeperAddressZero();
 
-        name_ = string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", _dcaToken.name()));
-        symbol_ = string(abi.encodePacked("yDCA-", _vault.symbol(), "/", _dcaToken.symbol()));
-
         dcaToken = _dcaToken;
         asset = IERC20Metadata(_vault.asset());
         vault = _vault;
@@ -179,6 +176,9 @@ contract YieldDCA is ERC721, AccessControl {
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(KEEPER_ROLE, _keeper);
+
+        name_ = string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", _dcaToken.name()));
+        symbol_ = string(abi.encodePacked("yDCA-", _vault.symbol(), "/", _dcaToken.symbol()));
     }
 
     /*
@@ -198,18 +198,26 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     /// @inheritdoc ERC721
-    function tokenURI(uint256 id) public view virtual override returns (string memory) {}
+    function tokenURI(uint256) public view virtual override returns (string memory) {}
 
     /**
      * @notice Checks if the contract implements an interface
      * @dev Implements ERC165 standard for interface detection.
-     * @param interfaceId The interface identifier, as specified in ERC-165
+     * @param _interfaceId The interface identifier, as specified in ERC-165
      * @return bool True if the contract implements the requested interface, false otherwise
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
-        return interfaceId == type(AccessControl).interfaceId || interfaceId == type(IERC721).interfaceId
-            || super.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 _interfaceId)
+        public
+        view
+        virtual
+        override(ERC721, AccessControl)
+        returns (bool)
+    {
+        return _interfaceId == type(AccessControl).interfaceId || _interfaceId == type(IERC721).interfaceId
+            || super.supportsInterface(_interfaceId);
     }
+
+    // *** admin functions ***
 
     /**
      * @notice Updates the address of the swapper contract used to exchange yield for DCA tokens
@@ -251,6 +259,8 @@ contract YieldDCA is ERC721, AccessControl {
 
         emit DiscrepancyToleranceUpdated(msg.sender, _newTolerance);
     }
+
+    // *** user functions ***
 
     /**
      * @notice Deposits shares of the vault's underlying asset into the DCA strategy
@@ -360,13 +370,13 @@ contract YieldDCA is ERC721, AccessControl {
 
         Position storage position = positions[_positionId];
         uint32 currentEpoch_ = currentEpoch;
-        (uint256 sharesAvailable, uint224 dcaAmount) = _calculateBalances(position, currentEpoch_);
+        (uint256 sharesBalance_, uint224 dcaBalance_) = _calculateBalances(position, currentEpoch_);
 
         // the position will be closed if all shares are withdrawn
-        if (_shares != sharesAvailable) {
-            _reducePosition(position, _positionId, currentEpoch_, _shares, sharesAvailable, dcaAmount);
+        if (_shares != sharesBalance_) {
+            _reducePosition(position, _positionId, currentEpoch_, _shares, sharesBalance_, dcaBalance_);
         } else {
-            _closePosition(_positionId, position.principal, sharesAvailable, dcaAmount);
+            _closePosition(_positionId, position.principal, sharesBalance_, dcaBalance_);
         }
     }
 
@@ -382,9 +392,9 @@ contract YieldDCA is ERC721, AccessControl {
 
         uint32 currentEpoch_ = currentEpoch;
         Position storage position = positions[_positionId];
-        (uint256 shares, uint256 dcaAmount) = _calculateBalances(position, currentEpoch_);
+        (uint256 shares, uint256 _dcaBalance) = _calculateBalances(position, currentEpoch_);
 
-        _closePosition(_positionId, position.principal, shares, dcaAmount);
+        _closePosition(_positionId, position.principal, shares, _dcaBalance);
     }
 
     function claimDCATokens(uint256 _positionId) external returns (uint256 dcaAmount) {
@@ -404,22 +414,7 @@ contract YieldDCA is ERC721, AccessControl {
         emit DCATokensClaimed(msg.sender, _positionId, currentEpoch_, dcaAmount);
     }
 
-    /**
-     * @notice Checks if the conditions are met to execute the DCA strategy for the current epoch.
-     * @dev Meant to be called only off-chain to preview the DCA execution conditions.
-     * @return True if the DCA strategy can be executed, reverts otherwise
-     */
-    function canExecuteDCA() external view returns (bool) {
-        _checkEpochDuration();
-
-        uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal);
-
-        uint256 yield = vault.previewRedeem(yieldInShares);
-
-        _checkMinYieldPerEpoch(yield, totalPrincipal);
-
-        return true;
-    }
+    // *** keeper functions ***
 
     /**
      * @notice Executes the DCA strategy to convert all available yield into DCA tokens and starts a new epoch
@@ -432,7 +427,7 @@ contract YieldDCA is ERC721, AccessControl {
         _checkEpochDuration();
 
         uint256 totalPrincipal_ = totalPrincipal;
-        uint256 yieldInShares = _calculateCurrentYieldInShares(totalPrincipal_);
+        uint256 yieldInShares = _calculateYieldInShares(totalPrincipal_);
 
         vault.redeem(yieldInShares, address(this), address(this));
 
@@ -456,6 +451,24 @@ contract YieldDCA is ERC721, AccessControl {
         emit DCAExecuted(msg.sender, currentEpoch_, yield, amountOut, dcaPrice, sharePrice);
     }
 
+    // *** view functions ***
+
+    /**
+     * @notice Checks if the conditions are met to execute the DCA strategy for the current epoch.
+     * @dev Meant to be called only off-chain to preview the DCA execution conditions.
+     * @return True if the DCA strategy can be executed, reverts otherwise
+     */
+    function canExecuteDCA() external view returns (bool) {
+        _checkEpochDuration();
+
+        uint256 yieldInShares = _calculateYieldInShares(totalPrincipal);
+        uint256 yield = vault.previewRedeem(yieldInShares);
+
+        _checkMinYieldPerEpoch(yield, totalPrincipal);
+
+        return true;
+    }
+
     /**
      * @notice Calculates the yield generated in the current epoch expressed in asset units.
      * @dev This yield represents the total available assets minus the principal so it can be negative.
@@ -471,17 +484,17 @@ contract YieldDCA is ERC721, AccessControl {
      * @return uint256 The yield expressed in shares.
      */
     function calculateYieldInShares() public view returns (uint256) {
-        return _calculateCurrentYieldInShares(totalPrincipal);
+        return _calculateYieldInShares(totalPrincipal);
     }
 
     /**
      * @notice Provides the current balance of shares and DCA tokens for a given deposit
      * @param _positionId The ID of the deposit to query
-     * @return shares The current number of shares in the deposit
-     * @return dcaTokens The current amount of DCA tokens attributed to the deposit
+     * @return _sharesBalance The current number of shares in the deposit
+     * @return _dcaBalance The current amount of DCA tokens attributed to the deposit
      */
-    function balancesOf(uint256 _positionId) public view returns (uint256 shares, uint256 dcaTokens) {
-        (shares, dcaTokens) = _calculateBalances(positions[_positionId], currentEpoch);
+    function balancesOf(uint256 _positionId) public view returns (uint256 _sharesBalance, uint256 _dcaBalance) {
+        (_sharesBalance, _dcaBalance) = _calculateBalances(positions[_positionId], currentEpoch);
     }
 
     /**
@@ -512,6 +525,8 @@ contract YieldDCA is ERC721, AccessControl {
     * =======================================================
     */
 
+    // *** admin functons ***
+
     function _setSwapper(ISwapper _newSwapper) internal {
         if (address(_newSwapper) == address(0)) revert SwapperAddressZero();
 
@@ -541,6 +556,8 @@ contract YieldDCA is ERC721, AccessControl {
         minYieldPerEpoch = _newMinYieldPercent;
     }
 
+    // *** accounting functions ***
+
     function _openPosition(uint256 _shares) internal returns (uint256 positionId) {
         uint32 currentEpoch_ = currentEpoch;
         uint256 principal = vault.convertToAssets(_shares);
@@ -568,7 +585,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         unchecked {
             position.epoch = epoch;
-            // owerflow here is not realistic to happen
+            // overflow here is not realistic to happen
             position.shares += _shares;
             position.principal += _principal;
 
@@ -583,19 +600,19 @@ contract YieldDCA is ERC721, AccessControl {
         uint256 _positionId,
         uint32 _epoch,
         uint256 _shares,
-        uint256 _sharesAvailable,
-        uint224 _dcaAmount
+        uint256 _sharesBalance,
+        uint224 _dcaBalance
     ) internal {
-        if (_shares > _sharesAvailable) revert InsufficientSharesToWithdraw();
+        if (_shares > _sharesBalance) revert InsufficientSharesToWithdraw();
 
-        uint256 principal = position.principal.mulDiv(_shares, _sharesAvailable);
+        uint256 principal = position.principal.mulDiv(_shares, _sharesBalance);
 
         position.epoch = _epoch;
-        position.dcaBalance = _dcaAmount;
+        position.dcaBalance = _dcaBalance;
 
         unchecked {
             // cannot underflow because of sharesAvailable > _shares check
-            position.shares = _sharesAvailable - _shares;
+            position.shares = _sharesBalance - _shares;
             position.principal -= principal;
         }
 
@@ -606,7 +623,7 @@ contract YieldDCA is ERC721, AccessControl {
         emit PositionReduced(msg.sender, _positionId, _epoch, _shares, principal);
     }
 
-    function _closePosition(uint256 _positionId, uint256 _principal, uint256 _shares, uint256 _dcaAmount) internal {
+    function _closePosition(uint256 _positionId, uint256 _principal, uint256 _shares, uint256 _dcaBalance) internal {
         totalPrincipal -= _principal;
         address owner = ownerOf(_positionId);
 
@@ -614,10 +631,60 @@ contract YieldDCA is ERC721, AccessControl {
         _burn(_positionId);
 
         _shares = _transferShares(owner, _shares);
-        _dcaAmount = _transferDcaTokens(owner, _dcaAmount);
+        _dcaBalance = _transferDcaTokens(owner, _dcaBalance);
 
-        emit PositionClosed(msg.sender, _positionId, currentEpoch, _shares, _principal, _dcaAmount);
+        emit PositionClosed(msg.sender, _positionId, currentEpoch, _shares, _principal, _dcaBalance);
     }
+
+    function _calculateYieldInShares(uint256 _totalPrincipal) internal view returns (uint256) {
+        uint256 balance = sharesBalance();
+        uint256 totalPrincipalInShares = vault.convertToShares(_totalPrincipal);
+
+        if (balance <= totalPrincipalInShares) revert NoYield();
+
+        unchecked {
+            // cannot underflow because of the check above
+            return balance - totalPrincipalInShares;
+        }
+    }
+
+    function _calculateBalances(Position storage _position, uint32 _currentEpoch)
+        internal
+        view
+        returns (uint256 _sharesBalance, uint224 _dcaBalance)
+    {
+        if (_position.epoch == 0) return (0, 0);
+
+        _sharesBalance = _position.shares;
+        _dcaBalance = _position.dcaBalance;
+        uint256 principal = _position.principal;
+
+        // NOTE: one iteration costs around 2700 gas
+        for (uint256 i = _position.epoch; i < _currentEpoch;) {
+            EpochInfo memory info = epochDetails[i];
+            // save gas on sload
+            uint256 sharePrice = info.sharePrice;
+
+            // round up to minimize rounding errors and prevent underestimation when calculating user's yield
+            uint256 sharesValue = _sharesBalance.mulWadUp(sharePrice);
+
+            unchecked {
+                i++;
+
+                if (sharesValue > principal) {
+                    // cannot underflow because of the check above
+                    uint256 usersYield = sharesValue - principal;
+
+                    // cannot underflow because (yield / sharePrice) <= shares (yield is always less than principal)
+                    _sharesBalance -= usersYield.divWad(sharePrice);
+                    // not realistic to overflow
+                    _dcaBalance += uint224(usersYield.mulWad(info.dcaPrice));
+                }
+            }
+        }
+    }
+
+    /// *** helper functions ***
 
     function _depositToVault(address _from, uint256 _principal) internal returns (uint256 shares) {
         asset.safeTransferFrom(_from, address(this), _principal);
@@ -672,54 +739,6 @@ contract YieldDCA is ERC721, AccessControl {
 
         unchecked {
             return balanceAfter - balanceBefore;
-        }
-    }
-
-    function _calculateCurrentYieldInShares(uint256 _totalPrincipal) internal view returns (uint256) {
-        uint256 balance = sharesBalance();
-        uint256 totalPrincipalInShares = vault.convertToShares(_totalPrincipal);
-
-        if (balance <= totalPrincipalInShares) revert NoYield();
-
-        unchecked {
-            // cannot underflow because of the check above
-            return balance - totalPrincipalInShares;
-        }
-    }
-
-    function _calculateBalances(Position storage _position, uint32 _currentEpoch)
-        internal
-        view
-        returns (uint256 shares, uint224 dcaAmount)
-    {
-        if (_position.epoch == 0) return (0, 0);
-
-        shares = _position.shares;
-        dcaAmount = _position.dcaBalance;
-        uint256 principal = _position.principal;
-
-        // NOTE: one iteration costs around 2700 gas
-        for (uint256 i = _position.epoch; i < _currentEpoch;) {
-            EpochInfo memory info = epochDetails[i];
-            // save gas on sload
-            uint256 sharePrice = info.sharePrice;
-
-            // round up to minimize rounding errors and prevent underestimation when calculating user's yield
-            uint256 sharesValue = shares.mulWadUp(sharePrice);
-
-            unchecked {
-                i++;
-
-                if (sharesValue > principal) {
-                    // cannot underflow because of the check above
-                    uint256 usersYield = sharesValue - principal;
-
-                    // cannot underflow because (yield / sharePrice) <= shares (yield is always less than principal)
-                    shares -= usersYield.divWad(sharePrice);
-                    // not realistic to owerflow
-                    dcaAmount += uint224(usersYield.mulWad(info.dcaPrice));
-                }
-            }
         }
     }
 

@@ -49,10 +49,10 @@ contract YieldDCAForkTest is TestCommon {
 
     function test_executeDCA_oneUserOneEpoch() public {
         uint256 principal = 10_000e6; // 10,000 USDC
-        uint256 depositId = _depositIntoDca(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
-        assertEq(yieldDca.balanceOf(alice), 1, "alice's deposits");
-        assertEq(yieldDca.ownerOf(depositId), alice, "alice's deposit owner");
+        assertEq(yieldDca.balanceOf(alice), 1, "alice's position count");
+        assertEq(yieldDca.ownerOf(positionId), alice, "alice's position owner");
 
         _generateYield(0.1e18); // 10% yield
 
@@ -78,13 +78,13 @@ contract YieldDCAForkTest is TestCommon {
         assertApproxEqRel(vault.convertToAssets(shares), principal, 0.0000001e18, "alices principal");
         assertApproxEqRel(dcaAmount, expectedDcaAmount, 0.00001e18, "alices dca amount");
 
-        _withdrawAll(alice, depositId);
+        vm.prank(alice);
+        yieldDca.closePosition(positionId);
 
-        assertEq(yieldDca.balanceOf(alice), 0, "aw: alice's deposit not burned");
+        assertEq(yieldDca.balanceOf(alice), 0, "aw: alice's NFT not burned");
 
-        // vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, depositId));
         vm.expectRevert();
-        yieldDca.ownerOf(depositId);
+        yieldDca.ownerOf(positionId);
 
         assertApproxEqAbs(
             dcaToken.balanceOf(address(yieldDca)),
@@ -122,7 +122,7 @@ contract YieldDCAForkTest is TestCommon {
         uint256 bobsExpectedDca =
             swapper.previewExecute(address(asset), address(dcaToken), bobPrincipal.mulWadDown(0.1e18), POOL_FEE);
 
-        _depositIntoDca(alice, alicePrincipal);
+        _openPositionWithPrincipal(alice, alicePrincipal);
         _generateYield(0.1e18); // 10% yield
 
         _shiftTime(DEFAULT_DCA_INTERVAL);
@@ -130,10 +130,10 @@ contract YieldDCAForkTest is TestCommon {
         vm.prank(keeper);
         yieldDca.executeDCA(0, POOL_FEE);
 
-        _depositIntoDca(bob, bobPrincipal);
+        _openPositionWithPrincipal(bob, bobPrincipal);
         _generateYield(0.1e18); // 10% yield
 
-        _depositIntoDca(carol, carolPrincipal);
+        _openPositionWithPrincipal(carol, carolPrincipal);
 
         _shiftTime(DEFAULT_DCA_INTERVAL);
 
@@ -145,11 +145,14 @@ contract YieldDCAForkTest is TestCommon {
         vm.prank(admin);
         yieldDca.setDiscrepancyTolerance(0.02e18);
 
-        _withdrawAll(alice, 1);
+        vm.prank(alice);
+        yieldDca.closePosition(1);
 
-        _withdrawAll(bob, 2);
+        vm.prank(bob);
+        yieldDca.closePosition(2);
 
-        _withdrawAll(carol, 3);
+        vm.prank(carol);
+        yieldDca.closePosition(3);
 
         assertApproxEqRel(vault.convertToAssets(vault.balanceOf(alice)), alicePrincipal, 0.001e18, "alice principal");
         assertApproxEqRel(vault.convertToAssets(vault.balanceOf(bob)), bobPrincipal, 0.001e18, "bob principal");
@@ -164,32 +167,14 @@ contract YieldDCAForkTest is TestCommon {
 
     // *** helper functions *** ///
 
-    function _depositIntoDca(address _account, uint256 _amount) public returns (uint256 depositId) {
-        uint256 shares = _depositToVault(vault, _account, _amount);
+    function _openPositionWithPrincipal(address _account, uint256 _amount) public returns (uint256 positionId) {
+        uint256 shares = _depositToVaultAndApprove(IERC4626(address(vault)), _account, address(yieldDca), _amount);
 
-        vm.startPrank(_account);
-
-        vault.approve(address(yieldDca), shares);
-        depositId = yieldDca.openPosition(shares);
-
-        vm.stopPrank();
+        vm.prank(_account);
+        positionId = yieldDca.openPosition(shares);
     }
 
     function _generateYield(int256 _percent) internal {
         _generateYield(vault, _percent);
-    }
-
-    function _shiftTime(uint256 _period) internal {
-        vm.warp(block.timestamp + _period);
-    }
-
-    function _withdrawAll(address _account, uint256 _depositId) internal {
-        vm.startPrank(_account);
-
-        (uint256 shares,) = yieldDca.balancesOf(_depositId);
-
-        yieldDca.reducePosition(_depositId, shares);
-
-        vm.stopPrank();
     }
 }

@@ -51,14 +51,26 @@ abstract contract TestCommon is Test {
         shares = _vault.deposit(_amount, _from);
     }
 
-    function _approve(IERC20 _token,  address _owner,address _spender, uint256 _amount) internal {
+    function _approve(IERC20 _token, address _owner, address _spender, uint256 _amount) internal {
         vm.prank(_owner);
         _token.approve(address(_spender), _amount);
+    }
+
+    function _depositToVaultAndApprove(IERC4626 _vault, address _from, address _spender, uint256 _amount)
+        internal
+        returns (uint256 shares)
+    {
+        shares = _depositToVault(_vault, _from, _amount);
+        _approve(IERC20(_vault), _from, _spender, shares);
     }
 
     function _dealAndApprove(IERC20 _token, address _owner, address _spender, uint256 _amount) internal {
         deal(address(_token), _owner, _amount);
         _approve(_token, _owner, _spender, _amount);
+    }
+
+    function _shiftTime(uint256 _period) internal {
+        vm.warp(block.timestamp + _period);
     }
 
     function _generateYield(IERC4626 _vault, int256 _percent) internal {

@@ -261,7 +261,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setSwapper_newSwapperWorks() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         // generate 50% yield
         _generateYield(0.5e18);
@@ -467,25 +467,26 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_openPosition_emitsEvent() public {
-        // open one position just to increment the deposit id
-        _depositAndOpenPosition(bob, 2 ether);
+        // open one position just to increment the position id counter
+        _openPositionWithPrincipal(alice, 2 ether);
 
         uint256 principal = 1 ether;
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, principal);
 
         uint256 nextPositionId = yieldDca.nextPositionId();
-        assertEq(nextPositionId, 2, "next token id");
+        assertEq(nextPositionId, 2, "next position id");
 
         vm.expectEmit(true, true, true, true);
         emit PositionOpened(alice, nextPositionId, yieldDca.currentEpoch(), shares, principal);
 
         vm.prank(alice);
         yieldDca.openPosition(shares);
+
+        assertEq(yieldDca.balanceOf(alice), 2, "alice's position count");
     }
 
     function test_openPosition_correctlyMintsNftsForDifferentUsers() public {
-        uint256 principal = 1 ether;
-        uint256 shares = _depositToVaultAndApproveYieldDca(alice, principal);
+        uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
 
         vm.prank(alice);
         uint256 positionId = yieldDca.openPosition(shares);
@@ -508,8 +509,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_openPosition_oneUserCanOpenMultiplePositions() public {
-        uint256 principal = 1 ether;
-        uint256 shares = _depositToVaultAndApproveYieldDca(alice, principal);
+        uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
 
         vm.prank(alice);
         uint256 positionId = yieldDca.openPosition(shares);
@@ -563,12 +563,9 @@ contract YieldDCATest is TestCommon {
      */
 
     function test_depositAndOpenPosition_failsIfAmountZero() public {
-        uint256 principal = 1 ether;
-        deal(address(asset), alice, principal);
+        _assetDealAndApproveYieldDca(alice, 1 ether);
 
-        vm.startPrank(alice);
-        asset.approve(address(yieldDca), principal);
-
+        vm.prank(alice);
         vm.expectRevert(CommonErrors.AmountZero.selector);
         yieldDca.depositAndOpenPosition(0);
     }
@@ -576,11 +573,9 @@ contract YieldDCATest is TestCommon {
     function test_depositAndOpenPosition_depositsAssetsAndMintsPositionNft() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.previewDeposit(principal);
-        deal(address(asset), alice, principal);
+        _assetDealAndApproveYieldDca(alice, principal);
 
-        vm.startPrank(alice);
-        asset.approve(address(yieldDca), principal);
-
+        vm.prank(alice);
         uint256 positionId = yieldDca.depositAndOpenPosition(principal);
 
         assertEq(positionId, 1, "token id");
@@ -600,14 +595,12 @@ contract YieldDCATest is TestCommon {
     function test_depositAndOpenPosition_emitsEvent() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.previewDeposit(principal);
-        deal(address(asset), alice, principal);
-
-        vm.startPrank(alice);
-        asset.approve(address(yieldDca), principal);
+        _assetDealAndApproveYieldDca(alice, principal);
 
         vm.expectEmit(true, true, true, true);
         emit PositionOpened(alice, yieldDca.nextPositionId(), yieldDca.currentEpoch(), shares, principal);
 
+        vm.prank(alice);
         yieldDca.depositAndOpenPosition(principal);
     }
 
@@ -653,7 +646,7 @@ contract YieldDCATest is TestCommon {
     function test_increasePosition_failsIfNotOwnerOrApproved() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.convertToShares(principal);
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
         vm.prank(bob);
@@ -661,7 +654,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_increasePosition_failsIfAmountIsZero() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         vm.expectRevert(CommonErrors.AmountZero.selector);
         vm.prank(alice);
@@ -671,7 +664,7 @@ contract YieldDCATest is TestCommon {
     function test_increasePosition_worksForApprovedCaller() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.convertToShares(principal);
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         uint256 topUpAmount = 2 ether;
         uint256 topUpShares = _depositToVaultAndApproveYieldDca(alice, topUpAmount);
@@ -695,7 +688,7 @@ contract YieldDCATest is TestCommon {
         uint256 principal = 1 ether;
         uint256 shares = vault.convertToShares(principal);
         uint256 totalShares = shares;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         // top up with same amount
         uint256 firstTopUp = 1 ether;
@@ -734,7 +727,7 @@ contract YieldDCATest is TestCommon {
 
     function test_increasePosition_worksMultipleTimesInDifferentEpochs() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         // add 100% yield
         _generateYield(1e18);
@@ -769,7 +762,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_increasePosition_emitsEvent() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         _generateYield(1e18);
         _executeDcaAtExchangeRate(1e18);
@@ -793,7 +786,7 @@ contract YieldDCATest is TestCommon {
     function test_increasePositionUsingPermit() public {
         uint256 principal = 1 ether;
         uint256 totalShares = vault.convertToShares(principal);
-        uint256 positionId = _depositAndOpenPosition(dave, principal);
+        uint256 positionId = _openPositionWithPrincipal(dave, principal);
 
         // top up with same amount
         uint256 shares = _depositToVault(dave, principal);
@@ -821,7 +814,7 @@ contract YieldDCATest is TestCommon {
     function test_increasePositionUsingPermit_worksForApprovedCaller() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.previewDeposit(principal);
-        uint256 positionId = _depositAndOpenPosition(dave, principal);
+        uint256 positionId = _openPositionWithPrincipal(dave, principal);
 
         // top up with same amount
         uint256 topUpShares = _depositToVault(dave, principal);
@@ -854,20 +847,20 @@ contract YieldDCATest is TestCommon {
 
     function test_depositAndIncreasePosition_failsIfNotOwnerOrApproved() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
-        deal(address(asset), bob, principal);
-        vm.prank(bob);
-        asset.approve(address(yieldDca), principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
+
+        _assetDealAndApproveYieldDca(alice, 1 ether);
 
         assertFalse(yieldDca.isApprovedOrOwner(bob, positionId), "approved");
 
-        vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
         vm.prank(bob);
+        vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
         yieldDca.depositAndIncreasePosition(positionId, principal);
     }
 
     function test_depositAndIncreasePosition_failsIfAmountIsZero() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
+        _assetDealAndApproveYieldDca(alice, 1 ether);
 
         vm.expectRevert(CommonErrors.AmountZero.selector);
         vm.prank(alice);
@@ -876,12 +869,13 @@ contract YieldDCATest is TestCommon {
 
     function test_depositAndIncreasePosition_worksForApprovedCaller() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         uint256 topUpAmount = 2 ether;
         uint256 totalShares = vault.convertToShares(principal + topUpAmount);
-        _assetDealAndApprove(alice, address(yieldDca), topUpAmount);
+        _assetDealAndApproveYieldDca(alice, topUpAmount);
 
+        // approve NFT to dave
         vm.prank(alice);
         yieldDca.approve(dave, positionId);
 
@@ -900,25 +894,21 @@ contract YieldDCATest is TestCommon {
 
     function test_depositAndIncreasePosition_worksMultipleTimesInSameEpoch() public {
         uint256 principal = 1 ether;
-        uint256 shares = vault.convertToShares(principal);
-        uint256 totalShares = shares;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 totalShares = vault.convertToShares(principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         // top up with same amount
         uint256 firstTopUp = 1 ether;
-        vm.startPrank(alice);
+        totalShares += vault.previewDeposit(firstTopUp);
+        _assetDealAndApproveYieldDca(alice, firstTopUp);
 
-        asset.mint(alice, firstTopUp);
-        asset.approve(address(yieldDca), firstTopUp);
-        shares = vault.previewDeposit(firstTopUp);
-        totalShares += shares;
-
+        vm.prank(alice);
         yieldDca.depositAndIncreasePosition(positionId, firstTopUp);
 
         vm.stopPrank();
 
         assertEq(vault.balanceOf(alice), 0, "1st: alice's vault balance");
-        assertEq(vault.balanceOf(address(yieldDca)), shares * 2, "1st: contract's vault balance");
+        assertEq(vault.balanceOf(address(yieldDca)), totalShares, "1st: contract's vault balance");
 
         (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(positionId);
         assertEq(balance, vault.convertToShares(principal + firstTopUp), "1st: alice's balance");
@@ -928,16 +918,11 @@ contract YieldDCATest is TestCommon {
 
         // topUp with different amount
         uint256 secondTopUp = 2 ether;
-        vm.startPrank(alice);
+        totalShares += vault.previewDeposit(secondTopUp);
+        _assetDealAndApproveYieldDca(alice, secondTopUp);
 
-        asset.mint(alice, secondTopUp);
-        asset.approve(address(yieldDca), secondTopUp);
-        shares = vault.previewDeposit(secondTopUp);
-        totalShares += shares;
-
+        vm.prank(alice);
         yieldDca.depositAndIncreasePosition(positionId, secondTopUp);
-
-        vm.stopPrank();
 
         assertEq(vault.balanceOf(alice), 0, "2nd: alice's vault balance");
         assertEq(vault.balanceOf(address(yieldDca)), totalShares, "2nd: contract's vault balance");
@@ -951,46 +936,36 @@ contract YieldDCATest is TestCommon {
 
     function test_depositAndIncreasePosition_worksMultipleTimesInDifferentEpochs() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         // add 100% yield
+        uint256 expectedDcaAmount = 1 ether;
         _generateYield(1e18);
         _executeDcaAtExchangeRate(1e18);
-
-        uint256 expectedDcaAmount = 1 ether;
 
         (uint256 balance, uint256 dcaBalance) = yieldDca.balancesOf(positionId);
         assertEq(balance, vault.convertToShares(principal), "alice's balance");
         assertEq(dcaBalance, expectedDcaAmount, "alice's dca balance");
 
         uint256 firstTopUp = 3 ether;
-        vm.startPrank(alice);
+        _assetDealAndApproveYieldDca(alice, firstTopUp);
 
-        asset.mint(alice, firstTopUp);
-        asset.approve(address(yieldDca), firstTopUp);
-
+        vm.prank(alice);
         yieldDca.depositAndIncreasePosition(positionId, firstTopUp);
-
-        vm.stopPrank();
 
         (balance, dcaBalance) = yieldDca.balancesOf(positionId);
         assertEq(balance, vault.convertToShares(principal + firstTopUp), "1st: alice's balance");
         assertEq(dcaBalance, expectedDcaAmount, "1st: alice's dca balance");
 
+        expectedDcaAmount += 2 ether;
         _generateYield(0.5e18);
         _executeDcaAtExchangeRate(1e18);
 
-        expectedDcaAmount += 2 ether;
-
         uint256 secondTopUp = 2 ether;
-        vm.startPrank(alice);
+        _assetDealAndApproveYieldDca(alice, secondTopUp);
 
-        asset.mint(alice, secondTopUp);
-        asset.approve(address(yieldDca), secondTopUp);
-
+        vm.prank(alice);
         yieldDca.depositAndIncreasePosition(positionId, secondTopUp);
-
-        vm.stopPrank();
 
         (balance, dcaBalance) = yieldDca.balancesOf(positionId);
         assertApproxEqAbs(
@@ -1000,21 +975,19 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_depositAndIncreasePosition_emitsEvent() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         _generateYield(1e18);
         _executeDcaAtExchangeRate(1e18);
 
         uint256 topUpAmount = 2 ether;
-        vm.startPrank(alice);
-
-        asset.mint(alice, topUpAmount);
-        asset.approve(address(yieldDca), topUpAmount);
         uint256 shares = vault.previewDeposit(topUpAmount);
+        _assetDealAndApproveYieldDca(alice, topUpAmount);
 
         vm.expectEmit(true, true, true, true);
         emit PositionIncreased(alice, positionId, yieldDca.currentEpoch(), shares, topUpAmount);
 
+        vm.prank(alice);
         yieldDca.depositAndIncreasePosition(positionId, topUpAmount);
     }
 
@@ -1027,12 +1000,11 @@ contract YieldDCATest is TestCommon {
     function test_depositAndIncreasePositionUsingPermit() public {
         uint256 principal = 1 ether;
         uint256 totalShares = vault.convertToShares(principal);
-        uint256 positionId = _depositAndOpenPosition(dave, principal);
+        uint256 positionId = _openPositionWithPrincipal(dave, principal);
 
         uint256 topUpAmount = 2 ether;
+        totalShares += vault.previewDeposit(topUpAmount);
         deal(address(asset), dave, topUpAmount);
-        uint256 shares = vault.previewDeposit(topUpAmount);
-        totalShares += shares;
         uint256 deadline = block.timestamp + 1 hours;
 
         (uint8 v, bytes32 r, bytes32 s) =
@@ -1053,7 +1025,7 @@ contract YieldDCATest is TestCommon {
 
     function test_depositAndIncreasePositionUsingPermit_worksForApprovedCaller() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(dave, principal);
+        uint256 positionId = _openPositionWithPrincipal(dave, principal);
 
         uint256 topUpAmount = 2 ether;
         deal(address(asset), dave, topUpAmount);
@@ -1079,7 +1051,7 @@ contract YieldDCATest is TestCommon {
      */
 
     function test_canExecuteDCA_revertsIfNotEnoughTimePassed() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         // shift time by less than min epoch duration
         _shiftTime(yieldDca.epochDuration() - 1);
@@ -1089,7 +1061,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_canExecuteDCA_revertIfNoYieldGenerated() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         _shiftTime(yieldDca.epochDuration());
 
@@ -1098,7 +1070,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_canExecuteDCA_revertsIfYieldIsBelowMin() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         _shiftTime(yieldDca.epochDuration());
 
@@ -1110,7 +1082,7 @@ contract YieldDCATest is TestCommon {
 
     function test_canExecuteDCA_returnsTrueIfAllConditionsMet() public {
         // total pricipal deposited != 0
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         // dca interval passed
         _shiftTime(yieldDca.epochDuration());
@@ -1139,7 +1111,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_executeDCA_failsIfNotEnoughTimeHasPassed() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         _shiftTime(yieldDca.epochDuration() - 1);
 
@@ -1150,7 +1122,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_executeDCA_failsIfYieldIsZero() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         _shiftTime(yieldDca.epochDuration());
 
@@ -1161,7 +1133,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_executeDCA_failsIfYieldIsNegative() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         _shiftTime(yieldDca.epochDuration());
 
@@ -1178,7 +1150,7 @@ contract YieldDCATest is TestCommon {
 
     function test_executeDCA_failsIfYieldIsBelowMin() public {
         uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+        _openPositionWithPrincipal(alice, principal);
 
         _shiftTime(yieldDca.epochDuration());
         swapper.setExchangeRate(2e18);
@@ -1192,7 +1164,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_executeDCA_failsIfAmountReceivedIsBelowMin() public {
-        _depositAndOpenPosition(alice, 1 ether);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         _shiftTime(yieldDca.epochDuration());
         _generateYield(1e18);
@@ -1217,7 +1189,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+        _openPositionWithPrincipal(alice, principal);
 
         // step 2 - generate 50% yield
         uint256 yieldPct = 0.5e18;
@@ -1260,7 +1232,7 @@ contract YieldDCATest is TestCommon {
 
     function test_executeDca_emitsEvent() public {
         uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+        _openPositionWithPrincipal(alice, principal);
 
         uint256 sharePrice = uint256(0.5e18).divWadDown(vault.convertToShares(0.5e18));
 
@@ -1297,7 +1269,7 @@ contract YieldDCATest is TestCommon {
          */
 
         // step 1 - alice deposits
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
@@ -1333,7 +1305,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
@@ -1371,7 +1343,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+        _openPositionWithPrincipal(alice, principal);
 
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
@@ -1411,7 +1383,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+        _openPositionWithPrincipal(alice, principal);
 
         uint256 exchangeRate = 3e18;
         swapper.setExchangeRate(exchangeRate);
@@ -1454,7 +1426,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositAndOpenPosition(alice, alicesPrincipal);
+        _openPositionWithPrincipal(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
@@ -1465,7 +1437,7 @@ contract YieldDCATest is TestCommon {
         // step 4 - bob deposits
 
         uint256 bobsPrincipal = 1 ether;
-        _depositAndOpenPosition(bob, bobsPrincipal);
+        _openPositionWithPrincipal(bob, bobsPrincipal);
 
         // step 5 - generate 100% yield
         _generateYield(1e18);
@@ -1500,7 +1472,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositAndOpenPosition(alice, alicesPrincipal);
+        _openPositionWithPrincipal(alice, alicesPrincipal);
 
         // step 2 - bob deposits into vault
         uint256 bobsPrincipal = 1 ether;
@@ -1546,7 +1518,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositAndOpenPosition(alice, alicesPrincipal);
+        _openPositionWithPrincipal(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
@@ -1556,11 +1528,11 @@ contract YieldDCATest is TestCommon {
 
         // step 4 - bob deposits
         uint256 bobsPrincipal = 2 ether;
-        _depositAndOpenPosition(bob, bobsPrincipal);
+        _openPositionWithPrincipal(bob, bobsPrincipal);
 
         // step 5 - carol deposits
         uint256 carolsPrincipal = 1 ether;
-        _depositAndOpenPosition(carol, carolsPrincipal);
+        _openPositionWithPrincipal(carol, carolsPrincipal);
 
         // step 6 - generate 100% yield (ie 4 ether)
         _generateYield(1e18);
@@ -1571,20 +1543,20 @@ contract YieldDCATest is TestCommon {
         // step 8 - alice withdraws and gets 5 DCA tokens
         _closePosition(alice, 1);
 
-        assertApproxEqRel(dcaToken.balanceOf(alice), 5e18, 0.00001e18, "dca token balance");
-        assertApproxEqAbs(_convertSharesToAssetsFor(alice), 1e18, 1, "principal");
+        assertApproxEqRel(dcaToken.balanceOf(alice), 5e18, 0.00001e18, "alice's dca token balance");
+        assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 1, "alice's principal");
 
         // step 9 - bob withdraws and gets 4 DCA tokens
         _closePosition(bob, 2);
 
-        assertApproxEqRel(dcaToken.balanceOf(bob), 4e18, 0.00001e18, "dca token balance");
-        assertApproxEqAbs(_convertSharesToAssetsFor(bob), 2e18, 1, "principal");
+        assertApproxEqRel(dcaToken.balanceOf(bob), 4e18, 0.00001e18, "bob's dca token balance");
+        assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 1, "bob's principal");
 
         // step 10 - carol withdraws and gets 2 DCA tokens
         _closePosition(carol, 3);
 
-        assertApproxEqRel(dcaToken.balanceOf(carol), 2e18, 0.00001e18, "dca token balance");
-        assertApproxEqAbs(_convertSharesToAssetsFor(carol), 1e18, 1, "principal");
+        assertApproxEqRel(dcaToken.balanceOf(carol), 2e18, 0.00001e18, "carol's dca token balance");
+        assertApproxEqAbs(_convertSharesToAssetsFor(carol), carolsPrincipal, 1, "carol's principal");
     }
 
     function test_executeDCA_oneOfUsersExperiencesNegativeYield() public {
@@ -1616,7 +1588,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositAndOpenPosition(alice, alicesPrincipal);
+        _openPositionWithPrincipal(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
@@ -1629,7 +1601,7 @@ contract YieldDCATest is TestCommon {
 
         // step 5 - bob deposits
         uint256 bobsPrincipal = 1 ether;
-        _depositAndOpenPosition(bob, bobsPrincipal);
+        _openPositionWithPrincipal(bob, bobsPrincipal);
 
         // step 6 - generate -25% yield
         _generateYield(-0.25e18);
@@ -1718,18 +1690,18 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositAndOpenPosition(alice, alicesPrincipal);
+        _openPositionWithPrincipal(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
 
         // step 3 - bob deposits
         uint256 bobsPrincipal = 1 ether;
-        _depositAndOpenPosition(bob, bobsPrincipal);
+        _openPositionWithPrincipal(bob, bobsPrincipal);
 
         // step 4 - carol deposits
         uint256 carolsPrincipal = 1 ether;
-        _depositAndOpenPosition(carol, carolsPrincipal);
+        _openPositionWithPrincipal(carol, carolsPrincipal);
 
         // step 5 - generate -20% yield
         _generateYield(-0.2e18);
@@ -1824,18 +1796,18 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 alicesPrincipal = 1 ether;
-        _depositAndOpenPosition(alice, alicesPrincipal);
+        _openPositionWithPrincipal(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
 
         // step 3 - bob deposits
         uint256 bobsPrincipal = 1 ether;
-        _depositAndOpenPosition(bob, bobsPrincipal);
+        _openPositionWithPrincipal(bob, bobsPrincipal);
 
         // step 4 - carol deposits
         uint256 carolsPrincipal = 1 ether;
-        _depositAndOpenPosition(carol, carolsPrincipal);
+        _openPositionWithPrincipal(carol, carolsPrincipal);
 
         // step 5 - generate -20% yield
         _generateYield(-0.2e18);
@@ -1904,7 +1876,7 @@ contract YieldDCATest is TestCommon {
      */
 
     function test_reducePosition_failsIfInvalidPositionId() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         vm.expectRevert(ERC721.TokenDoesNotExist.selector);
         vm.prank(alice);
@@ -1912,7 +1884,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_reducePosition_failsIfNotOwnerOrApproved() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
         vm.prank(bob);
@@ -1920,7 +1892,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_reducePosition_failsIfAmountIs0() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         vm.expectRevert(abi.encodeWithSelector(CommonErrors.AmountZero.selector));
         vm.prank(alice);
@@ -1929,7 +1901,7 @@ contract YieldDCATest is TestCommon {
 
     function test_reducePosition_failsIfTryingToWithdrawMoreThanAvaiable() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
         uint256 shares = vault.convertToShares(principal);
 
         vm.expectRevert(YieldDCA.InsufficientSharesToWithdraw.selector);
@@ -1940,7 +1912,7 @@ contract YieldDCATest is TestCommon {
     function test_reducePosition_worksInSameEpochAsDeposit() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.convertToShares(principal);
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         vm.prank(alice);
         yieldDca.reducePosition(positionId, shares / 2);
@@ -1959,7 +1931,7 @@ contract YieldDCATest is TestCommon {
     function test_reducePosition_worksForApprovedCaller() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.convertToShares(principal);
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         vm.prank(alice);
         yieldDca.approve(dave, positionId);
@@ -1979,7 +1951,7 @@ contract YieldDCATest is TestCommon {
 
     function test_reducePosition_burnsTokenIfWithdrawingAll() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         uint256 toWithdraw = _getSharesBalanceInDcaFor(positionId);
 
@@ -1996,7 +1968,7 @@ contract YieldDCATest is TestCommon {
 
     function test_reducePosition_withdrawsOnlyShares() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _shiftTime(yieldDca.epochDuration());
@@ -2022,8 +1994,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_reducePosition_closePositionBurnsNftAndWithdrawsDcaAmount() public {
-        uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         _generateYield(1e18);
         _executeDcaAtExchangeRate(2e18);
@@ -2055,7 +2026,7 @@ contract YieldDCATest is TestCommon {
 
         // step 1 - alice deposits
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
@@ -2101,8 +2072,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_reducePosition_emitsPositionReducedEvent() public {
-        uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+        _openPositionWithPrincipal(alice, 1 ether);
 
         _generateYield(0.5e18);
 
@@ -2121,7 +2091,7 @@ contract YieldDCATest is TestCommon {
 
     function test_reducePosition_emitsPositionClosedEventIfWithdrawingAll() public {
         uint256 principal = 1 ether;
-        _depositAndOpenPosition(alice, principal);
+        _openPositionWithPrincipal(alice, principal);
 
         _generateYield(0.5e18);
         _executeDcaAtExchangeRate(5e18);
@@ -2150,7 +2120,9 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_closePosition_failsIfNotOwnerOrApproved() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
+
+        assertFalse(yieldDca.isApprovedForAll(alice, bob), "alice is not approved for bob");
 
         vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
         vm.prank(bob);
@@ -2160,7 +2132,7 @@ contract YieldDCATest is TestCommon {
     function test_closePosition_worksInTheSameEpochWhenOpened() public {
         uint256 principal = 1 ether;
         uint256 shares = vault.previewDeposit(principal);
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         vm.prank(alice);
         yieldDca.closePosition(positionId);
@@ -2177,7 +2149,7 @@ contract YieldDCATest is TestCommon {
 
     function test_closePosition_worksInDifferentEpoch() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _shiftTime(yieldDca.epochDuration());
@@ -2199,7 +2171,7 @@ contract YieldDCATest is TestCommon {
 
     function test_closePosition_worksForApprovedCaller() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _shiftTime(yieldDca.epochDuration());
@@ -2223,7 +2195,7 @@ contract YieldDCATest is TestCommon {
 
     function test_closePosition_emitsEvent() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(0.5e18);
         _executeDcaAtExchangeRate(5e18);
@@ -2254,7 +2226,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_claimDCATokens_failsIfNotOwnerOrApproved() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
         vm.prank(bob);
@@ -2262,7 +2234,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_claimDCATokens_failsIfNothingToClaim() public {
-        uint256 positionId = _depositAndOpenPosition(alice, 1 ether);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
         vm.prank(alice);
@@ -2271,7 +2243,7 @@ contract YieldDCATest is TestCommon {
 
     function test_claimDCATokens_transfersOnlyDCAAmountToCaller() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _executeDcaAtExchangeRate(3e18);
@@ -2298,7 +2270,7 @@ contract YieldDCATest is TestCommon {
 
     function test_claimDCATokens_worksForApprovedCaller() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _executeDcaAtExchangeRate(3e18);
@@ -2323,7 +2295,7 @@ contract YieldDCATest is TestCommon {
 
     function test_claimDCATokens_worksInConsequtiveEpochs() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _shiftTime(yieldDca.epochDuration());
@@ -2355,8 +2327,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_claimDCATokens_emitsEvent() public {
-        uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         _generateYield(0.5e18);
         _executeDcaAtExchangeRate(5e18);
@@ -2371,14 +2342,13 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_claimDCATokens_failsIfDcaDiscrepancyIsAboveTolerated() public {
-        uint256 alicesPrincipal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, alicesPrincipal);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
         assertEq(yieldDca.discrepancyTolerance(), DEFAULT_DISCREPANCY_TOLERANCE, "discrepancy tolerance not set");
 
         _generateYield(1e18);
 
         uint256 bobsPrincipal = 1 ether;
-        _depositAndOpenPosition(bob, bobsPrincipal);
+        _openPositionWithPrincipal(bob, bobsPrincipal);
 
         _generateYield(-int256(DEFAULT_DISCREPANCY_TOLERANCE + 0.001e18));
         _executeDcaAtExchangeRate(2e18);
@@ -2389,14 +2359,13 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_claimDCATokens_worksIfDcaDiscrepancyBelowTolerated() public {
-        uint256 alicesPrincipal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, alicesPrincipal);
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
         assertEq(yieldDca.discrepancyTolerance(), DEFAULT_DISCREPANCY_TOLERANCE, "discrepancy tolerance not set");
 
         _generateYield(1e18);
 
         uint256 bobsPrincipal = 1 ether;
-        _depositAndOpenPosition(bob, bobsPrincipal);
+        _openPositionWithPrincipal(bob, bobsPrincipal);
 
         _generateYield(-int256(DEFAULT_DISCREPANCY_TOLERANCE - 0.001e18));
         _executeDcaAtExchangeRate(2e18);
@@ -2424,7 +2393,7 @@ contract YieldDCATest is TestCommon {
 
     function test_balancesOf_returnsSharesIfDcaNotExecuted() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         (uint256 shares, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
         assertEq(shares, vault.convertToShares(principal), "shares");
@@ -2433,7 +2402,7 @@ contract YieldDCATest is TestCommon {
 
     function test_balancesOf_returnsSharesAndDcaAmountIfDcaExecuted() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _executeDcaAtExchangeRate(3e18);
@@ -2445,7 +2414,7 @@ contract YieldDCATest is TestCommon {
 
     function test_balancesOf_worksTrhuMultipleEpochs() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _shiftTime(yieldDca.epochDuration());
@@ -2466,12 +2435,12 @@ contract YieldDCATest is TestCommon {
 
     function test_balancesOf_returnsZeroDcaAmountIfYieldWasNegative() public {
         uint256 alicesPrincipal = 1 ether;
-        uint256 alicesPosition = _depositAndOpenPosition(alice, alicesPrincipal);
+        uint256 alicesPosition = _openPositionWithPrincipal(alice, alicesPrincipal);
 
         _generateYield(1e18);
 
         uint256 bobsPrincipal = 1 ether;
-        uint256 bobsPosition = _depositAndOpenPosition(bob, bobsPrincipal);
+        uint256 bobsPosition = _openPositionWithPrincipal(bob, bobsPrincipal);
 
         _generateYield(-0.2e18);
         _executeDcaAtExchangeRate(2e18);
@@ -2493,7 +2462,7 @@ contract YieldDCATest is TestCommon {
 
     function test_transfer_changesOwner() public {
         uint256 principal = 1 ether;
-        uint256 positionId = _depositAndOpenPosition(alice, principal);
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
         _generateYield(1e18);
         _executeDcaAtExchangeRate(3e18);
@@ -2522,7 +2491,7 @@ contract YieldDCATest is TestCommon {
      * --------------------
      */
 
-    function _depositAndOpenPosition(address _account, uint256 _amount) public returns (uint256 positionId) {
+    function _openPositionWithPrincipal(address _account, uint256 _amount) public returns (uint256 positionId) {
         uint256 shares = _depositToVaultAndApproveYieldDca(_account, _amount);
 
         vm.prank(_account);
@@ -2534,12 +2503,11 @@ contract YieldDCATest is TestCommon {
     }
 
     function _depositToVaultAndApproveYieldDca(address _account, uint256 _amount) public returns (uint256 shares) {
-        shares = _depositToVault(_account, _amount);
-        _vaultApproveYieldDca(_account, shares);
+        shares = _depositToVaultAndApprove(IERC4626(address(vault)), _account, address(yieldDca), _amount);
     }
 
-    function _assetDealAndApprove(address _owner, address _spender, uint256 _amount) public {
-        _dealAndApprove(IERC20(address(asset)), _owner, _spender, _amount);
+    function _assetDealAndApproveYieldDca(address _owner, uint256 _amount) public {
+        _dealAndApprove(IERC20(address(asset)), _owner, address(yieldDca), _amount);
     }
 
     function _vaultApproveYieldDca(address _owner, uint256 _shares) public {
@@ -2556,10 +2524,6 @@ contract YieldDCATest is TestCommon {
 
     function _generateYield(int256 _percent) public {
         _generateYield(IERC4626(address(vault)), _percent);
-    }
-
-    function _shiftTime(uint256 _period) internal {
-        vm.warp(block.timestamp + _period);
     }
 
     function _convertSharesToAssetsFor(address _account) internal view returns (uint256) {
