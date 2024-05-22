@@ -2,12 +2,12 @@
 pragma solidity ^0.8.19;
 
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {IERC721} from "openzeppelin-contracts/interfaces/IERC721.sol";
 import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20Permit} from "openzeppelin-contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 
 import {CommonErrors} from "./common/CommonErrors.sol";
@@ -39,12 +39,11 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
 // TODO: add multicall support to open and approve
 // TODO: receiver param on creating the position
 // TODO: receiver param on claiming the DCA tokens
-// TODO: try SafeTransferLib
+// TODO: safeCastLib for uint256 to uint32
 contract YieldDCA is ERC721, AccessControl {
     using CommonErrors for uint256;
     using FixedPointMathLib for uint256;
-    using SafeERC20 for IERC4626;
-    using SafeERC20 for IERC20Metadata;
+    using SafeTransferLib for address;
 
     struct Position {
         uint256 shares;
@@ -180,12 +179,14 @@ contract YieldDCA is ERC721, AccessControl {
         address _admin,
         address _keeper
     ) {
+        // validate input parameters
         if (address(_dcaToken) == address(0)) revert DCATokenAddressZero();
         if (address(_vault) == address(0)) revert VaultAddressZero();
         if (address(_dcaToken) == _vault.asset()) revert DCATokenSameAsVaultAsset();
         if (_admin == address(0)) revert AdminAddressZero();
         if (_keeper == address(0)) revert KeeperAddressZero();
 
+        // set contract state
         dcaToken = _dcaToken;
         asset = IERC20Metadata(_vault.asset());
         vault = _vault;
@@ -194,11 +195,15 @@ contract YieldDCA is ERC721, AccessControl {
         _setEpochDuration(_epochDuration);
         _setMinYieldPerEpoch(_minYieldPerEpochPercent);
 
+        name_ = string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", _dcaToken.name()));
+        symbol_ = string(abi.encodePacked("yDCA-", _vault.symbol(), "/", _dcaToken.symbol()));
+
+        // set roles
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(KEEPER_ROLE, _keeper);
 
-        name_ = string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", _dcaToken.name()));
-        symbol_ = string(abi.encodePacked("yDCA-", _vault.symbol(), "/", _dcaToken.symbol()));
+        // approve the vault as underlying assets spender
+        address(asset).safeApprove(address(_vault), type(uint256).max);
     }
 
     /*
@@ -293,7 +298,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         positionId = _openPosition(_shares);
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
+        address(vault).safeTransferFrom(msg.sender, address(this), _shares);
     }
 
     function openPositionUsingPermit(uint256 _shares, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
@@ -336,7 +341,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         _increasePosition(_positionId, _shares, principal);
 
-        vault.safeTransferFrom(_ownerOf(_positionId), address(this), _shares);
+        address(vault).safeTransferFrom(_ownerOf(_positionId), address(this), _shares);
     }
 
     function increasePositionUsingPermit(
@@ -554,8 +559,8 @@ contract YieldDCA is ERC721, AccessControl {
         oldSwapper = address(swapper);
 
         // revoke previous swapper's approval and approve new swapper
-        if (oldSwapper != address(0)) asset.forceApprove(oldSwapper, 0);
-        asset.forceApprove(address(_newSwapper), type(uint256).max);
+        if (oldSwapper != address(0)) address(asset).safeApprove(oldSwapper, 0);
+        address(asset).safeApprove(address(_newSwapper), type(uint256).max);
 
         swapper = _newSwapper;
     }
@@ -714,9 +719,7 @@ contract YieldDCA is ERC721, AccessControl {
     /// *** helper functions ***
 
     function _depositToVault(address _from, uint256 _principal) internal returns (uint256 shares) {
-        asset.safeTransferFrom(_from, address(this), _principal);
-
-        asset.forceApprove(address(vault), _principal);
+        address(asset).safeTransferFrom(_from, address(this), _principal);
 
         shares = vault.deposit(_principal, address(this));
     }
@@ -727,7 +730,7 @@ contract YieldDCA is ERC721, AccessControl {
 
         if (_shares > sharesBalance_) _shares = sharesBalance_;
 
-        vault.safeTransfer(_to, _shares);
+        address(vault).safeTransfer(_to, _shares);
 
         return _shares;
     }
@@ -747,7 +750,7 @@ contract YieldDCA is ERC721, AccessControl {
             _amount = balance;
         }
 
-        dcaToken.safeTransfer(_to, _amount);
+        address(dcaToken).safeTransfer(_to, _amount);
 
         return _amount;
     }

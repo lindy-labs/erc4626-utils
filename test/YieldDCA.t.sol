@@ -125,7 +125,9 @@ contract YieldDCATest is TestCommon {
 
         assertTrue(yieldDca.hasRole(yieldDca.DEFAULT_ADMIN_ROLE(), admin), "admin role");
         assertTrue(yieldDca.hasRole(yieldDca.KEEPER_ROLE(), keeper), "keeper role");
-        assertEq(asset.allowance(address(yieldDca), address(swapper)), type(uint256).max, "vault allowance");
+
+        assertEq(asset.allowance(address(yieldDca), address(swapper)), type(uint256).max, "swapper allowance");
+        assertEq(asset.allowance(address(yieldDca), address(vault)), type(uint256).max, "vault allowance");
     }
 
     function test_constructor_revertsIfDcaTokenZeroAddress() public {
