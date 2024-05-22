@@ -39,6 +39,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
 // TODO: add multicall support to open and approve
 // TODO: receiver param on creating the position
 // TODO: receiver param on claiming the DCA tokens
+// TODO: try SafeTransferLib
 contract YieldDCA is ERC721, AccessControl {
     using CommonErrors for uint256;
     using FixedPointMathLib for uint256;

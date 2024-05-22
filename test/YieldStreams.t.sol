@@ -2149,7 +2149,7 @@ contract YieldStreamsTest is TestCommon {
     }
 
     function _approveYieldStreamsContract(address _from, uint256 _shares) internal {
-        _approve(IERC4626(address(vault)), address(ys), _from, _shares);
+        _approve(IERC4626(address(vault)), _from, address(ys), _shares);
     }
 
     function _approveAssetsAndPreviewDeposit(address _owner, uint256 _amount) private returns (uint256 shares) {

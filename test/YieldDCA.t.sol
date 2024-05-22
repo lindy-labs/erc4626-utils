@@ -24,7 +24,12 @@ contract YieldDCATest is TestCommon {
     using FixedPointMathLib for uint256;
 
     event PositionOpened(
-        address indexed caller, uint256 indexed positionId, uint32 epoch, uint256 shares, uint256 principal
+        address indexed caller,
+        address indexed owner,
+        uint256 indexed positionId,
+        uint32 epoch,
+        uint256 shares,
+        uint256 principal
     );
     event PositionIncreased(
         address indexed caller,
@@ -503,7 +508,7 @@ contract YieldDCATest is TestCommon {
         assertEq(nextPositionId, 2, "next position id");
 
         vm.expectEmit(true, true, true, true);
-        emit PositionOpened(alice, nextPositionId, yieldDca.currentEpoch(), shares, principal);
+        emit PositionOpened(alice, alice, nextPositionId, yieldDca.currentEpoch(), shares, principal);
 
         vm.prank(alice);
         yieldDca.openPosition(shares);
@@ -624,7 +629,7 @@ contract YieldDCATest is TestCommon {
         _assetDealAndApproveYieldDca(alice, principal);
 
         vm.expectEmit(true, true, true, true);
-        emit PositionOpened(alice, yieldDca.nextPositionId(), yieldDca.currentEpoch(), shares, principal);
+        emit PositionOpened(alice, alice, yieldDca.nextPositionId(), yieldDca.currentEpoch(), shares, principal);
 
         vm.prank(alice);
         yieldDca.depositAndOpenPosition(principal);

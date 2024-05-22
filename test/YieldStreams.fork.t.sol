@@ -40,7 +40,7 @@ contract YieldStreamsForkTest is TestCommon {
 
     function test_open() public {
         uint256 shares = _depositToVault(scEth, alice, 1 ether);
-        _approve(scEth, address(scEthYield), alice, shares);
+        _approve(scEth, alice, address(scEthYield), shares);
 
         vm.prank(alice);
         scEthYield.open(bob, shares, 0);
@@ -67,7 +67,7 @@ contract YieldStreamsForkTest is TestCommon {
         // alice opens yield streams to bob and carol
         // principal = 3000 USDC
         uint256 shares = _depositToVault(scUsdc, alice, 3000e6);
-        _approve(scUsdc, address(scUsdcYield), alice, shares);
+        _approve(scUsdc, alice, address(scUsdcYield), shares);
 
         uint256 bobsShares = shares / 3;
         uint256 carolsShares = shares - bobsShares;
@@ -119,7 +119,7 @@ contract YieldStreamsForkTest is TestCommon {
 
     function test_topUp() public {
         uint256 shares = _depositToVault(scEth, alice, 1 ether);
-        _approve(scEth, address(scEthYield), alice, shares);
+        _approve(scEth, alice, address(scEthYield), shares);
 
         vm.prank(alice);
         scEthYield.open(bob, shares, 0);
@@ -137,7 +137,7 @@ contract YieldStreamsForkTest is TestCommon {
         uint256 sharesBeforeTopUp = scEthYield.receiverTotalShares(bob);
 
         uint256 topUpShares = _depositToVault(scEth, alice, 2 ether);
-        _approve(scEth, address(scEthYield), alice, topUpShares);
+        _approve(scEth, alice, address(scEthYield), topUpShares);
 
         vm.prank(alice);
         scEthYield.topUp(1, topUpShares);
@@ -156,13 +156,13 @@ contract YieldStreamsForkTest is TestCommon {
         // alice and bob open yield streams to carol
         uint256 alicesPrincipal = 1 ether;
         uint256 alicesShares = _depositToVault(scEth, alice, alicesPrincipal);
-        _approve(scEth, address(scEthYield), alice, alicesShares);
+        _approve(scEth, alice, address(scEthYield), alicesShares);
         vm.prank(alice);
         scEthYield.open(carol, alicesShares, 0);
 
         uint256 bobsPrincipal = 2 ether;
         uint256 bobsShares = _depositToVault(scEth, bob, bobsPrincipal);
-        _approve(scEth, address(scEthYield), bob, bobsShares);
+        _approve(scEth, bob, address(scEthYield), bobsShares);
         vm.prank(bob);
         scEthYield.open(carol, bobsShares, 0);
 
@@ -218,7 +218,7 @@ contract YieldStreamsForkTest is TestCommon {
     function test_depositAndTopUp() public {
         uint256 principal = 1000e6;
         uint256 shares = _depositToVault(scUsdc, alice, principal);
-        _approve(scUsdc, address(scUsdcYield), alice, shares);
+        _approve(scUsdc, alice, address(scUsdcYield), shares);
 
         vm.prank(alice);
         uint256 streamId = scUsdcYield.open(bob, shares, 0);
@@ -263,7 +263,7 @@ contract YieldStreamsForkTest is TestCommon {
     function test_close() public {
         uint256 principal = 1 ether;
         uint256 shares = _depositToVault(scEth, alice, principal);
-        _approve(scEth, address(scEthYield), alice, shares);
+        _approve(scEth, alice, address(scEthYield), shares);
 
         vm.prank(alice);
         scEthYield.open(bob, shares, 0);
@@ -303,14 +303,14 @@ contract YieldStreamsForkTest is TestCommon {
         // alice and bob open yield streams to carol
         uint256 alicesPrincipal = 1 ether;
         uint256 alicesShares = _depositToVault(scEth, alice, alicesPrincipal);
-        _approve(scEth, address(scEthYield), alice, alicesShares);
+        _approve(scEth, alice, address(scEthYield), alicesShares);
 
         vm.prank(alice);
         scEthYield.open(carol, alicesShares, 0);
 
         uint256 bobsDepositAmount = 2 ether;
         uint256 bobsShares = _depositToVault(scEth, bob, bobsDepositAmount);
-        _approve(scEth, address(scEthYield), bob, bobsShares);
+        _approve(scEth, bob, address(scEthYield), bobsShares);
 
         vm.prank(bob);
         scEthYield.open(carol, bobsShares, 0);
@@ -340,7 +340,7 @@ contract YieldStreamsForkTest is TestCommon {
     function test_multicall_openTwoStreams() public {
         uint256 principal = 1000e6;
         uint256 shares = _depositToVault(scUsdc, alice, principal);
-        _approve(scUsdc, address(scUsdcYield), alice, shares);
+        _approve(scUsdc, alice, address(scUsdcYield), shares);
 
         bytes[] memory callData = new bytes[](2);
 
@@ -364,7 +364,7 @@ contract YieldStreamsForkTest is TestCommon {
     function test_openMultiple_openTwoStreams() public {
         uint256 principal = 1000e6;
         uint256 shares = _depositToVault(scUsdc, alice, principal);
-        _approve(scUsdc, address(scUsdcYield), alice, shares);
+        _approve(scUsdc, alice, address(scUsdcYield), shares);
 
         address[] memory receivers = new address[](2);
         uint256[] memory allocations = new uint256[](2);
