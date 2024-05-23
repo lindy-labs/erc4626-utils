@@ -54,10 +54,15 @@ contract YieldDCATest is TestCommon {
         uint32 epoch,
         uint256 shares,
         uint256 principal,
-        uint256 dcaAmount
+        uint256 dcaBalance
     );
-    event DCATokensClaimed(
-        address indexed caller, address indexed owner, uint256 indexed positionId, uint32 epoch, uint256 amount
+    event DCABalanceClaimed(
+        address indexed caller,
+        address indexed owner,
+        uint256 indexed positionId,
+        uint32 epoch,
+        uint256 amount,
+        address to
     );
 
     event EpochDurationUpdated(address indexed admin, uint32 oldDuration, uint32 newDuration);
@@ -470,6 +475,14 @@ contract YieldDCATest is TestCommon {
         yieldDca.openPosition(0, alice);
     }
 
+    function test_openPosition_failsIfProvidedOwnerIsZeroAddress() public {
+        _depositToVaultAndApproveYieldDca(alice, 1 ether);
+
+        vm.prank(alice);
+        vm.expectRevert(ERC721.TransferToZeroAddress.selector);
+        yieldDca.openPosition(1 ether, address(0));
+    }
+
     function test_openPosition_transfersSharesAndMintsPositionNft() public {
         uint256 principal = 1 ether;
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, principal);
@@ -542,10 +555,10 @@ contract YieldDCATest is TestCommon {
         assertEq(yieldDca.ownerOf(positionId), bob, "owner");
     }
 
-    function test_openPosition_revertsIfProvidedOwnerIsContractAndDoesNotImplementERC721Receiver() public {
+    function test_openPosition_failsIfProvidedOwnerIsContractAndDoesNotImplementERC721Receiver() public {
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
 
-        vm.expectRevert(bytes4(keccak256("TransferToNonERC721ReceiverImplementer()")));
+        vm.expectRevert(ERC721.TransferToNonERC721ReceiverImplementer.selector);
         yieldDca.openPosition(shares, address(this));
     }
 
@@ -2344,32 +2357,40 @@ contract YieldDCATest is TestCommon {
 
     /*
      * --------------------
-     *   #claimDCATokens
+     *   #claimDCABalance
      * --------------------
      */
 
-    function test_claimDCATokens_failsIfPositionDoesNotExist() public {
+    function test_claimDCABalance_failsIfPositionDoesNotExist() public {
         vm.expectRevert(ERC721.TokenDoesNotExist.selector);
-        yieldDca.claimDCATokens(1);
+        yieldDca.claimDCABalance(1, address(this));
     }
 
-    function test_claimDCATokens_failsIfNotOwnerOrApproved() public {
+    function test_claimDCABalance_failsForZeroAddress() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
+
+        vm.expectRevert(CommonErrors.AddressZero.selector);
+        vm.prank(alice);
+        yieldDca.claimDCABalance(positionId, address(0));
+    }
+
+    function test_claimDCABalance_failsIfNotOwnerOrApproved() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
         vm.prank(bob);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCABalance(positionId, bob);
     }
 
-    function test_claimDCATokens_failsIfNothingToClaim() public {
+    function test_claimDCABalance_failsIfNothingToClaim() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCABalance(positionId, alice);
     }
 
-    function test_claimDCATokens_transfersOnlyDCAAmountToCaller() public {
+    function test_claimDCABalance_transfersOnlyDCATokens() public {
         uint256 principal = 1 ether;
         uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
@@ -2379,7 +2400,7 @@ contract YieldDCATest is TestCommon {
         (uint256 sharesRemaining, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCABalance(positionId, alice);
 
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "alice's dca balance");
         assertEq(yieldDca.totalPrincipal(), principal, "total principal deposited");
@@ -2393,10 +2414,27 @@ contract YieldDCATest is TestCommon {
         // claim again should fail
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCABalance(positionId, alice);
     }
 
-    function test_claimDCATokens_worksForApprovedCaller() public {
+    function test_claimDCABalance_transfersToProvidedAddress() public {
+        uint256 principal = 1 ether;
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
+
+        _generateYield(1e18);
+        _executeDcaAtExchangeRate(3e18);
+
+        (, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
+
+        vm.prank(alice);
+        yieldDca.claimDCABalance(positionId, bob);
+
+        assertEq(dcaToken.balanceOf(bob), dcaAmount, "bob's dca balance");
+        assertEq(dcaToken.balanceOf(alice), 0, "alices's dca balance");
+        assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca balance");
+    }
+
+    function test_claimDCABalance_worksForApprovedCaller() public {
         uint256 principal = 1 ether;
         uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
@@ -2408,7 +2446,7 @@ contract YieldDCATest is TestCommon {
         vm.prank(alice);
         yieldDca.approve(dave, positionId);
         vm.prank(dave);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCABalance(positionId, alice);
 
         assertEq(dcaToken.balanceOf(alice), dcaAmount, "alice's dca balance");
         assertEq(dcaToken.balanceOf(dave), 0, "dave's dca balance");
@@ -2421,7 +2459,7 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaAmountAfterClaim, 0, "alice's position dca balance");
     }
 
-    function test_claimDCATokens_worksInConsequtiveEpochs() public {
+    function test_claimDCABalance_worksInConsequtiveEpochs() public {
         uint256 principal = 1 ether;
         uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
@@ -2432,7 +2470,7 @@ contract YieldDCATest is TestCommon {
         (uint256 sharesRemaining, uint256 dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        uint256 totalClaimed = yieldDca.claimDCATokens(positionId);
+        uint256 totalClaimed = yieldDca.claimDCABalance(positionId, alice);
 
         _generateYield(1e18);
         _shiftTime(yieldDca.epochDuration());
@@ -2441,7 +2479,7 @@ contract YieldDCATest is TestCommon {
         (sharesRemaining, dcaAmount) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        totalClaimed += yieldDca.claimDCATokens(positionId);
+        totalClaimed += yieldDca.claimDCABalance(positionId, alice);
 
         assertEq(totalClaimed, 8e18, "total claimed");
         assertEq(dcaToken.balanceOf(alice), totalClaimed, "alice's dca balance");
@@ -2454,7 +2492,7 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaAmountAfterClaim, 0, "alice's position dca balance");
     }
 
-    function test_claimDCATokens_emitsEvent() public {
+    function test_claimDCABalance_emitsEvent() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         _generateYield(0.5e18);
@@ -2466,13 +2504,13 @@ contract YieldDCATest is TestCommon {
         yieldDca.approve(carol, positionId);
 
         vm.expectEmit(true, true, true, true);
-        emit DCATokensClaimed(carol, alice, positionId, yieldDca.currentEpoch(), dcaAmount);
+        emit DCABalanceClaimed(carol, alice, positionId, yieldDca.currentEpoch(), dcaAmount, dave);
 
         vm.prank(carol);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCABalance(positionId, dave);
     }
 
-    function test_claimDCATokens_failsIfDcaDiscrepancyIsAboveTolerated() public {
+    function test_claimDCABalance_failsIfDcaDiscrepancyIsAboveTolerated() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
         assertEq(yieldDca.discrepancyTolerance(), DEFAULT_DISCREPANCY_TOLERANCE, "discrepancy tolerance not set");
 
@@ -2486,10 +2524,10 @@ contract YieldDCATest is TestCommon {
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.DCADiscrepancyAboveTolerance.selector));
         vm.prank(alice);
-        yieldDca.claimDCATokens(positionId);
+        yieldDca.claimDCABalance(positionId, alice);
     }
 
-    function test_claimDCATokens_worksIfDcaDiscrepancyBelowTolerated() public {
+    function test_claimDCABalance_worksIfDcaDiscrepancyBelowTolerated() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
         assertEq(yieldDca.discrepancyTolerance(), DEFAULT_DISCREPANCY_TOLERANCE, "discrepancy tolerance not set");
 
@@ -2504,7 +2542,7 @@ contract YieldDCATest is TestCommon {
         (, uint256 entitled) = yieldDca.balancesOf(positionId);
 
         vm.prank(alice);
-        uint256 claimed = yieldDca.claimDCATokens(positionId);
+        uint256 claimed = yieldDca.claimDCABalance(positionId, alice);
 
         assertTrue(entitled > claimed, "there was no discrepancy");
         assertEq(dcaToken.balanceOf(alice), claimed, "alice's dca balance");
