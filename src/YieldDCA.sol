@@ -10,6 +10,7 @@ import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.s
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20Permit} from "openzeppelin-contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
+import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 
 import {CommonErrors} from "./common/CommonErrors.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
@@ -37,8 +38,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  *
  * The implementation focuses on optimizing gas costs and ensuring security through rigorous checks and balances, while accommodating a scalable number of epochs and user deposits.
  */
-// TODO: add multicall support to open and approve
-contract YieldDCA is ERC721, AccessControl {
+contract YieldDCA is ERC721, AccessControl, Multicall {
     using CommonErrors for uint256;
     using CommonErrors for address;
     using FixedPointMathLib for uint256;
@@ -136,7 +136,7 @@ contract YieldDCA is ERC721, AccessControl {
 
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
-    uint32 public constant EPOCH_DURATION_LOWER_BOUND = 1 weeks;
+    uint32 public constant EPOCH_DURATION_LOWER_BOUND = 5 days;
     uint32 public constant EPOCH_DURATION_UPPER_BOUND = 10 weeks;
     uint64 public constant MIN_YIELD_PER_EPOCH_UPPER_BOUND = 0.01e18; // 1%
     uint64 public constant DISCREPANCY_TOLERANCE_UPPER_BOUND = 1e18; // 100%
@@ -242,8 +242,7 @@ contract YieldDCA is ERC721, AccessControl {
         override(ERC721, AccessControl)
         returns (bool)
     {
-        return _interfaceId == type(AccessControl).interfaceId || _interfaceId == type(IERC721).interfaceId
-            || super.supportsInterface(_interfaceId);
+        return _interfaceId == type(IERC721).interfaceId || super.supportsInterface(_interfaceId);
     }
 
     // *** admin functions ***

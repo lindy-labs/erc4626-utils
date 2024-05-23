@@ -2625,6 +2625,29 @@ contract YieldDCATest is TestCommon {
 
     /*
      * --------------------
+     *     #multicall
+     * --------------------
+     */
+
+    function test_multicall_openPositionAndApprove() public {
+        uint256 principal = 1 ether;
+        uint256 shares = _depositToVaultAndApproveYieldDca(alice, principal);
+        uint256 positionId = yieldDca.nextPositionId();
+
+        bytes[] memory data = new bytes[](2);
+        data[0] = abi.encodeCall(YieldDCA.openPosition, (shares, alice));
+        data[1] = abi.encodeCall(ERC721.approve, (bob, positionId));
+
+        vm.prank(alice);
+        yieldDca.multicall(data);
+
+        assertEq(yieldDca.balanceOf(alice), 1, "alice's nft balance");
+        assertEq(yieldDca.ownerOf(positionId), alice, "alice's owner");
+        assertEq(yieldDca.getApproved(positionId), bob, "bob's approval");
+    }
+
+    /*
+     * --------------------
      *     #transfer
      * --------------------
      */
