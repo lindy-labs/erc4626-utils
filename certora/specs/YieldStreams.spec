@@ -88,19 +88,18 @@ methods {
     function asset.allowance(address owner, address spender) external returns (uint256) envfree;
     function vault.balanceOf(address) external returns (uint256) envfree;
     function vault.allowance(address owner, address spender) external returns (uint256) envfree;
-    //function vault.deposit(uint256, address) external returns (uint256);
     function vault.balanceOf(address) external returns (uint256) envfree;
     function asset.balanceOf(address) external returns (uint256) envfree;
     function vault.convertToAssets(uint256) external returns (uint256) envfree;
     function vault.convertToShares(uint256) external returns (uint256) envfree;
     // Vault deposit
     function _.deposit(uint256, address) external;// returns (uint256);
-   function _._ external => DISPATCH [
+    function _._ external => DISPATCH [
       _.transferFrom(address, address, uint256),
       _.safeTransferFrom(address, address, uint256),
       _.convertToAssets(uint256),
       _.convertToShares(uint256)
-   ] default NONDET;
+    ] default NONDET;
 }
 
 definition WAD() returns mathint = 10 ^ 18;
@@ -111,7 +110,7 @@ definition delta(mathint a, mathint b) returns mathint = (a > b) ? (a - b) : (b 
  * @Category High
  * @Description  The `open` function should create a new yield stream with the correct parameters and update the contract state accordingly, regardless of the caller. This property ensures that the `open` function correctly creates a new yield stream, mints a new ERC721 token, updates the receiver's total shares and principal, and emits the `StreamOpened` event with the correct parameters.
  */
-rule integrity_of_openNew(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance) {
+rule integrity_of_open(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance) {
     env e; 
     // Preconditions
     require _receiver != 0 && e.msg.sender != 0;
@@ -249,6 +248,7 @@ rule integrity_of_openMultipleUsingPermit(address alice, address bob, address ca
     // Set up the initial state
     uint256 initialAliceShares = vault.balanceOf(alice);
     uint256 initialContractShares = vault.balanceOf(currentContract);
+    uint256 bobTotalPrincipalBefore = receiverTotalPrincipal(bob);
 
     require asset.allowance(alice, currentContract) >= initFunds;
     require asset.balanceOf(alice) >= initFunds;
@@ -318,7 +318,6 @@ rule depositAndOpenIntegrity(address _receiver, uint256 _principal, uint256 _max
      to_mathint(receiverTotalPrincipal(_receiver)) == initialTotalPrincipal + _principal &&
      receiverPrincipal(_receiver, streamId) == _principal &&
      vault.balanceOf(currentContract) >= shares;
-    //assert delta(to_mathint(asset.balanceOf(e.msg.sender)), initialAssetBalance - _principal) <= 1 && receiverTotalShares(_receiver) == shares;
 }
 
 /**
@@ -341,9 +340,6 @@ rule integrity_of_depositAndOpenUsingPermit(address dave, address _receiver, uin
 
     // Capture the initial state
     uint256 initialTotalPrincipal = receiverTotalPrincipal(_receiver);
-    //uint256 initialTotalShares = receiverTotalShares(_receiver);
-    //uint256 initialPrincipal = receiverPrincipal(_receiver, 1);
-    //uint256 initialContractShares = vault.balanceOf(currentContract);
     uint256 initialNextStreamId = nextStreamId();
 
     // Call the `depositAndOpen` function
@@ -354,8 +350,53 @@ rule integrity_of_depositAndOpenUsingPermit(address dave, address _receiver, uin
     assert streamId == initialNextStreamId;
     assert streamIdToReceiver(streamId) == _receiver;
     assert to_mathint(receiverTotalPrincipal(_receiver)) == initialTotalPrincipal + _principal;
-    //assert receiverPrincipal(_receiver, 1) == _principal;
-    //assert delta(to_mathint(vault.balanceOf(currentContract)), (initialContractShares + shares)) <= 1;
+}
+
+/**
+ * @Rule Integrity property for the `depositAndOpenMultiple` function
+ * @Category High
+ * @Description Ensures that the `depositAndOpenMultiple` function opens multiple yield streams using ERC20 permit for approval, allocating the underlying asset as principal.
+ */
+rule integrity_of_depositAndOpenMultiple(address dave, address bob, uint256 _principal, address[] calldata _receivers, uint256[] calldata _allocations, uint256 _maxLossOnOpenTolerance)
+    env e;
+    require dave != bob && dave == e.msg.sender;
+    require _principal == 10 ^ 18;
+    require _principal > 0;
+    require to_mathint(deadline) == e.block.timestamp + 1;
+    require asset.balanceOf(dave) == _principal;
+    //require asset.allowance(dave, currentContract) >= principal;
+
+    require(asset.balanceOf(dave) >= _principal && asset.allowance(dave, currentContract) >= _principal);
+
+    require to_mathint(asset.balanceOf(vault)) == 2 * _principal;
+ 
+    require _receivers.length == _allocations.length && _allocations.length == 1;
+    require _receivers[0] == bob && _allocations[0] == _principal;
+
+    uint256 shares = vault.deposit(e, principal, currentContract);
+    asset.approve(e, currentContract, shares);
+
+    // Capture the initial state
+    uint256 initialNextStreamId = nextStreamId();
+    uint256 initialBobShares = receiverTotalShares(bob);
+    uint256 initialBobPrincipal = receiverTotalPrincipal(bob);
+
+    // Call the depositAndOpenMultipleUsingPermit function
+    uint256[] streamIds = depositAndOpenMultiple(
+        e,
+        _principal,
+        _receivers,
+        _allocations,
+        _maxLossOnOpenTolerance);
+
+    require ownerOf(streamIds[0]) == dave;
+
+    // Postconditions
+    assert streamIds.length == 1 &&
+     streamIds[0] == initialNextStreamId &&
+     to_mathint(nextStreamId()) == initialNextStreamId + 1;
+    assert to_mathint(receiverTotalPrincipal(bob)) == initialBobPrincipal + _principal &&
+     receiverPrincipal(bob, streamIds[0]) == _principal && vault.balanceOf(currentContract) == shares;
 }
 
 /**
@@ -415,8 +456,6 @@ rule integrity_of_depositAndOpenMultipleUsingPermit(address dave, address bob, u
      to_mathint(nextStreamId()) == initialNextStreamId + 1;
     assert to_mathint(receiverTotalPrincipal(bob)) == initialBobPrincipal + principal &&
      receiverPrincipal(bob, streamIds[0]) == principal && vault.balanceOf(currentContract) == shares;
-     // assert asset.balanceOf(dave) == principal;
-    // currentContract.balanceOf(dave) == 1 && receiverTotalShares(bob) == shares;
 }
 
 /**
@@ -575,7 +614,7 @@ rule integrity_of_close(uint256 _streamId, address streamer, address receiver) {
 /**
  * @Rule Integrity property for the `claimYield` function
  * @Category High
- * @Description  The `open` function should verify the correct behavior of the claimYield function when the receiver claims the yield to their own address, ensuring that the streamer's share balance is reduced to zero, and the receiver's asset balance is increased by the claimed yield amount.
+ * @Description  The `claimYield` function should verify the correct behavior of the claimYield function when the receiver claims the yield to their own address, ensuring that the streamer's share balance is reduced to zero, and the receiver's asset balance is increased by the claimed yield amount.
  */
 rule verify_claimYield_toSelf(address alice, address bob, uint256 _principal, uint8 parts) {
     env e;
@@ -590,7 +629,7 @@ rule verify_claimYield_toSelf(address alice, address bob, uint256 _principal, ui
     require receiverPrincipal(bob, streamId) == _principal;
     require _shares > 0;
     require vault.balanceOf(alice) >= _shares;
-    require 1 <= parts && parts <= 10;
+    require 1 <= parts;
     // Add X% profit to vault
     require to_mathint(vault.balanceOf(currentContract)) == _shares + _principal / parts;
 
@@ -603,7 +642,7 @@ rule verify_claimYield_toSelf(address alice, address bob, uint256 _principal, ui
 /**
  * @Rule Integrity property for the `claimYield` function
  * @Category High
- * @Description  The `open` function should verify the correct behavior of the claimYield function when the receiver (bob) claims the yield to a different account (carol). It ensures that the streamer's (alice) share balance is reduced to zero, the receiver's (bob) asset balance remains unchanged, and the claimed yield amount is transferred to the specified account (carol).
+ * @Description  The `claimYield` function should verify the correct behavior of the claimYield function when the receiver (bob) claims the yield to a different account (carol). It ensures that the streamer's (alice) share balance is reduced to zero, the receiver's (bob) asset balance remains unchanged, and the claimed yield amount is transferred to the specified account (carol).
  */
 rule verify_claimYield_toAnotherAccount(address alice, address bob, address carol, uint256 _principal, uint8 parts) {
     env e;
@@ -618,7 +657,7 @@ rule verify_claimYield_toAnotherAccount(address alice, address bob, address caro
     require receiverPrincipal(bob, streamId) == _principal;
     require _shares > 0;
     require vault.balanceOf(alice) >= _shares;
-    require 1 <= parts && parts <= 10;
+    require 1 <= parts;
 
     mathint previewClaim = previewClaimYield(bob);
     // Add X% profit to vault
@@ -636,7 +675,7 @@ rule verify_claimYield_toAnotherAccount(address alice, address bob, address caro
 /**
  * @Rule Integrity property for the `claimYield` function
  * @Category High
- * @Description  The `open` function should verify the correct behavior of the claimYield function when the receiver (carol) claims the yield from multiple opened streams. It sets up a scenario where two yield streams are opened, one between alice and carol, and another between bob and carol, with specified principal amounts. The rule then generates yield by adding a percentage of the principals to the vault's balance. Finally, it invokes the claimYield function with carol as the receiver and asserts that the claimed yield is correctly calculated and transferred to carol's asset balance, while ensuring that the contract's state is updated accordingly.
+ * @Description  The `claimYield` function should verify the correct behavior of the claimYield function when the receiver (carol) claims the yield from multiple opened streams. It sets up a scenario where two yield streams are opened, one between alice and carol, and another between bob and carol, with specified principal amounts. The rule then generates yield by adding a percentage of the principals to the vault's balance. Finally, it invokes the claimYield function with carol as the receiver and asserts that the claimed yield is correctly calculated and transferred to carol's asset balance, while ensuring that the contract's state is updated accordingly.
  */
 
 rule verify_claimYield_claimsFromAllOpenedStreams(address alice, address carol, address bob, uint256 alicesPrincipal, uint256 bobsPrincipal, uint8 multiple, uint8 desloc) {
@@ -660,7 +699,7 @@ rule verify_claimYield_claimsFromAllOpenedStreams(address alice, address carol, 
 
 
     // add X% profit to vault
-    require 1 <= desloc && desloc <= 5;
+    require 1 <= desloc;
     require to_mathint(receiverTotalShares(carol)) >= /*receiverTotalShares[carol]*/_aliceShares + _bobShares + (multiple + desloc) * (10 ^ 18);
     require to_mathint(vault.balanceOf(currentContract)) >= /*vault.balanceOf(address(this))*/ _aliceShares + _bobShares + (multiple + desloc) * (10 ^ 18);
     
@@ -673,37 +712,74 @@ rule verify_claimYield_claimsFromAllOpenedStreams(address alice, address carol, 
      previewClaimYield(carol) == 0;
 }
 
+
 /**
  * @Rule Integrity property for the `claimYieldInShares` function
  * @Category High
- * @Description Ensures that the `claimYieldInShares` function correctly claims the generated yield for a receiver, updates the contract state, and transfers the claimed assets.
+ * @Description Ensures that the `claimYieldInShares` function verifies the correct behavior of the claimYieldInShares function when the receiver (bob) claims the yield in the form of shares to their own address. It sets up a scenario where a yield stream is opened between alice (the streamer) and bob (the receiver), with a specified principal amount. The rule then generates yield by adding a percentage of the principal to the vault's balance. Finally, it invokes the claimYieldInShares function with bob as the receiver and asserts that the claimed yield in shares is correctly calculated and transferred to bob's share balance, while ensuring that the contract's state is updated accordingly.
  */
-rule integrity_of_claimYieldInShares(address _sendTo, uint256 streamId) {
+rule verify_claimYieldInShares_toSelf(address alice, address bob, uint256 _principal, uint8 parts) {
     env e;
-    address receiver = e.msg.sender;
-    uint256 yieldInShares;
+    uint256 _shares = vault.convertToShares(_principal);
+    require alice != 0 && bob != 0 && alice != bob && bob == e.msg.sender;
 
-    // Preconditions
-    require _sendTo != 0;
+    // State changes
+    uint256 streamId = nextStreamId();
+    require streamIdToReceiver(streamId) == bob;
+    require receiverTotalShares(bob) == _shares;
+    require receiverTotalPrincipal(bob) == _principal;
+    require receiverPrincipal(bob, streamId) == _principal;
+    require _shares > 0;
+    require vault.balanceOf(alice) >= _shares;
+    require 1 <= parts;
+    uint256 principalParts;
+    require to_mathint(principalParts) == _principal / parts;
+    uint256 expectedYieldInShares = vault.convertToShares(principalParts);
+    // Add X% profit to vault
+    require to_mathint(vault.balanceOf(currentContract)) == _shares + principalParts;
 
-    // Capture the initial state
-    uint256 initialTotalShares = receiverTotalShares(receiver);
-    uint256 initialTotalPrincipal = receiverTotalPrincipal(receiver);
-    uint256 initialContractShareBalance = vault.balanceOf(currentContract);
-    // Get the expected yield in shares
-    uint256 expectedYieldInShares = previewClaimYieldInShares(receiver);
+    uint256 claimed = claimYieldInShares(e, bob);
 
-    // Call the `claimYieldInShares` function
-    yieldInShares = claimYieldInShares(e, _sendTo);
+    assert delta(claimed, expectedYieldInShares) <= 1 &&
+     asset.balanceOf(bob) == 0 &&
+     vault.balanceOf(bob) == claimed &&
+     vault.balanceOf(alice) == 0;
+}
 
-    // Postconditions
-    // Check the claimed yield in shares against the expected value
-    assert yieldInShares == expectedYieldInShares;
-    assert receiverTotalShares(receiver) < initialTotalShares;
-    assert receiverTotalPrincipal(receiver) == initialTotalPrincipal;
-    assert vault.balanceOf(currentContract) < initialContractShareBalance;
-    // Check the principal for each stream
-    require streamIdToReceiver(streamId) == receiver;
-    uint256 principal = getPrincipal(streamId);
-    assert receiverPrincipal(receiver, streamId) == principal;
+
+/**
+ * @Rule Integrity property for the `claimYieldInShares` function
+ * @Category High
+ * @Description Ensures that the `claimYieldInShares` function verifies the correct behavior of the claimYieldInShares function when the receiver (bob) claims the yield in the form of shares to a different account (carol). It sets up a scenario where a yield stream is opened between alice (the streamer) and bob (the receiver), with a specified principal amount. The rule then generates yield by adding a percentage of the principal to the vault's balance. Finally, it invokes the claimYieldInShares function with carol as the recipient and asserts that the claimed yield in shares is correctly calculated and transferred to carol's share balance, while ensuring that the contract's state is updated accordingly.
+ */
+ rule verify_claimYieldInShares_toAnotherAccount(address alice, address bob, address carol, uint256 _principal, uint8 parts) {
+    env e;
+    uint256 _shares = vault.convertToShares(_principal);
+    require alice != 0 && bob != 0 && alice != bob && alice != carol && bob != carol && bob == e.msg.sender;
+
+    // State changes
+    uint256 streamId = nextStreamId();
+    require streamIdToReceiver(streamId) == bob;
+    require receiverTotalShares(bob) == _shares;
+    require receiverTotalPrincipal(bob) == _principal;
+    require receiverPrincipal(bob, streamId) == _principal;
+    require _shares > 0;
+    require vault.balanceOf(alice) >= _shares;
+    require 1 <= parts;
+
+    uint256 principalParts;
+    require to_mathint(principalParts) == _principal / parts;
+
+    // Add X% profit to vault
+    require to_mathint(vault.balanceOf(currentContract)) == _shares + principalParts;
+
+    mathint expectedYieldInShares = vault.convertToShares(principalParts);
+
+    mathint claimed = claimYieldInShares(e, carol);
+
+    assert delta(claimed, expectedYieldInShares) <= 1 &&
+     vault.balanceOf(alice) == 0 &&
+     vault.balanceOf(bob) == 0 &&
+     delta(vault.balanceOf(carol), claimed) <= 1 &&
+     asset.balanceOf(carol) == 0;
 }
