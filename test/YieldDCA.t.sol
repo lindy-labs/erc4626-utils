@@ -70,8 +70,8 @@ contract YieldDCATest is TestCommon {
         uint32 epoch,
         uint256 yieldSpent,
         uint256 dcaBought,
-        uint256 dcaPrice,
-        uint256 sharePrice
+        uint128 dcaPrice,
+        uint128 sharePrice
     );
 
     uint32 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
@@ -390,14 +390,6 @@ contract YieldDCATest is TestCommon {
         yieldDca.setMinYieldPerEpoch(newYield);
 
         assertEq(yieldDca.minYieldPerEpoch(), newYield);
-    }
-
-    function test_setMinYieldPerEpoch_failsIfBelowLowerBound() public {
-        uint64 belowMin = yieldDca.MIN_YIELD_PER_EPOCH_LOWER_BOUND() - 1;
-
-        vm.prank(admin);
-        vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
-        yieldDca.setMinYieldPerEpoch(belowMin);
     }
 
     function test_setMinYieldPerEpoch_failsIfAboveUpperBound() public {
@@ -1266,7 +1258,7 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaBalance, 0, "alice's dca balance");
     }
 
-    function test_executeDca_emitsEvent() public {
+    function test_executeDCA_emitsEvent() public {
         uint256 principal = 1 ether;
         _openPositionWithPrincipal(alice, principal);
 
@@ -1284,12 +1276,45 @@ contract YieldDCATest is TestCommon {
 
         uint256 expectedYield = principal.mulWadDown(yieldPct) + 1; // 1 is the rounding error
         uint256 expectedDcaAmount = expectedYield.mulWadDown(exchangeRate);
-        uint256 expectedDcaPrice = exchangeRate;
-        uint256 expectedSharePrice = sharePrice.mulWadDown(1e18 + yieldPct);
+        uint128 expectedDcaPrice = uint128(exchangeRate);
+        uint128 expectedSharePrice = uint128(sharePrice.mulWadDown(1e18 + yieldPct));
 
         vm.expectEmit(true, true, true, true);
         emit DCAExecuted(keeper, currentEpoch, expectedYield, expectedDcaAmount, expectedDcaPrice, expectedSharePrice);
 
+        vm.prank(keeper);
+        yieldDca.executeDCA(0, "");
+    }
+
+    function test_executeDCA_failsIfRealizedPricePerDcaTokenDoesNotFitIntoUint128() public {
+        // setup new vault and yieldDCA to start from a clean state
+        vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
+        deal(address(dcaToken), address(swapper), type(uint136).max);
+
+        yieldDca = new YieldDCA(
+            IERC20Metadata(address(dcaToken)),
+            IERC4626(address(vault)),
+            swapper,
+            DEFAULT_DCA_INTERVAL,
+            DEFAULT_MIN_YIELD_PERCENT,
+            admin,
+            keeper
+        );
+
+        // alice deposits 1 ether
+        uint256 principal = 1 ether;
+        _openPositionWithPrincipal(alice, principal);
+
+        // generate 100% yield
+        _generateYield(1e18);
+        assertEq(uint256(yieldDca.calculateYield()), principal, "yield not 100%");
+
+        // dca - buy uint136.max of DCA tokens for 1e18 in underlying assets
+        uint256 exchangeRate = uint256(type(uint136).max);
+        swapper.setExchangeRate(exchangeRate);
+        _shiftTime(yieldDca.epochDuration());
+
+        vm.expectRevert(bytes4(keccak256("Overflow()")));
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
     }

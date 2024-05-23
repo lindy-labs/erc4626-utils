@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {IERC721} from "openzeppelin-contracts/interfaces/IERC721.sol";
 import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.sol";
@@ -39,10 +40,10 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
 // TODO: add multicall support to open and approve
 // TODO: receiver param on creating the position
 // TODO: receiver param on claiming the DCA tokens
-// TODO: safeCastLib for uint256 to uint32
 contract YieldDCA is ERC721, AccessControl {
     using CommonErrors for uint256;
     using FixedPointMathLib for uint256;
+    using SafeCastLib for uint256;
     using SafeTransferLib for address;
 
     struct Position {
@@ -70,8 +71,8 @@ contract YieldDCA is ERC721, AccessControl {
         uint32 epoch,
         uint256 yieldSpent,
         uint256 dcaBought,
-        uint256 dcaPrice,
-        uint256 sharePrice
+        uint128 dcaPrice,
+        uint128 sharePrice
     );
 
     event PositionOpened(
@@ -133,7 +134,6 @@ contract YieldDCA is ERC721, AccessControl {
 
     uint32 public constant EPOCH_DURATION_LOWER_BOUND = 1 weeks;
     uint32 public constant EPOCH_DURATION_UPPER_BOUND = 10 weeks;
-    uint64 public constant MIN_YIELD_PER_EPOCH_LOWER_BOUND = 0.0001e18; // 0.01%
     uint64 public constant MIN_YIELD_PER_EPOCH_UPPER_BOUND = 0.01e18; // 1%
     uint64 public constant DISCREPANCY_TOLERANCE_UPPER_BOUND = 1e18; // 100%
 
@@ -148,7 +148,7 @@ contract YieldDCA is ERC721, AccessControl {
     uint32 public epochDuration = 2 weeks;
     uint64 public currentEpochTimestamp = uint64(block.timestamp);
     /// @dev The minimum yield required to execute the DCA strategy in an epoch
-    uint64 public minYieldPerEpoch = 0.001e18; // 0.1%
+    uint64 public minYieldPerEpoch = 0; // 0.1%
     uint64 public discrepancyTolerance = 0.01e18; // 1%
 
     // * SLOT 1
@@ -462,12 +462,12 @@ contract YieldDCA is ERC721, AccessControl {
 
         _checkMinYieldPerEpoch(yield, totalPrincipal_);
 
-        uint256 amountOut = _buyDcaTokens(yield, _dcaAmountOutMin, _swapData);
-        uint256 dcaPrice = amountOut.divWad(yield);
-        uint256 sharePrice = yield.divWad(yieldInShares);
         uint32 currentEpoch_ = currentEpoch;
+        uint256 amountOut = _buyDcaTokens(yield, _dcaAmountOutMin, _swapData);
+        uint128 dcaPrice = amountOut.divWad(yield).toUint128();
+        uint128 sharePrice = yield.divWad(yieldInShares).toUint128();
 
-        epochDetails[currentEpoch_] = EpochInfo({dcaPrice: uint128(dcaPrice), sharePrice: uint128(sharePrice)});
+        epochDetails[currentEpoch_] = EpochInfo({dcaPrice: dcaPrice, sharePrice: sharePrice});
 
         unchecked {
             currentEpoch++;
@@ -575,10 +575,7 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function _setMinYieldPerEpoch(uint64 _newMinYieldPercent) internal returns (uint64 oldMinYield) {
-        if (
-            _newMinYieldPercent < MIN_YIELD_PER_EPOCH_LOWER_BOUND
-                || _newMinYieldPercent > MIN_YIELD_PER_EPOCH_UPPER_BOUND
-        ) {
+        if (_newMinYieldPercent > MIN_YIELD_PER_EPOCH_UPPER_BOUND) {
             revert MinYieldPerEpochOutOfBounds();
         }
 
@@ -597,7 +594,8 @@ contract YieldDCA is ERC721, AccessControl {
             positionId = nextPositionId++;
         }
 
-        _mint(msg.sender, positionId);
+        // if caller is a contract make sure it implements IERC721Receiver-onERC721Received by using safeMint
+        _safeMint(msg.sender, positionId);
 
         positions[positionId] = Position({epoch: currentEpoch_, shares: _shares, principal: principal, dcaBalance: 0});
 
@@ -688,7 +686,7 @@ contract YieldDCA is ERC721, AccessControl {
         if (_position.epoch == 0) return (0, 0);
 
         _sharesBalance = _position.shares;
-        _dcaBalance = _position.dcaBalance;
+        uint256 calculatedDcaBalance = _position.dcaBalance;
         uint256 principal = _position.principal;
 
         // NOTE: one iteration costs around 2700 gas
@@ -709,11 +707,15 @@ contract YieldDCA is ERC721, AccessControl {
 
                     // cannot underflow because (yield / sharePrice) <= shares (yield is always less than principal)
                     _sharesBalance -= usersYield.divWad(sharePrice);
-                    // not realistic to overflow
-                    _dcaBalance += uint224(usersYield.mulWad(info.dcaPrice));
+                    // not realistic to overflow (not fit into uint224) but just in case there is check below
+                    // will overflow if total users yield adds up to 2^96
+                    calculatedDcaBalance += usersYield.mulWad(info.dcaPrice);
                 }
             }
         }
+
+        // make sure the calculated dca balance fits into uint224
+        _dcaBalance = calculatedDcaBalance.toUint224();
     }
 
     /// *** helper functions ***
@@ -781,6 +783,6 @@ contract YieldDCA is ERC721, AccessControl {
     }
 
     function _checkMinYieldPerEpoch(uint256 _yield, uint256 _totalPrincipal) internal view {
-        if (_yield < _totalPrincipal.mulWad(minYieldPerEpoch)) revert InsufficientYield();
+        if (minYieldPerEpoch != 0 && _yield < _totalPrincipal.mulWad(minYieldPerEpoch)) revert InsufficientYield();
     }
 }
