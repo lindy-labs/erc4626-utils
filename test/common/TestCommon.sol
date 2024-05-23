@@ -74,7 +74,7 @@ abstract contract TestCommon is Test {
     }
 
     function _generateYield(IERC4626 _vault, int256 _percent) internal {
-        require(_percent >= -1e18 , "TestCommon: percent must greater than or equal to -1e18");
+        require(_percent >= -1e18, "TestCommon: percent must greater than or equal to -1e18");
         require(_percent != 0, "TestCommon: percent must be non-zero");
 
         IERC20 asset = IERC20(_vault.asset());

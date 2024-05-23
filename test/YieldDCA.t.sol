@@ -467,7 +467,7 @@ contract YieldDCATest is TestCommon {
 
         vm.prank(alice);
         vm.expectRevert(CommonErrors.AmountZero.selector);
-        yieldDca.openPosition(0);
+        yieldDca.openPosition(0, alice);
     }
 
     function test_openPosition_transfersSharesAndMintsPositionNft() public {
@@ -475,7 +475,7 @@ contract YieldDCATest is TestCommon {
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, principal);
 
         vm.prank(alice);
-        uint256 positionId = yieldDca.openPosition(shares);
+        uint256 positionId = yieldDca.openPosition(shares, alice);
 
         assertEq(positionId, 1, "token id");
         assertEq(yieldDca.ownerOf(positionId), alice, "owner");
@@ -491,30 +491,11 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0);
     }
 
-    function test_openPosition_emitsEvent() public {
-        // open one position just to increment the position id counter
-        _openPositionWithPrincipal(alice, 2 ether);
-
-        uint256 principal = 1 ether;
-        uint256 shares = _depositToVaultAndApproveYieldDca(alice, principal);
-
-        uint256 nextPositionId = yieldDca.nextPositionId();
-        assertEq(nextPositionId, 2, "next position id");
-
-        vm.expectEmit(true, true, true, true);
-        emit PositionOpened(alice, alice, nextPositionId, yieldDca.currentEpoch(), shares, principal);
-
-        vm.prank(alice);
-        yieldDca.openPosition(shares);
-
-        assertEq(yieldDca.balanceOf(alice), 2, "alice's position count");
-    }
-
     function test_openPosition_correctlyMintsNftsForDifferentUsers() public {
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
 
         vm.prank(alice);
-        uint256 positionId = yieldDca.openPosition(shares);
+        uint256 positionId = yieldDca.openPosition(shares, alice);
 
         assertEq(positionId, 1, "alice's token id");
         assertEq(yieldDca.ownerOf(positionId), alice, "owner of alice's token");
@@ -525,7 +506,7 @@ contract YieldDCATest is TestCommon {
         uint256 bobShares = _depositToVaultAndApproveYieldDca(bob, bobPrincipal);
 
         vm.prank(bob);
-        positionId = yieldDca.openPosition(bobShares);
+        positionId = yieldDca.openPosition(bobShares, bob);
 
         assertEq(positionId, 2, "bob's token id");
         assertEq(yieldDca.ownerOf(positionId), bob, "owner of bob's token");
@@ -537,7 +518,7 @@ contract YieldDCATest is TestCommon {
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
 
         vm.prank(alice);
-        uint256 positionId = yieldDca.openPosition(shares);
+        uint256 positionId = yieldDca.openPosition(shares, alice);
 
         assertEq(positionId, 1, "token id");
         assertEq(yieldDca.ownerOf(positionId), alice, "owner");
@@ -545,10 +526,47 @@ contract YieldDCATest is TestCommon {
         uint256 secondShares = _depositToVaultAndApproveYieldDca(alice, 2 ether);
 
         vm.prank(alice);
-        positionId = yieldDca.openPosition(secondShares);
+        positionId = yieldDca.openPosition(secondShares, alice);
 
         assertEq(positionId, 2, "2nd token id");
         assertEq(yieldDca.ownerOf(positionId), alice, "2nd owner");
+    }
+
+    function test_openPosition_mintsNftToProvidedOwner() public {
+        uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
+
+        vm.prank(alice);
+        uint256 positionId = yieldDca.openPosition(shares, bob);
+
+        assertEq(positionId, 1, "token id");
+        assertEq(yieldDca.ownerOf(positionId), bob, "owner");
+    }
+
+    function test_openPosition_revertsIfProvidedOwnerIsContractAndDoesNotImplementERC721Receiver() public {
+        uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
+
+        vm.expectRevert(bytes4(keccak256("TransferToNonERC721ReceiverImplementer()")));
+        yieldDca.openPosition(shares, address(this));
+    }
+
+    function test_openPosition_emitsEvent() public {
+        // open one position just to increment the position id counter
+        _openPositionWithPrincipal(alice, 2 ether);
+
+        uint256 principal = 1 ether;
+        uint256 shares = _depositToVaultAndApproveYieldDca(alice, principal);
+
+        uint256 nextPositionId = yieldDca.nextPositionId();
+        assertEq(nextPositionId, 2, "next position id");
+
+        vm.expectEmit(true, true, true, true);
+        emit PositionOpened(alice, bob, nextPositionId, yieldDca.currentEpoch(), shares, principal);
+
+        vm.prank(alice);
+        yieldDca.openPosition(shares, bob);
+
+        assertEq(yieldDca.balanceOf(alice), 1, "alice's position count");
+        assertEq(yieldDca.balanceOf(bob), 1, "bob's position count");
     }
 
     /*
@@ -565,7 +583,7 @@ contract YieldDCATest is TestCommon {
             _signPermit(davesPrivateKey, address(vault), address(yieldDca), shares, deadline);
 
         vm.prank(dave);
-        uint256 positionId = yieldDca.openPositionUsingPermit(shares, deadline, v, r, s);
+        uint256 positionId = yieldDca.openPositionUsingPermit(shares, dave, deadline, v, r, s);
 
         assertEq(positionId, 1, "position id");
         assertEq(yieldDca.nextPositionId(), 2, "next position id");
@@ -581,6 +599,20 @@ contract YieldDCATest is TestCommon {
         assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
     }
 
+    function test_openPositionUsingPermit_mintsNftToProvidedOwner() public {
+        uint256 shares = _depositToVault(dave, 1 ether);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        (uint8 v, bytes32 r, bytes32 s) =
+            _signPermit(davesPrivateKey, address(vault), address(yieldDca), shares, deadline);
+
+        vm.prank(dave);
+        uint256 positionId = yieldDca.openPositionUsingPermit(shares, bob, deadline, v, r, s);
+
+        assertEq(positionId, 1, "position id");
+        assertEq(yieldDca.ownerOf(positionId), bob, "owner");
+    }
+
     /*
      * --------------------
      *  #depositAndOpenPosition
@@ -592,7 +624,7 @@ contract YieldDCATest is TestCommon {
 
         vm.prank(alice);
         vm.expectRevert(CommonErrors.AmountZero.selector);
-        yieldDca.depositAndOpenPosition(0);
+        yieldDca.depositAndOpenPosition(0, alice);
     }
 
     function test_depositAndOpenPosition_depositsAssetsAndMintsPositionNft() public {
@@ -601,7 +633,7 @@ contract YieldDCATest is TestCommon {
         _assetDealAndApproveYieldDca(alice, principal);
 
         vm.prank(alice);
-        uint256 positionId = yieldDca.depositAndOpenPosition(principal);
+        uint256 positionId = yieldDca.depositAndOpenPosition(principal, alice);
 
         assertEq(positionId, 1, "token id");
         assertEq(yieldDca.ownerOf(positionId), alice, "owner");
@@ -626,7 +658,18 @@ contract YieldDCATest is TestCommon {
         emit PositionOpened(alice, alice, yieldDca.nextPositionId(), yieldDca.currentEpoch(), shares, principal);
 
         vm.prank(alice);
-        yieldDca.depositAndOpenPosition(principal);
+        yieldDca.depositAndOpenPosition(principal, alice);
+    }
+
+    function test_depositAndOpenPosition_mintsNftToProvidedOwner() public {
+        uint256 principal = 1 ether;
+        _assetDealAndApproveYieldDca(alice, principal);
+
+        vm.prank(alice);
+        uint256 positionId = yieldDca.depositAndOpenPosition(principal, bob);
+
+        assertEq(positionId, 1, "token id");
+        assertEq(yieldDca.ownerOf(positionId), bob, "owner");
     }
 
     /*
@@ -645,7 +688,7 @@ contract YieldDCATest is TestCommon {
             _signPermit(davesPrivateKey, address(asset), address(yieldDca), principal, deadline);
 
         vm.prank(dave);
-        uint256 positionId = yieldDca.depositAndOpenPositionUsingPermit(principal, deadline, v, r, s);
+        uint256 positionId = yieldDca.depositAndOpenPositionUsingPermit(principal, dave, deadline, v, r, s);
 
         assertEq(positionId, 1, "position id");
         assertEq(yieldDca.nextPositionId(), 2, "next position id");
@@ -660,6 +703,21 @@ contract YieldDCATest is TestCommon {
         assertEq(vault.balanceOf(alice), 0, "alice's balance");
         assertEq(vault.balanceOf(address(yieldDca)), shares, "contract's balance");
         assertEq(yieldDca.totalPrincipal(), principal, "total principal");
+    }
+
+    function test_depositAndOpenPositionUsingPermit_mintsNftToProvidedOwner() public {
+        uint256 principal = 1 ether;
+        deal(address(asset), dave, principal);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        (uint8 v, bytes32 r, bytes32 s) =
+            _signPermit(davesPrivateKey, address(asset), address(yieldDca), principal, deadline);
+
+        vm.prank(dave);
+        uint256 positionId = yieldDca.depositAndOpenPositionUsingPermit(principal, bob, deadline, v, r, s);
+
+        assertEq(positionId, 1, "position id");
+        assertEq(yieldDca.ownerOf(positionId), bob, "owner");
     }
 
     /*
@@ -1544,7 +1602,7 @@ contract YieldDCATest is TestCommon {
 
         // step 4 - bob deposits into DCA
         vm.prank(bob);
-        yieldDca.openPosition(bobsShares);
+        yieldDca.openPosition(bobsShares, bob);
 
         // step 4 - dca
         _executeDcaAtExchangeRate(3e18);
@@ -2568,7 +2626,7 @@ contract YieldDCATest is TestCommon {
         uint256 shares = _depositToVaultAndApproveYieldDca(_account, _amount);
 
         vm.prank(_account);
-        positionId = yieldDca.openPosition(shares);
+        positionId = yieldDca.openPosition(shares, _account);
     }
 
     function _depositToVault(address _account, uint256 _amount) public returns (uint256 shares) {

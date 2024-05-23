@@ -171,7 +171,7 @@ contract YieldDCAForkTest is TestCommon {
         uint256 shares = _depositToVaultAndApprove(IERC4626(address(vault)), _account, address(yieldDca), _amount);
 
         vm.prank(_account);
-        positionId = yieldDca.openPosition(shares);
+        positionId = yieldDca.openPosition(shares, _account);
     }
 
     function _generateYield(int256 _percent) internal {

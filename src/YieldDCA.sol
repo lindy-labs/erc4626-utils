@@ -38,7 +38,6 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * The implementation focuses on optimizing gas costs and ensuring security through rigorous checks and balances, while accommodating a scalable number of epochs and user deposits.
  */
 // TODO: add multicall support to open and approve
-// TODO: receiver param on creating the position
 // TODO: receiver param on claiming the DCA tokens
 contract YieldDCA is ERC721, AccessControl {
     using CommonErrors for uint256;
@@ -56,7 +55,7 @@ contract YieldDCA is ERC721, AccessControl {
     struct EpochInfo {
         // using uint128s to pack variables and save on sstore/sload since both values are always written/read together
         // dcaPrice and sharePrice are in WAD and represent the result of dividing two uint256s
-        // using uint128s instead of uint256s can potentially lead to overflow issues
+        // in case of overflow, the result will be incorrect and SafeCastLib will revert
         uint128 dcaPrice;
         uint128 sharePrice;
     }
@@ -293,38 +292,46 @@ contract YieldDCA is ERC721, AccessControl {
      * @param _shares The amount of shares to deposit
      * @return positionId The ID of the created deposit, represented by an ERC721 token
      */
-    function openPosition(uint256 _shares) public returns (uint256 positionId) {
+    function openPosition(uint256 _shares, address _owner) public returns (uint256 positionId) {
         _shares.checkIsZero();
 
-        positionId = _openPosition(_shares);
+        positionId = _openPosition(_shares, _owner);
 
         address(vault).safeTransferFrom(msg.sender, address(this), _shares);
     }
 
-    function openPositionUsingPermit(uint256 _shares, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
-        external
-        returns (uint256 positionId)
-    {
+    function openPositionUsingPermit(
+        uint256 _shares,
+        address _owner,
+        uint256 _deadline,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    ) external returns (uint256 positionId) {
         IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
 
-        positionId = openPosition(_shares);
+        positionId = openPosition(_shares, _owner);
     }
 
-    function depositAndOpenPosition(uint256 _principal) public returns (uint256 positionId) {
+    function depositAndOpenPosition(uint256 _principal, address _owner) public returns (uint256 positionId) {
         _principal.checkIsZero();
 
         uint256 shares = _depositToVault(msg.sender, _principal);
 
-        positionId = _openPosition(shares);
+        positionId = _openPosition(shares, _owner);
     }
 
-    function depositAndOpenPositionUsingPermit(uint256 _principal, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s)
-        public
-        returns (uint256 positionId)
-    {
+    function depositAndOpenPositionUsingPermit(
+        uint256 _principal,
+        address _owner,
+        uint256 _deadline,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    ) public returns (uint256 positionId) {
         IERC20Permit(address(asset)).permit(msg.sender, address(this), _principal, _deadline, _v, _r, _s);
 
-        positionId = depositAndOpenPosition(_principal);
+        positionId = depositAndOpenPosition(_principal, _owner);
     }
 
     /**
@@ -585,7 +592,7 @@ contract YieldDCA is ERC721, AccessControl {
 
     // *** accounting functions ***
 
-    function _openPosition(uint256 _shares) internal returns (uint256 positionId) {
+    function _openPosition(uint256 _shares, address _owner) internal returns (uint256 positionId) {
         uint32 currentEpoch_ = currentEpoch;
         uint256 principal = vault.convertToAssets(_shares);
 
@@ -595,11 +602,11 @@ contract YieldDCA is ERC721, AccessControl {
         }
 
         // if caller is a contract make sure it implements IERC721Receiver-onERC721Received by using safeMint
-        _safeMint(msg.sender, positionId);
+        _safeMint(_owner, positionId);
 
         positions[positionId] = Position({epoch: currentEpoch_, shares: _shares, principal: principal, dcaBalance: 0});
 
-        emit PositionOpened(msg.sender, msg.sender, positionId, currentEpoch_, _shares, principal);
+        emit PositionOpened(msg.sender, _owner, positionId, currentEpoch_, _shares, principal);
     }
 
     function _increasePosition(uint256 _positionId, uint256 _shares, uint256 _principal) internal {
