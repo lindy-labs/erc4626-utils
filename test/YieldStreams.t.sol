@@ -66,8 +66,7 @@ contract YieldStreamsTest is TestCommon {
         // nft ids start from 1
         assertEq(ys.nextStreamId(), 1, "next stream id");
         assertEq(address(ys.asset()), address(asset), "underlying asset");
-        // vault is not allowed to transfer assets by default
-        assertEq(asset.allowance(address(ys), address(vault)), 0, "allowance");
+        assertEq(asset.allowance(address(ys), address(vault)), type(uint256).max, "asset allowance");
     }
 
     /*

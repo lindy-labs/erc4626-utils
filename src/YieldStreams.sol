@@ -5,7 +5,7 @@ import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC20Permit} from "openzeppelin-contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 
@@ -22,8 +22,7 @@ contract YieldStreams is ERC721, Multicall {
     using CommonErrors for uint256;
     using CommonErrors for address;
     using FixedPointMathLib for uint256;
-    using SafeERC20 for IERC4626;
-    using SafeERC20 for IERC20;
+    using SafeTransferLib for address;
 
     /**
      * @notice Emitted when a new yield stream is opened between a streamer and a receiver.
@@ -113,6 +112,8 @@ contract YieldStreams is ERC721, Multicall {
 
         vault = _vault;
         asset = IERC20(_vault.asset());
+
+        address(asset).safeApprove(address(vault), type(uint256).max);
     }
 
     /*
@@ -159,7 +160,7 @@ contract YieldStreams is ERC721, Multicall {
 
         streamId = _openStream(_receiver, _shares, principal);
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
+        _vaultTransferFrom(msg.sender, _shares);
     }
 
     /**
@@ -241,7 +242,7 @@ contract YieldStreams is ERC721, Multicall {
         (totalSharesAllocated, streamIds) =
             _openStreams(_shares, principal, _receivers, _allocations, _maxLossOnOpenTolerance);
 
-        vault.safeTransferFrom(msg.sender, address(this), totalSharesAllocated);
+        _vaultTransferFrom(msg.sender, totalSharesAllocated);
     }
 
     /**
@@ -387,7 +388,8 @@ contract YieldStreams is ERC721, Multicall {
         (totalSharesAllocated, streamIds) =
             _openStreams(shares, _principal, _receivers, _allocations, _maxLossOnOpenTolerance);
 
-        vault.safeTransfer(msg.sender, shares - totalSharesAllocated);
+        // let this revert on underflow
+        _vaultTransferTo(msg.sender, shares - totalSharesAllocated);
     }
 
     /**
@@ -439,7 +441,7 @@ contract YieldStreams is ERC721, Multicall {
 
         _topUpStream(_streamId, _shares, principal);
 
-        vault.safeTransferFrom(msg.sender, address(this), _shares);
+        _vaultTransferFrom(msg.sender, _shares);
     }
 
     /**
@@ -540,7 +542,7 @@ contract YieldStreams is ERC721, Multicall {
 
         emit StreamClosed(_streamId, msg.sender, receiver, shares, principal);
 
-        vault.safeTransfer(msg.sender, shares);
+        _vaultTransferTo(msg.sender, shares);
     }
 
     /**
@@ -619,7 +621,7 @@ contract YieldStreams is ERC721, Multicall {
 
         emit YieldClaimed(msg.sender, _sendTo, 0, yieldInShares);
 
-        vault.safeTransfer(_sendTo, yieldInShares);
+        _vaultTransferTo(_sendTo, yieldInShares);
     }
 
     /**
@@ -694,6 +696,7 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     // accounting logic for opening multiple streams
+    // TODO: add check for allocations sum == 100%
     function _openStreams(
         uint256 _shares,
         uint256 _principal,
@@ -759,9 +762,7 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     function _depositToVault(uint256 _amount) internal returns (uint256 shares) {
-        asset.safeTransferFrom(msg.sender, address(this), _amount);
-
-        asset.forceApprove(address(vault), _amount);
+        address(asset).safeTransferFrom(msg.sender, address(this), _amount);
 
         shares = vault.deposit(_amount, address(this));
     }
@@ -813,5 +814,13 @@ contract YieldStreams is ERC721, Multicall {
 
     function _checkIsOwner(uint256 _streamId) internal view {
         if (ownerOf(_streamId) != msg.sender) revert CallerNotStreamOwner();
+    }
+
+    function _vaultTransferFrom(address _from, uint256 _shares) internal {
+        address(vault).safeTransferFrom(_from, address(this), _shares);
+    }
+
+    function _vaultTransferTo(address _to, uint256 _shares) internal {
+        address(vault).safeTransfer(_to, _shares);
     }
 }

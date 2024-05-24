@@ -13,6 +13,11 @@ library CommonErrors {
         if (_amount == 0) revert AmountZero();
     }
 
+    // TODO: figure this out
+    function checkIsZero(address _address, string memory customError) internal pure {
+        if (_address == address(0)) revert(customError);
+    }
+
     function checkIsZero(address _address) internal pure {
         if (_address == address(0)) revert AddressZero();
     }
