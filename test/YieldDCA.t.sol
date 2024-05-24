@@ -555,10 +555,11 @@ contract YieldDCATest is TestCommon {
         assertEq(yieldDca.ownerOf(positionId), bob, "owner");
     }
 
-    function test_openPosition_failsIfProvidedOwnerIsContractAndDoesNotImplementERC721Receiver() public {
+    function test_openPosition_failsIfOwnerIsContractAndDoesNotImplementERC721Receiver() public {
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
 
         vm.expectRevert(ERC721.TransferToNonERC721ReceiverImplementer.selector);
+        vm.prank(alice);
         yieldDca.openPosition(shares, address(this));
     }
 
