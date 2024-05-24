@@ -96,7 +96,7 @@ contract YieldDCATest is TestCommon {
         dcaToken = new MockERC20("Mock DCA", "mDCA", 18);
         swapper = new SwapperMock();
 
-        dcaToken.mint(address(swapper), 10000 ether);
+        dcaToken.mint(address(swapper), type(uint128).max);
         yieldDca = new YieldDCA(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
@@ -2675,6 +2675,99 @@ contract YieldDCATest is TestCommon {
 
         assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca balance");
+    }
+
+    /*
+     * --------------------
+     *   gas usage tests
+     * --------------------
+     */
+
+    // NOTE: tests below fill likely fail if run with --gas-report flag due to the gas usage of the reporting infrastructure itself
+    function testGas_claimDCABalance_canHandle30kEpochs() public {
+        // NOTE: if one epoch is 5 days, 30k epochs is roughly 410 years
+        // setup new vault and yieldDCA to start from a clean state
+        vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
+        yieldDca = new YieldDCA(
+            IERC20Metadata(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, 0, admin, keeper
+        );
+
+        vm.startPrank(admin);
+        yieldDca.setMinYieldPerEpoch(0);
+        yieldDca.setEpochDuration(uint32(1 weeks));
+        vm.stopPrank();
+
+        uint256 principal = 10 ether;
+        _openPositionWithPrincipal(alice, principal);
+
+        uint256 exchangeRate = 2e18;
+        swapper.setExchangeRate(exchangeRate);
+        uint256 yieldPerEpoch = 0.01 ether;
+        uint256 epochs = 30_000;
+
+        for (uint256 i = 0; i < epochs; i++) {
+            asset.mint(address(vault), yieldPerEpoch);
+
+            _shiftTime(yieldDca.epochDuration());
+
+            vm.prank(keeper);
+            yieldDca.executeDCA(0, "");
+        }
+
+        uint256 expectedTotalYield = epochs * yieldPerEpoch;
+        uint256 expectedDcaBalance = expectedTotalYield.mulWadDown(exchangeRate);
+        assertEq(yieldDca.currentEpoch(), epochs + 1, "epoch not incremented");
+        assertApproxEqRel(dcaToken.balanceOf(address(yieldDca)), expectedDcaBalance, 0.000001e18, "dca token balance");
+
+        vm.prank(alice);
+        uint256 gasBefore = gasleft();
+        yieldDca.claimDCABalance(1, alice);
+        uint256 gasAfter = gasleft();
+
+        assertTrue(gasBefore - gasAfter < 30_000_000, "gas used greater than 30m");
+        console2.log("gas used", gasBefore - gasAfter);
+        assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaBalance, 0.000001e18, "alice's claimed dca amount");
+        (uint256 shares2,) = yieldDca.balancesOf(1);
+        assertApproxEqAbs(shares2, vault.convertToShares(principal), 100, "alice's position shares");
+    }
+
+    function testGas_calculateBalances_singleIterationGasAverage() public {
+        // setup new vault and yieldDCA to start from a clean state
+        vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
+        yieldDca = new YieldDCA(
+            IERC20Metadata(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, 0, admin, keeper
+        );
+
+        uint256 principal = 1 ether;
+        uint256 positionId = _openPositionWithPrincipal(alice, principal);
+
+        // number of loops inside the function equals to the number of epochs
+        uint256 epochs = 100;
+        uint256 yieldPerEpoch = 0.01 ether;
+        swapper.setExchangeRate(1e18);
+
+        for (uint256 i = 0; i < epochs; i++) {
+            asset.mint(address(vault), yieldPerEpoch);
+
+            _shiftTime(yieldDca.epochDuration());
+
+            vm.prank(keeper);
+            yieldDca.executeDCA(0, "");
+        }
+
+        vm.startPrank(alice);
+
+        // Start measuring gas
+        uint256 gasBefore = gasleft();
+        (uint256 sharesBalance, uint256 dcaBalance) = yieldDca.balancesOf(positionId);
+        uint256 gasAfter = gasleft();
+
+        assertApproxEqAbs(sharesBalance, vault.convertToShares(principal), 150, "shares balance");
+        assertApproxEqAbs(dcaBalance, epochs * yieldPerEpoch, 100, "dca balance");
+
+        uint256 gasAverage = (gasBefore - gasAfter) / epochs;
+        console2.log("single iteration average gas: ", gasAverage);
+        assertTrue(gasAverage < 1000, "average gas greater than 1000");
     }
 
     /*

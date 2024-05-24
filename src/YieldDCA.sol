@@ -700,7 +700,7 @@ contract YieldDCA is ERC721, AccessControl, Multicall {
         uint256 calculatedDcaBalance = _position.dcaBalance;
         uint256 principal = _position.principal;
 
-        // NOTE: one iteration costs around 2700 gas
+        // NOTE: one iteration costs less than 1000 gas in the test with 100 epochs?
         for (uint256 i = _position.epoch; i < _currentEpoch;) {
             EpochInfo memory info = epochInfos[i];
             // save gas on sload
