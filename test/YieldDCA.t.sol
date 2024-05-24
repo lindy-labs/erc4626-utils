@@ -17,7 +17,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import "src/common/CommonErrors.sol";
 import {YieldDCA} from "src/YieldDCA.sol";
 import {ISwapper} from "src/interfaces/ISwapper.sol";
-import {SwapperMock} from "./mock/SwapperMock.sol";
+import {SwapperMock, MaliciousSwapper} from "./mock/SwapperMock.sol";
 import {TestCommon} from "./common/TestCommon.sol";
 
 contract YieldDCATest is TestCommon {
@@ -2000,6 +2000,34 @@ contract YieldDCATest is TestCommon {
         assertEq(yieldDca.totalPrincipal(), 0, "total principal deposited");
         assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca token balance");
+    }
+
+    function test_executeDCA_maliciousSwapperCannotReenter() public {
+        // the swapper is malicious and tries to reenter the contract
+        // to enable this admin has to be compromised and grant the malicious swapper the keeper role
+        // step 1 - alice deposits
+        uint256 principal = 1 ether;
+        _openPositionWithPrincipal(alice, principal);
+
+        // step 2 - generate 50% yield
+        _generateYield(0.5e18);
+        _shiftTime(yieldDca.epochDuration());
+
+        // step 3 - admin sets the malicious swapper as the keeper
+        bytes memory reenterCall = abi.encodeCall(YieldDCA.executeDCA, (0, ""));
+        MaliciousSwapper maliciousSwapper = new MaliciousSwapper(reenterCall);
+
+        vm.startPrank(admin);
+        yieldDca.setSwapper(maliciousSwapper);
+        yieldDca.grantRole(yieldDca.KEEPER_ROLE(), address(maliciousSwapper));
+        vm.stopPrank();
+
+        // step 4 - keeper executes DCA
+        vm.prank(keeper);
+        // the malicious swapper tries to reenter the contract
+        // it would fail anyway because the yield calcuation returns 0 and the tx would revert with NoYield error but just in case of future changes
+        vm.expectRevert(bytes4(keccak256("Reentrancy()")));
+        yieldDca.executeDCA(0, "");
     }
 
     /*

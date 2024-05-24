@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {IERC721} from "openzeppelin-contracts/interfaces/IERC721.sol";
 import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.sol";
@@ -46,7 +47,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * ## Usage
  * Users and their approved operators can open and manage positions using both direct interactions and ERC20 permit-based approvals. Positions are represented as ERC721 tokens, enabling easy tracking and management of each user's investments.
  */
-contract YieldDCA is ERC721, AccessControl, Multicall {
+contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     using CommonErrors for uint256;
     using CommonErrors for address;
     using FixedPointMathLib for uint256;
@@ -791,7 +792,11 @@ contract YieldDCA is ERC721, AccessControl, Multicall {
      *
      * Emits a {DCAExecuted} event.
      */
-    function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external onlyRole(KEEPER_ROLE) {
+    function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData)
+        external
+        nonReentrant
+        onlyRole(KEEPER_ROLE)
+    {
         _checkEpochDuration();
 
         // calculate yield in shares and redeem from the vault

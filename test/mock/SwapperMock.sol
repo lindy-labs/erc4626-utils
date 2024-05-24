@@ -18,8 +18,9 @@ contract SwapperMock is ISwapper {
         exchangeRate = _exchangeRate;
     }
 
-    function execute(address _tokenIn, address _tokenOut, uint256 _amountIn, uint256, bytes calldata)
-        external
+    function execute(address _tokenIn, address _tokenOut, uint256 _amountIn, uint256, bytes memory)
+        public
+        virtual
         returns (uint256 amountOut)
     {
         // console2.log("Swapper: execute");
@@ -33,5 +34,24 @@ contract SwapperMock is ISwapper {
         // console2.log("token out balance", IERC20(_tokenOut).balanceOf(address(this)));
 
         IERC20(_tokenOut).transfer(msg.sender, amountOut);
+    }
+}
+
+contract MaliciousSwapper is SwapperMock {
+    bytes public reenterOnMsgSenderCallData;
+
+    constructor(bytes memory _reenterOnMsgSenderCallData) {
+        reenterOnMsgSenderCallData = _reenterOnMsgSenderCallData;
+    }
+
+    function execute(address _tokenIn, address _tokenOut, uint256 _amountIn, uint256, bytes memory)
+        public
+        override
+        returns (uint256)
+    {
+        (bool success, bytes memory result) = msg.sender.call(reenterOnMsgSenderCallData);
+        if (!success) revert(string(result));
+
+        return super.execute(_tokenIn, _tokenOut, _amountIn, 0, "");
     }
 }
