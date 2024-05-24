@@ -882,7 +882,7 @@ contract ERC20StreamsTest is TestCommon {
     }
 
     function _approve(address _account, uint256 _shares) internal {
-        _approve(IERC20(address(vault)), address(streams), _account, _shares);
+        _approve(IERC20(address(vault)), _account, address(streams), _shares);
     }
 
     function _openStream(address _streamer, address _receiver, uint256 _amount, uint256 _duration)

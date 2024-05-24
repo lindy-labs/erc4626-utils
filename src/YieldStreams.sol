@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
-import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
+import {IERC20Permit} from "openzeppelin-contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
@@ -206,7 +206,7 @@ contract YieldStreams is ERC721, Multicall {
         bytes32 r,
         bytes32 s
     ) external returns (uint256 streamId) {
-        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         streamId = open(_receiver, _shares, _maxLossOnOpenTolerance);
     }
@@ -271,7 +271,7 @@ contract YieldStreams is ERC721, Multicall {
         bytes32 r,
         bytes32 s
     ) external returns (uint256[] memory streamIds) {
-        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         streamIds = openMultiple(_shares, _receivers, _allocations, _maxLossOnOpenTolerance);
     }
@@ -351,7 +351,7 @@ contract YieldStreams is ERC721, Multicall {
         bytes32 r,
         bytes32 s
     ) external returns (uint256 streamId) {
-        IERC2612(vault.asset()).permit(msg.sender, address(this), _principal, deadline, v, r, s);
+        IERC20Permit(vault.asset()).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
         streamId = depositAndOpen(_receiver, _principal, _maxLossOnOpenTolerance);
     }
@@ -417,7 +417,7 @@ contract YieldStreams is ERC721, Multicall {
         bytes32 r,
         bytes32 s
     ) external returns (uint256[] memory streamIds) {
-        IERC2612(address(asset)).permit(msg.sender, address(this), _principal, deadline, v, r, s);
+        IERC20Permit(address(asset)).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
         streamIds = depositAndOpenMultiple(_principal, _receivers, _allocations, _maxLossOnOpenTolerance);
     }
@@ -460,7 +460,7 @@ contract YieldStreams is ERC721, Multicall {
         external
         returns (uint256 principal)
     {
-        IERC2612(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
         principal = topUp(_streamId, _shares);
     }
@@ -505,7 +505,7 @@ contract YieldStreams is ERC721, Multicall {
         bytes32 r,
         bytes32 s
     ) external returns (uint256 shares) {
-        IERC2612(address(vault.asset())).permit(msg.sender, address(this), _principal, deadline, v, r, s);
+        IERC20Permit(address(vault.asset())).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
         shares = depositAndTopUp(_streamId, _principal);
     }
@@ -592,7 +592,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256 currentValue = vault.convertToAssets(receiverTotalShares[_receiver]);
 
         // if vault made a loss, there is no yield
-        yield = currentValue > principal ? currentValue - principal : 0; //184245 | 179655 | 595864
+        yield = currentValue > principal ? currentValue - principal : 0;
     }
 
     /**

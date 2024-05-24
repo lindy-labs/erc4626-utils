@@ -34,7 +34,7 @@ contract ERC20StreamsTest is TestCommon {
     function test_openStream_claimTokens() public {
         uint256 duration = 2 days;
         uint256 shares = _depositToVault(scEth, alice, 1 ether);
-        _approve(scEth, address(scEthStreams), alice, shares);
+        _approve(scEth, alice, address(scEthStreams), shares);
 
         vm.prank(alice);
         scEthStreams.open(bob, shares, duration);
@@ -59,7 +59,7 @@ contract ERC20StreamsTest is TestCommon {
     function test_closeStream() public {
         uint256 duration = 2 days;
         uint256 shares = _depositToVault(scEth, alice, 1 ether);
-        _approve(scEth, address(scEthStreams), alice, shares);
+        _approve(scEth, alice, address(scEthStreams), shares);
 
         vm.prank(alice);
         scEthStreams.open(bob, shares, duration);
@@ -88,8 +88,8 @@ contract ERC20StreamsTest is TestCommon {
         uint256 bobsShares = _depositToVault(scEth, bob, 2 ether);
         uint256 bobsDuration = 4 days;
 
-        _approve(scEth, address(scEthStreams), alice, alicesShares);
-        _approve(scEth, address(scEthStreams), bob, bobsShares);
+        _approve(scEth, alice, address(scEthStreams), alicesShares);
+        _approve(scEth, bob, address(scEthStreams), bobsShares);
 
         vm.prank(alice);
         scEthStreams.open(carol, alicesShares, alicesDuration);
@@ -100,7 +100,7 @@ contract ERC20StreamsTest is TestCommon {
 
         uint256 carolsShares = _depositToVault(scEth, carol, 3 ether);
         uint256 carolsDuration = 6 days;
-        _approve(scEth, address(scEthStreams), carol, carolsShares);
+        _approve(scEth, carol, address(scEthStreams), carolsShares);
 
         vm.prank(carol);
         scEthStreams.open(alice, carolsShares, carolsDuration);
