@@ -75,7 +75,6 @@ contract YieldStreams is ERC721, Multicall {
     // Errors
     error NoYieldToClaim();
     error LossToleranceExceeded();
-    error CallerNotStreamOwner();
     error InputArraysLengthMismatch(uint256 length1, uint256 length2);
 
     /// @notice the underlying ERC4626 vault
@@ -435,7 +434,7 @@ contract YieldStreams is ERC721, Multicall {
      */
     function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
         _shares.checkIsZero();
-        _checkIsOwner(_streamId);
+        _checkApprovedOrOwner(_streamId);
 
         principal = vault.convertToAssets(_shares);
 
@@ -478,7 +477,7 @@ contract YieldStreams is ERC721, Multicall {
      */
     function depositAndTopUp(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
         _principal.checkIsZero();
-        _checkIsOwner(_streamId);
+        _checkApprovedOrOwner(_streamId);
 
         shares = _depositToVault(_principal);
 
@@ -525,7 +524,7 @@ contract YieldStreams is ERC721, Multicall {
      * This represents the balance of shares not attributed to generated yield, effectively the remaining principal.
      */
     function close(uint256 _streamId) external returns (uint256 shares) {
-        _checkIsOwner(_streamId);
+        _checkApprovedOrOwner(_streamId);
 
         address receiver = streamIdToReceiver[_streamId];
 
@@ -537,6 +536,8 @@ contract YieldStreams is ERC721, Multicall {
         // update state and transfer shares
         delete streamIdToReceiver[_streamId];
         delete receiverPrincipal[receiver][_streamId];
+        
+        // possible to underflow because of rounding errors
         receiverTotalPrincipal[receiver] -= principal;
         receiverTotalShares[receiver] -= shares;
 
@@ -574,7 +575,10 @@ contract YieldStreams is ERC721, Multicall {
 
         if (yieldInShares == 0) revert NoYieldToClaim();
 
-        receiverTotalShares[msg.sender] -= yieldInShares;
+        unchecked {
+            // impossible to underflow because total shares are always > yield
+            receiverTotalShares[msg.sender] -= yieldInShares;
+        }
 
         assets = vault.redeem(yieldInShares, _sendTo, address(this));
 
@@ -594,7 +598,9 @@ contract YieldStreams is ERC721, Multicall {
         uint256 currentValue = vault.convertToAssets(receiverTotalShares[_receiver]);
 
         // if vault made a loss, there is no yield
-        yield = currentValue > principal ? currentValue - principal : 0;
+        unchecked {
+            yield = currentValue > principal ? currentValue - principal : 0;
+        }
     }
 
     /**
@@ -617,7 +623,10 @@ contract YieldStreams is ERC721, Multicall {
 
         if (yieldInShares == 0) revert NoYieldToClaim();
 
-        receiverTotalShares[msg.sender] -= yieldInShares;
+        unchecked {
+            // impossible to underflow because total shares are always > yield
+            receiverTotalShares[msg.sender] -= yieldInShares;
+        }
 
         emit YieldClaimed(msg.sender, _sendTo, 0, yieldInShares);
 
@@ -636,8 +645,10 @@ contract YieldStreams is ERC721, Multicall {
         uint256 principalInShares = vault.convertToShares(receiverTotalPrincipal[_receiver]);
         uint256 shares = receiverTotalShares[_receiver];
 
-        // if vault made a loss, there is no yield
-        yieldInShares = shares > principalInShares ? shares - principalInShares : 0;
+        unchecked {
+            // if vault made a loss, there is no yield
+            yieldInShares = shares > principalInShares ? shares - principalInShares : 0;
+        }
     }
 
     /**
@@ -675,6 +686,10 @@ contract YieldStreams is ERC721, Multicall {
         return _getPrincipal(_streamId, receiver);
     }
 
+    function isOwnerOrApproved(uint256 _streamId) external view returns (bool) {
+        return _isApprovedOrOwner(msg.sender, _streamId);
+    }
+
     /* 
     * =======================================================
     *                   INTERNAL FUNCTIONS
@@ -683,20 +698,23 @@ contract YieldStreams is ERC721, Multicall {
 
     // accounting logic for opening a new stream
     function _openStream(address _receiver, uint256 _shares, uint256 _principal) internal returns (uint256 streamId) {
-        streamId = nextStreamId++;
+        unchecked {
+            // id's are not going to overflow
+            streamId = nextStreamId++;
 
-        _mint(msg.sender, streamId);
-        streamIdToReceiver[streamId] = _receiver;
+            _mint(msg.sender, streamId);
+            streamIdToReceiver[streamId] = _receiver;
 
-        receiverTotalShares[_receiver] += _shares;
-        receiverTotalPrincipal[_receiver] += _principal;
-        receiverPrincipal[_receiver][streamId] = _principal;
+            // not realistic to overflow
+            receiverTotalShares[_receiver] += _shares;
+            receiverTotalPrincipal[_receiver] += _principal;
+            receiverPrincipal[_receiver][streamId] = _principal;
+        }
 
         emit StreamOpened(streamId, msg.sender, _receiver, _shares, _principal);
     }
 
     // accounting logic for opening multiple streams
-    // TODO: add check for allocations sum == 100%
     function _openStreams(
         uint256 _shares,
         uint256 _principal,
@@ -722,9 +740,9 @@ contract YieldStreams is ERC721, Multicall {
             _canOpenStream(receiver, sharesAllocation, principalAllocation, _maxLossOnOpenTolerance);
             streamIds[i] = _openStream(receiver, sharesAllocation, principalAllocation);
 
-            totalSharesAllocated += sharesAllocation;
-
             unchecked {
+                totalSharesAllocated += sharesAllocation;
+
                 i++;
             }
         }
@@ -734,9 +752,12 @@ contract YieldStreams is ERC721, Multicall {
     function _topUpStream(uint256 _streamId, uint256 _shares, uint256 _principal) internal {
         address _receiver = streamIdToReceiver[_streamId];
 
-        receiverTotalShares[_receiver] += _shares;
-        receiverTotalPrincipal[_receiver] += _principal;
-        receiverPrincipal[_receiver][_streamId] += _principal;
+        //  not realsitic to overflow
+        unchecked {
+            receiverTotalShares[_receiver] += _shares;
+            receiverTotalPrincipal[_receiver] += _principal;
+            receiverPrincipal[_receiver][_streamId] += _principal;
+        }
 
         emit StreamToppedUp(_streamId, msg.sender, _receiver, _shares, _principal);
     }
@@ -789,7 +810,10 @@ contract YieldStreams is ERC721, Multicall {
         // the immediate loss is calculated as the percentage of the debt that the sender is taking as his share of the total principal allocated to the receiver.
         // acceptable loss is defined by the loss tolerance percentage param passed to the open function.
         // this loss occurs due to inability of the accounting logic to differentiate between principal amounts allocated from different streams to same receiver.
-        totalPrincipal = totalPrincipal + _principal;
+        unchecked {
+            totalPrincipal = totalPrincipal + _principal;
+        }
+
         uint256 lossOnOpen = debt.mulDivUp(_principal, totalPrincipal);
         uint256 maxLoss = _principal.mulWadUp(_maxLossOnOpenTolerance);
 
@@ -803,7 +827,9 @@ contract YieldStreams is ERC721, Multicall {
     {
         uint256 currentValue = _totalShares.mulWadUp(_sharePrice);
 
-        debt = currentValue < _totalPrincipal ? _totalPrincipal - currentValue : 0;
+        unchecked {
+            debt = currentValue < _totalPrincipal ? _totalPrincipal - currentValue : 0;
+        }
     }
 
     function _checkInputArraysLength(address[] memory _receivers, uint256[] memory _allocations) internal pure {
@@ -812,8 +838,8 @@ contract YieldStreams is ERC721, Multicall {
         }
     }
 
-    function _checkIsOwner(uint256 _streamId) internal view {
-        if (ownerOf(_streamId) != msg.sender) revert CallerNotStreamOwner();
+    function _checkApprovedOrOwner(uint256 _positionId) internal view {
+        if (!_isApprovedOrOwner(msg.sender, _positionId)) revert ERC721.NotOwnerNorApproved();
     }
 
     function _vaultTransferFrom(address _from, uint256 _shares) internal {
