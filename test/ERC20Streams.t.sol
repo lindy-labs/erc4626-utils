@@ -36,7 +36,7 @@ contract ERC20StreamsTest is TestCommon {
      * --------------------
      */
 
-    function test_constructor_failsForAddress0() public {
+    function test_constructor_failsForZeroAddress() public {
         vm.expectRevert(CommonErrors.AddressZero.selector);
         new ERC20Streams(IERC4626(address(0)));
     }

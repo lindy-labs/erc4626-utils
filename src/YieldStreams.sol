@@ -75,6 +75,7 @@ contract YieldStreams is ERC721, Multicall {
     // Errors
     error NoYieldToClaim();
     error LossToleranceExceeded();
+    error InputArrayEmpty();
     error InputArraysLengthMismatch(uint256 length1, uint256 length2);
 
     /// @notice the underlying ERC4626 vault
@@ -151,13 +152,15 @@ contract YieldStreams is ERC721, Multicall {
      * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      */
-    function open(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)
+    function open(address _owner, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         public
         returns (uint256 streamId)
     {
+        _owner.checkIsZero();
+
         uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerance);
 
-        streamId = _openStream(_receiver, _shares, principal);
+        streamId = _openStream(_owner, _receiver, _shares, principal);
 
         _vaultTransferFrom(msg.sender, _shares);
     }
@@ -198,6 +201,7 @@ contract YieldStreams is ERC721, Multicall {
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
     function openUsingPermit(
+        address _owner,
         address _receiver,
         uint256 _shares,
         uint256 _maxLossOnOpenTolerance,
@@ -208,7 +212,7 @@ contract YieldStreams is ERC721, Multicall {
     ) external returns (uint256 streamId) {
         IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
-        streamId = open(_receiver, _shares, _maxLossOnOpenTolerance);
+        streamId = open(_owner, _receiver, _shares, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -229,17 +233,19 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      */
     function openMultiple(
+        address _owner,
         uint256 _shares,
         address[] calldata _receivers,
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) public returns (uint256[] memory streamIds) {
+        _owner.checkIsZero();
         _shares.checkIsZero();
 
         uint256 principal = vault.convertToAssets(_shares);
         uint256 totalSharesAllocated;
         (totalSharesAllocated, streamIds) =
-            _openStreams(_shares, principal, _receivers, _allocations, _maxLossOnOpenTolerance);
+            _openStreams(_owner, _shares, principal, _receivers, _allocations, _maxLossOnOpenTolerance);
 
         _vaultTransferFrom(msg.sender, totalSharesAllocated);
     }
@@ -262,6 +268,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      */
     function openMultipleUsingPermit(
+        address _owner,
         uint256 _shares,
         address[] calldata _receivers,
         uint256[] calldata _allocations,
@@ -273,7 +280,7 @@ contract YieldStreams is ERC721, Multicall {
     ) external returns (uint256[] memory streamIds) {
         IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
 
-        streamIds = openMultiple(_shares, _receivers, _allocations, _maxLossOnOpenTolerance);
+        streamIds = openMultiple(_owner, _shares, _receivers, _allocations, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -295,15 +302,17 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
-    function depositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
+    function depositAndOpen(address _owner, address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
         returns (uint256 streamId)
     {
+        _owner.checkIsZero();
+
         uint256 shares = _depositToVault(_principal);
 
         _canOpenStream(_receiver, shares, _principal, _maxLossOnOpenTolerance);
 
-        streamId = _openStream(_receiver, shares, _principal);
+        streamId = _openStream(_owner, _receiver, shares, _principal);
     }
 
     /**
@@ -343,6 +352,7 @@ contract YieldStreams is ERC721, Multicall {
      * This token encapsulates the stream's details and ownership, enabling further interactions and management.
      */
     function depositAndOpenUsingPermit(
+        address _owner,
         address _receiver,
         uint256 _principal,
         uint256 _maxLossOnOpenTolerance,
@@ -353,7 +363,7 @@ contract YieldStreams is ERC721, Multicall {
     ) external returns (uint256 streamId) {
         IERC20Permit(vault.asset()).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
-        streamId = depositAndOpen(_receiver, _principal, _maxLossOnOpenTolerance);
+        streamId = depositAndOpen(_owner, _receiver, _principal, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -375,6 +385,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      */
     function depositAndOpenMultiple(
+        address _owner,
         uint256 _principal,
         address[] calldata _receivers,
         uint256[] calldata _allocations,
@@ -385,7 +396,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256 shares = _depositToVault(_principal);
         uint256 totalSharesAllocated;
         (totalSharesAllocated, streamIds) =
-            _openStreams(shares, _principal, _receivers, _allocations, _maxLossOnOpenTolerance);
+            _openStreams(_owner, shares, _principal, _receivers, _allocations, _maxLossOnOpenTolerance);
 
         // let this revert on underflow
         _vaultTransferTo(msg.sender, shares - totalSharesAllocated);
@@ -409,6 +420,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      */
     function depositAndOpenMultipleUsingPermit(
+        address _owner,
         uint256 _principal,
         address[] calldata _receivers,
         uint256[] calldata _allocations,
@@ -420,7 +432,7 @@ contract YieldStreams is ERC721, Multicall {
     ) external returns (uint256[] memory streamIds) {
         IERC20Permit(address(asset)).permit(msg.sender, address(this), _principal, deadline, v, r, s);
 
-        streamIds = depositAndOpenMultiple(_principal, _receivers, _allocations, _maxLossOnOpenTolerance);
+        streamIds = depositAndOpenMultiple(_owner, _principal, _receivers, _allocations, _maxLossOnOpenTolerance);
     }
 
     /**
@@ -536,7 +548,7 @@ contract YieldStreams is ERC721, Multicall {
         // update state and transfer shares
         delete streamIdToReceiver[_streamId];
         delete receiverPrincipal[receiver][_streamId];
-        
+
         // possible to underflow because of rounding errors
         receiverTotalPrincipal[receiver] -= principal;
         receiverTotalShares[receiver] -= shares;
@@ -681,9 +693,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return principal The principal amount in asset units initially allocated to the yield stream identified by the given token ID.
      */
     function getPrincipal(uint256 _streamId) external view returns (uint256) {
-        address receiver = streamIdToReceiver[_streamId];
-
-        return _getPrincipal(_streamId, receiver);
+        return _getPrincipal(_streamId, streamIdToReceiver[_streamId]);
     }
 
     function isOwnerOrApproved(uint256 _streamId) external view returns (bool) {
@@ -697,12 +707,15 @@ contract YieldStreams is ERC721, Multicall {
     */
 
     // accounting logic for opening a new stream
-    function _openStream(address _receiver, uint256 _shares, uint256 _principal) internal returns (uint256 streamId) {
+    function _openStream(address _owner, address _receiver, uint256 _shares, uint256 _principal)
+        internal
+        returns (uint256 streamId)
+    {
         unchecked {
             // id's are not going to overflow
             streamId = nextStreamId++;
 
-            _mint(msg.sender, streamId);
+            _mint(_owner, streamId);
             streamIdToReceiver[streamId] = _receiver;
 
             // not realistic to overflow
@@ -716,6 +729,7 @@ contract YieldStreams is ERC721, Multicall {
 
     // accounting logic for opening multiple streams
     function _openStreams(
+        address _owner,
         uint256 _shares,
         uint256 _principal,
         address[] memory _receivers,
@@ -738,7 +752,7 @@ contract YieldStreams is ERC721, Multicall {
             principalAllocation = _principal.mulWad(allocation);
 
             _canOpenStream(receiver, sharesAllocation, principalAllocation, _maxLossOnOpenTolerance);
-            streamIds[i] = _openStream(receiver, sharesAllocation, principalAllocation);
+            streamIds[i] = _openStream(_owner, receiver, sharesAllocation, principalAllocation);
 
             unchecked {
                 totalSharesAllocated += sharesAllocation;
@@ -836,6 +850,9 @@ contract YieldStreams is ERC721, Multicall {
         if (_receivers.length != _allocations.length) {
             revert InputArraysLengthMismatch(_receivers.length, _allocations.length);
         }
+
+        // no need to check _allocations array because the first condition would be true
+        if (_receivers.length == 0) revert InputArrayEmpty();
     }
 
     function _checkApprovedOrOwner(uint256 _positionId) internal view {

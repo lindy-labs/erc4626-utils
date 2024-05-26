@@ -52,7 +52,7 @@ contract YieldStreamsFactoryTest is Test {
         vault.approve(address(deployed), shares);
         address receiver = address(0x02);
 
-        deployed.open(receiver, shares, 0);
+        deployed.open(address(this), receiver, shares, 0);
 
         assertEq(vault.balanceOf(address(deployed)), shares, "stream shares");
     }
