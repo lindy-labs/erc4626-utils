@@ -338,10 +338,10 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         address _keeper
     ) {
         // validate input parameters
-        address(_dcaToken).checkIsZero(DCATokenAddressZero.selector);
-        address(_vault).checkIsZero(VaultAddressZero.selector);
-        _admin.checkIsZero(AdminAddressZero.selector);
-        _keeper.checkIsZero(KeeperAddressZero.selector);
+        address(_dcaToken).revertIfZero(DCATokenAddressZero.selector);
+        address(_vault).revertIfZero(VaultAddressZero.selector);
+        _admin.revertIfZero(AdminAddressZero.selector);
+        _keeper.revertIfZero(KeeperAddressZero.selector);
 
         if (address(_dcaToken) == _vault.asset()) revert DCATokenSameAsVaultAsset();
 
@@ -489,7 +489,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {PositionOpened} event.
      */
     function openPosition(address _owner, uint256 _shares) public returns (uint256 positionId) {
-        _shares.checkIsZero();
+        _shares.revertIfZero();
 
         positionId = _openPosition(_shares, _owner);
 
@@ -544,7 +544,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {PositionOpened} event.
      */
     function depositAndOpenPosition(address _owner, uint256 _principal) public returns (uint256 positionId) {
-        _principal.checkIsZero();
+        _principal.revertIfZero();
 
         uint256 shares = _depositToVault(msg.sender, _principal);
 
@@ -598,7 +598,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {PositionIncreased} event.
      */
     function increasePosition(uint256 _positionId, uint256 _shares) public {
-        _shares.checkIsZero();
+        _shares.revertIfZero();
         _checkApprovedOrOwner(_positionId);
 
         uint256 principal = vault.convertToAssets(_shares);
@@ -654,7 +654,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {PositionIncreased} event.
      */
     function depositAndIncreasePosition(uint256 _positionId, uint256 _assets) public {
-        _assets.checkIsZero();
+        _assets.revertIfZero();
         _checkApprovedOrOwner(_positionId);
 
         uint256 shares = _depositToVault(_ownerOf(_positionId), _assets);
@@ -708,7 +708,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {PositionReduced} event or a {PositionClosed} event if all shares are withdrawn.
      */
     function reducePosition(uint256 _positionId, uint256 _shares) external {
-        _shares.checkIsZero();
+        _shares.revertIfZero();
         _checkApprovedOrOwner(_positionId);
 
         Position storage position = positions[_positionId];
@@ -759,7 +759,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {DCABalanceClaimed} event.
      */
     function claimDCABalance(uint256 _positionId, address _to) external returns (uint256 amount) {
-        _to.checkIsZero();
+        _to.revertIfZero();
         _checkApprovedOrOwner(_positionId);
 
         // calculate the DCA balance for the position
@@ -767,7 +767,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         uint32 epoch = currentEpoch;
         (position.shares, amount) = _calculateBalances(position, epoch);
 
-        amount.checkIsZero(NothingToClaim.selector);
+        amount.revertIfZero(NothingToClaim.selector);
 
         // update the position and transfer the DCA amount
         position.epoch = epoch;
@@ -915,7 +915,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     // *** admin functons ***
 
     function _setSwapper(ISwapper _newSwapper) internal returns (address oldSwapper) {
-        address(_newSwapper).checkIsZero(SwapperAddressZero.selector);
+        address(_newSwapper).revertIfZero(SwapperAddressZero.selector);
         oldSwapper = address(swapper);
 
         // revoke previous swapper's approval and approve new swapper

@@ -9,15 +9,15 @@ library CommonErrors {
     error AmountZero();
     error AddressZero();
 
-    function checkIsZero(uint256 _amount) internal pure {
+    function revertIfZero(uint256 _amount) internal pure {
         if (_amount == 0) revert AmountZero();
     }
 
-    function checkIsZero(uint256 _amount, bytes4 errorSelector) internal pure {
+    function revertIfZero(uint256 _amount, bytes4 _errorSelector) internal pure {
         if (_amount != 0) return;
 
         // Encode the error selector with no additional arguments
-        bytes memory errorData = abi.encodeWithSelector(errorSelector);
+        bytes memory errorData = abi.encodeWithSelector(_errorSelector);
         // Use assembly to revert with the encoded error data
         assembly {
             let errorSize := mload(errorData)
@@ -25,15 +25,15 @@ library CommonErrors {
         }
     }
 
-    function checkIsZero(address _address) internal pure {
+    function revertIfZero(address _address) internal pure {
         if (_address == address(0)) revert AddressZero();
     }
 
-    function checkIsZero(address _address, bytes4 errorSelector) internal pure {
+    function revertIfZero(address _address, bytes4 _errorSelector) internal pure {
         if (_address != address(0)) return;
 
         // Encode the error selector with no additional arguments
-        bytes memory errorData = abi.encodeWithSelector(errorSelector);
+        bytes memory errorData = abi.encodeWithSelector(_errorSelector);
         // Use assembly to revert with the encoded error data
         assembly {
             let errorSize := mload(errorData)

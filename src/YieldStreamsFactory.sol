@@ -35,7 +35,7 @@ contract YieldStreamsFactory {
      * @return deployed The address of the deployed YieldStreams contract instance.
      */
     function create(IERC4626 _vault) public virtual returns (YieldStreams deployed) {
-        address(_vault).checkIsZero();
+        address(_vault).revertIfZero();
 
         if (isDeployed(_vault)) revert AlreadyDeployed();
 

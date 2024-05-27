@@ -106,7 +106,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _vault Address of the ERC4626 vault
      */
     constructor(IERC4626 _vault) {
-        address(_vault).checkIsZero();
+        address(_vault).revertIfZero();
 
         name_ = string.concat("Yield Stream - ", _vault.name());
         symbol_ = string.concat("YS-", _vault.symbol());
@@ -234,7 +234,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) public returns (uint256[] memory streamIds) {
-        _shares.checkIsZero();
+        _shares.revertIfZero();
 
         uint256 principal = vault.convertToAssets(_shares);
         uint256 totalSharesAllocated;
@@ -380,7 +380,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) public returns (uint256[] memory streamIds) {
-        _principal.checkIsZero();
+        _principal.revertIfZero();
 
         uint256 shares = _depositToVault(_principal);
         uint256 totalSharesAllocated;
@@ -432,7 +432,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return principal The added principal amount in asset units.
      */
     function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
-        _shares.checkIsZero();
+        _shares.revertIfZero();
         _checkIsOwner(_streamId);
 
         principal = vault.convertToAssets(_shares);
@@ -475,7 +475,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return shares The added number of shares to the yield stream.
      */
     function depositAndTopUp(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
-        _principal.checkIsZero();
+        _principal.revertIfZero();
         _checkIsOwner(_streamId);
 
         shares = _depositToVault(_principal);
@@ -566,7 +566,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return assets The total amount of assets claimed as realized yield from all streams.
      */
     function claimYield(address _sendTo) external returns (uint256 assets) {
-        _sendTo.checkIsZero();
+        _sendTo.revertIfZero();
 
         uint256 yieldInShares = previewClaimYieldInShares(msg.sender);
 
@@ -609,7 +609,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return yieldInShares The total number of shares claimed as yield and transferred to the `_sendTo` address.
      */
     function claimYieldInShares(address _sendTo) external returns (uint256 yieldInShares) {
-        _sendTo.checkIsZero();
+        _sendTo.revertIfZero();
 
         yieldInShares = previewClaimYieldInShares(msg.sender);
 
@@ -774,8 +774,8 @@ contract YieldStreams is ERC721, Multicall {
         internal
         view
     {
-        _receiver.checkIsZero();
-        _principal.checkIsZero();
+        _receiver.revertIfZero();
+        _principal.revertIfZero();
 
         // when opening a new stream from sender, check if the receiver is in debt
         uint256 totalPrincipal = receiverTotalPrincipal[_receiver];

@@ -44,7 +44,7 @@ contract ERC20Streams is Multicall {
     mapping(uint256 => Stream) public streams;
 
     constructor(IERC20 _token) {
-        address(_token).checkIsZero();
+        address(_token).revertIfZero();
 
         token = _token;
     }
@@ -81,9 +81,9 @@ contract ERC20Streams is Multicall {
      * @param _duration The duration of the stream in seconds
      */
     function open(address _receiver, uint256 _amount, uint256 _duration) public {
-        _receiver.checkIsZero();
+        _receiver.revertIfZero();
         _checkOpenStreamToSelf(_receiver);
-        _amount.checkIsZero();
+        _amount.revertIfZero();
         _checkZeroDuration(_duration);
 
         uint256 streamId = getStreamId(msg.sender, _receiver);
@@ -144,8 +144,8 @@ contract ERC20Streams is Multicall {
      * @param _additionalDuration The additional duration to add to the stream in seconds
      */
     function topUp(address _receiver, uint256 _additionalAmount, uint256 _additionalDuration) public {
-        _receiver.checkIsZero();
-        _additionalAmount.checkIsZero();
+        _receiver.revertIfZero();
+        _additionalAmount.revertIfZero();
 
         Stream storage stream = streams[getStreamId(msg.sender, _receiver)];
 
@@ -199,7 +199,7 @@ contract ERC20Streams is Multicall {
      * @return claimed The number of tokens claimed
      */
     function claim(address _streamer, address _sendTo) public returns (uint256 claimed) {
-        _sendTo.checkIsZero();
+        _sendTo.revertIfZero();
 
         uint256 streamId = getStreamId(_streamer, msg.sender);
         Stream storage stream = streams[streamId];
