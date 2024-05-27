@@ -7,7 +7,8 @@ import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC2612} from "openzeppelin-contracts/interfaces/IERC2612.sol";
 import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {ERC721} from "solady/tokens/ERC721.sol";
+//import {ERC721} from "solady/tokens/ERC721.sol";
+import {ERC721} from "openzeppelin-contracts/token/ERC721/ERC721.sol";
 
 import {CommonErrors} from "../../src/common/CommonErrors.sol";
 
@@ -105,7 +106,7 @@ contract YieldStreams is ERC721, Multicall {
      * @dev The constructor initializes an ERC721 token with a dynamic name and symbol derived from the underlying vault's characteristics.
      * @param _vault Address of the ERC4626 vault
      */
-    constructor(IERC4626 _vault) {
+    constructor(IERC4626 _vault, string memory _name, string memory _symbol) ERC721(_name, _symbol) {
         address(_vault).checkIsZero();
 
         name_ = string.concat("Yield Stream - ", _vault.name());
