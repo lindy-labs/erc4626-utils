@@ -476,8 +476,8 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @notice Opens a new DCA position with a specified amount of shares and assigns it to an owner.
      * @dev Transfers the specified amount of shares from the caller to the contract, creates a new position for the owner, and mints an NFT representing the position.
      * The value of the shares (i.e., principal) is recorded and used to determine the yield between epochs.
-     * @param _shares The amount of shares to deposit into the new position.
      * @param _owner The address that will own the new position.
+     * @param _shares The amount of shares to deposit into the new position.
      * @return positionId The ID of the newly created position.
      *
      * Requirements:
@@ -487,7 +487,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      *
      * Emits a {PositionOpened} event.
      */
-    function openPosition(uint256 _shares, address _owner) public returns (uint256 positionId) {
+    function openPosition(address _owner, uint256 _shares) public returns (uint256 positionId) {
         _shares.checkIsZero();
 
         positionId = _openPosition(_shares, _owner);
@@ -499,8 +499,8 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @notice Opens a new DCA position with a specified amount of shares and assigns it to an owner using an ERC20 permit.
      * @dev Uses an ERC20 permit to obtain approval for transferring the specified amount of shares from the caller to the contract, creates a new position for the owner, and mints an NFT representing the position.
      * The value of the shares (i.e., principal) is recorded and used to determine the yield between epochs.
-     * @param _shares The amount of shares to deposit into the new position.
      * @param _owner The address that will own the new position.
+     * @param _shares The amount of shares to deposit into the new position.
      * @param _deadline The timestamp by which the permit must be used.
      * @param _v The recovery byte of the permit signature.
      * @param _r Half of the ECDSA signature pair.
@@ -515,8 +515,8 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {PositionOpened} event.
      */
     function openPositionUsingPermit(
-        uint256 _shares,
         address _owner,
+        uint256 _shares,
         uint256 _deadline,
         uint8 _v,
         bytes32 _r,
@@ -524,15 +524,15 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     ) external returns (uint256 positionId) {
         IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, _deadline, _v, _r, _s);
 
-        positionId = openPosition(_shares, _owner);
+        positionId = openPosition(_owner, _shares);
     }
 
     /**
      * @notice Deposits a specified amount of the vault's underlying asset and opens a new DCA position for the owner.
      * @dev Transfers the specified amount of the vault's underlying asset from the caller to the contract, deposits it into the vault, creates a new position for the owner with the received shares, and mints an NFT representing the position.
      * The amount of the vault's underlying asset (i.e., principal) is recorded and used to determine the yield between epochs.
-     * @param _principal The amount of the vault's underlying asset to deposit.
      * @param _owner The address that will own the new position.
+     * @param _principal The amount of the vault's underlying asset to deposit.
      * @return positionId The ID of the newly created position.
      *
      * Requirements:
@@ -542,7 +542,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      *
      * Emits a {PositionOpened} event.
      */
-    function depositAndOpenPosition(uint256 _principal, address _owner) public returns (uint256 positionId) {
+    function depositAndOpenPosition(address _owner, uint256 _principal) public returns (uint256 positionId) {
         _principal.checkIsZero();
 
         uint256 shares = _depositToVault(msg.sender, _principal);
@@ -554,8 +554,8 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @notice Deposits a specified amount of the vault's underlying asset and opens a new DCA position for the owner using an ERC20 permit.
      * @dev Uses an ERC20 permit to obtain approval for transferring the specified amount of the vault's underlying asset from the caller to the contract, deposits it into the vault, creates a new position for the owner with the received shares, and mints an NFT representing the position.
      * The amount of the vault's underlying asset (i.e., principal) is recorded and used to determine the yield between epochs.
-     * @param _principal The amount of the vault's underlying asset to deposit.
      * @param _owner The address that will own the new position.
+     * @param _principal The amount of the vault's underlying asset to deposit.
      * @param _deadline The timestamp by which the permit must be used.
      * @param _v The recovery byte of the permit signature.
      * @param _r Half of the ECDSA signature pair.
@@ -570,8 +570,8 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {PositionOpened} event.
      */
     function depositAndOpenPositionUsingPermit(
-        uint256 _principal,
         address _owner,
+        uint256 _principal,
         uint256 _deadline,
         uint8 _v,
         bytes32 _r,
@@ -579,7 +579,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     ) public returns (uint256 positionId) {
         IERC20Permit(address(asset)).permit(msg.sender, address(this), _principal, _deadline, _v, _r, _s);
 
-        positionId = depositAndOpenPosition(_principal, _owner);
+        positionId = depositAndOpenPosition(_owner, _principal);
     }
 
     /**
