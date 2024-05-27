@@ -338,11 +338,12 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         address _keeper
     ) {
         // validate input parameters
-        if (address(_dcaToken) == address(0)) revert DCATokenAddressZero();
-        if (address(_vault) == address(0)) revert VaultAddressZero();
+        address(_dcaToken).checkIsZero(DCATokenAddressZero.selector);
+        address(_vault).checkIsZero(VaultAddressZero.selector);
+        _admin.checkIsZero(AdminAddressZero.selector);
+        _keeper.checkIsZero(KeeperAddressZero.selector);
+
         if (address(_dcaToken) == _vault.asset()) revert DCATokenSameAsVaultAsset();
-        if (_admin == address(0)) revert AdminAddressZero();
-        if (_keeper == address(0)) revert KeeperAddressZero();
 
         // set contract state
         dcaToken = _dcaToken;
@@ -766,7 +767,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         uint32 epoch = currentEpoch;
         (position.shares, amount) = _calculateBalances(position, epoch);
 
-        if (amount == 0) revert NothingToClaim();
+        amount.checkIsZero(NothingToClaim.selector);
 
         // update the position and transfer the DCA amount
         position.epoch = epoch;
@@ -914,7 +915,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     // *** admin functons ***
 
     function _setSwapper(ISwapper _newSwapper) internal returns (address oldSwapper) {
-        if (address(_newSwapper) == address(0)) revert SwapperAddressZero();
+        address(_newSwapper).checkIsZero(SwapperAddressZero.selector);
         oldSwapper = address(swapper);
 
         // revoke previous swapper's approval and approve new swapper
