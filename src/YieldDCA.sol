@@ -61,10 +61,10 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         uint32 epoch;
     }
 
+    // NOTE: Using uint128 to pack variables and save on sstore/sload operations since both values are always written/read together.
+    // dcaPrice and sharePrice are in WAD format and represent the result of dividing two uint256 values.
+    // In case of overflow, SafeCastLib will revert the transaction to prevent incorrect results.
     struct EpochInfo {
-        // Using uint128 to pack variables and save on sstore/sload operations since both values are always written/read together.
-        // dcaPrice and sharePrice are in WAD format and represent the result of dividing two uint256 values.
-        // In case of overflow, SafeCastLib will revert the transaction to prevent incorrect results.
         uint128 dcaPrice;
         uint128 sharePrice;
     }
@@ -598,7 +598,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function increasePosition(uint256 _positionId, uint256 _shares) public {
         _shares.checkIsZero();
-        _checkApprovedOrOwner(msg.sender, _positionId);
+        _checkApprovedOrOwner(_positionId);
 
         uint256 principal = vault.convertToAssets(_shares);
 
@@ -654,7 +654,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function depositAndIncreasePosition(uint256 _positionId, uint256 _assets) public {
         _assets.checkIsZero();
-        _checkApprovedOrOwner(msg.sender, _positionId);
+        _checkApprovedOrOwner(_positionId);
 
         uint256 shares = _depositToVault(_ownerOf(_positionId), _assets);
 
@@ -708,7 +708,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function reducePosition(uint256 _positionId, uint256 _shares) external {
         _shares.checkIsZero();
-        _checkApprovedOrOwner(msg.sender, _positionId);
+        _checkApprovedOrOwner(_positionId);
 
         Position storage position = positions[_positionId];
         uint32 epoch = currentEpoch;
@@ -734,7 +734,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * Emits a {PositionClosed} event.
      */
     function closePosition(uint256 _positionId) external {
-        _checkApprovedOrOwner(msg.sender, _positionId);
+        _checkApprovedOrOwner(_positionId);
 
         Position storage position = positions[_positionId];
         uint32 epoch = currentEpoch;
@@ -759,7 +759,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function claimDCABalance(uint256 _positionId, address _to) external returns (uint256 amount) {
         _to.checkIsZero();
-        _checkApprovedOrOwner(msg.sender, _positionId);
+        _checkApprovedOrOwner(_positionId);
 
         // calculate the DCA balance for the position
         Position storage position = positions[_positionId];
@@ -1133,8 +1133,8 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         }
     }
 
-    function _checkApprovedOrOwner(address _caller, uint256 _positionId) internal view {
-        if (!_isApprovedOrOwner(_caller, _positionId)) revert ERC721.NotOwnerNorApproved();
+    function _checkApprovedOrOwner(uint256 _positionId) internal view {
+        if (!_isApprovedOrOwner(msg.sender, _positionId)) revert ERC721.NotOwnerNorApproved();
     }
 
     function _checkEpochDuration() internal view {

@@ -18,6 +18,7 @@ import "src/common/CommonErrors.sol";
 import {YieldDCA} from "src/YieldDCA.sol";
 import {ISwapper} from "src/interfaces/ISwapper.sol";
 import {SwapperMock, MaliciousSwapper} from "./mock/SwapperMock.sol";
+import {NFTHolderMock} from "./mock/NFTHolderMock.sol";
 import {TestCommon} from "./common/TestCommon.sol";
 
 contract YieldDCATest is TestCommon {
@@ -555,12 +556,22 @@ contract YieldDCATest is TestCommon {
         assertEq(yieldDca.ownerOf(positionId), bob, "owner");
     }
 
-    function test_openPosition_failsIfOwnerIsContractAndDoesNotImplementERC721Receiver() public {
+    function test_openPosition_failsIfOwnerIsContractAndDoesNotImplementIERC721Receiver() public {
         uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
 
         vm.expectRevert(ERC721.TransferToNonERC721ReceiverImplementer.selector);
         vm.prank(alice);
         yieldDca.openPosition(shares, address(this));
+    }
+
+    function test_openPosition_worksIfOwnerIsContractAndImplementsIERC721Receiver() public {
+        uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1 ether);
+        address nftHolder = address(new NFTHolderMock());
+
+        vm.prank(alice);
+        yieldDca.openPosition(shares, nftHolder);
+
+        assertTrue(yieldDca.ownerOf(1) == nftHolder, "nft holder should be the owner");
     }
 
     function test_openPosition_emitsEvent() public {
