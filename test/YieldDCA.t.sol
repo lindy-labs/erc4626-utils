@@ -472,7 +472,7 @@ contract YieldDCATest is TestCommon {
         _depositToVaultAndApproveYieldDca(alice, 1 ether);
 
         vm.prank(alice);
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         yieldDca.openPosition(alice, 0);
     }
 
@@ -648,7 +648,7 @@ contract YieldDCATest is TestCommon {
         _assetDealAndApproveYieldDca(alice, 1 ether);
 
         vm.prank(alice);
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         yieldDca.depositAndOpenPosition(alice, 0);
     }
 
@@ -764,7 +764,7 @@ contract YieldDCATest is TestCommon {
     function test_increasePosition_failsIfAmountIsZero() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         vm.prank(alice);
         yieldDca.increasePosition(positionId, 0);
     }
@@ -973,7 +973,7 @@ contract YieldDCATest is TestCommon {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
         _assetDealAndApproveYieldDca(alice, 1 ether);
 
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         vm.prank(alice);
         yieldDca.depositAndIncreasePosition(positionId, 0);
     }
@@ -2066,7 +2066,7 @@ contract YieldDCATest is TestCommon {
     function test_reducePosition_failsIfAmountIs0() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(CommonErrors.AmountZero.selector));
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         vm.prank(alice);
         yieldDca.reducePosition(positionId, 0);
     }
@@ -2409,7 +2409,7 @@ contract YieldDCATest is TestCommon {
     function test_claimDCABalance_failsForZeroAddress() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
-        vm.expectRevert(CommonErrors.AddressZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
         vm.prank(alice);
         yieldDca.claimDCABalance(positionId, address(0));
     }

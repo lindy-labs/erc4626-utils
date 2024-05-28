@@ -80,7 +80,7 @@ contract YieldStreamsTest is TestCommon {
         _depositToVaultAndApprove(alice, 1e18);
 
         vm.startPrank(alice);
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         ys.open(bob, 0, 0);
     }
 
@@ -88,7 +88,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 shares = _depositToVaultAndApprove(alice, 1e18);
 
         vm.startPrank(alice);
-        vm.expectRevert(CommonErrors.AddressZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
         ys.open(address(0), shares, 0);
     }
 
@@ -267,7 +267,7 @@ contract YieldStreamsTest is TestCommon {
         uint256[] memory allocations = new uint256[](1);
         allocations[0] = 0;
 
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         vm.prank(alice);
         ys.openMultiple(0, receivers, allocations, 0);
     }
@@ -311,7 +311,7 @@ contract YieldStreamsTest is TestCommon {
         allocations[0] = 0.1e18;
         allocations[1] = 0.9e18;
 
-        vm.expectRevert(abi.encodeWithSelector(CommonErrors.AddressZero.selector));
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
         vm.prank(alice);
         ys.openMultiple(shares, receivers, allocations, 0);
     }
@@ -327,7 +327,7 @@ contract YieldStreamsTest is TestCommon {
         allocations[0] = 0.1e18;
         allocations[1] = 0;
 
-        vm.expectRevert(abi.encodeWithSelector(CommonErrors.AmountZero.selector));
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         vm.prank(alice);
         ys.openMultiple(shares, receivers, allocations, 0);
     }
@@ -745,7 +745,7 @@ contract YieldStreamsTest is TestCommon {
         uint256[] memory allocations = new uint256[](1);
         allocations[0] = 1e18;
 
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         vm.prank(alice);
         ys.depositAndOpenMultiple(0, receivers, allocations, 0);
     }
@@ -778,7 +778,7 @@ contract YieldStreamsTest is TestCommon {
         allocations[0] = 0.1e18;
         allocations[1] = 0.9e18;
 
-        vm.expectRevert(abi.encodeWithSelector(CommonErrors.AddressZero.selector));
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
         vm.prank(alice);
         ys.depositAndOpenMultiple(amount, receivers, allocations, 0);
     }
@@ -795,7 +795,7 @@ contract YieldStreamsTest is TestCommon {
         allocations[0] = 0.1e18;
         allocations[1] = 0;
 
-        vm.expectRevert(abi.encodeWithSelector(CommonErrors.AmountZero.selector));
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         vm.prank(alice);
         ys.depositAndOpenMultiple(amount, receivers, allocations, 0);
     }
@@ -1064,7 +1064,7 @@ contract YieldStreamsTest is TestCommon {
         _depositToVaultAndApprove(alice, 1e18);
 
         vm.prank(alice);
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         ys.topUp(streamId, 0);
     }
 
@@ -1225,7 +1225,7 @@ contract YieldStreamsTest is TestCommon {
         _approveAssetsAndPreviewDeposit(alice, 1e18);
 
         vm.prank(alice);
-        vm.expectRevert(CommonErrors.AmountZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAmount.selector);
         ys.depositAndTopUp(streamId, 0);
     }
 
@@ -1531,7 +1531,7 @@ contract YieldStreamsTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        vm.expectRevert(CommonErrors.AddressZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
         vm.prank(bob);
         ys.claimYield(address(0));
     }
@@ -1692,7 +1692,7 @@ contract YieldStreamsTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
-        vm.expectRevert(CommonErrors.AddressZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
         vm.prank(bob);
         ys.claimYieldInShares(address(0));
     }

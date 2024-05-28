@@ -6,11 +6,11 @@ pragma solidity ^0.8.19;
  * @notice A library for commonly used errors and respective checking functions.
  */
 library CommonErrors {
-    error AmountZero();
-    error AddressZero();
+    error ZeroAmount();
+    error ZeroAddress();
 
     function revertIfZero(uint256 _amount) internal pure {
-        if (_amount == 0) revert AmountZero();
+        if (_amount == 0) revert ZeroAmount();
     }
 
     function revertIfZero(uint256 _amount, bytes4 _errorSelector) internal pure {
@@ -26,7 +26,7 @@ library CommonErrors {
     }
 
     function revertIfZero(address _address) internal pure {
-        if (_address == address(0)) revert AddressZero();
+        if (_address == address(0)) revert ZeroAddress();
     }
 
     function revertIfZero(address _address, bytes4 _errorSelector) internal pure {
