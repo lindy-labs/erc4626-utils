@@ -25,7 +25,7 @@ contract YieldStreamsFactoryTest is Test {
     }
 
     function test_create_failsIfVaultIsZero() public {
-        vm.expectRevert(CommonErrors.AddressZero.selector);
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
         factory.create(IERC4626(address(0)));
     }
 

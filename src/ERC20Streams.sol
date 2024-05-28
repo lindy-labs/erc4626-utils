@@ -36,7 +36,7 @@ contract ERC20Streams is Multicall {
     error StreamAlreadyExists();
     error StreamExpired();
     error RatePerSecondDecreased();
-    error NoTokensToClaim();
+    error NothingToClaim();
     error StreamDoesNotExist();
 
     IERC20 public immutable token;
@@ -44,7 +44,7 @@ contract ERC20Streams is Multicall {
     mapping(uint256 => Stream) public streams;
 
     constructor(IERC20 _token) {
-        address(_token).checkIsZero();
+        address(_token).revertIfZero();
 
         token = _token;
     }
@@ -81,18 +81,19 @@ contract ERC20Streams is Multicall {
      * @param _duration The duration of the stream in seconds
      */
     function open(address _receiver, uint256 _amount, uint256 _duration) public {
-        _receiver.checkIsZero();
+        _receiver.revertIfZero();
         _checkOpenStreamToSelf(_receiver);
-        _amount.checkIsZero();
-        _checkZeroDuration(_duration);
+        _amount.revertIfZero();
+        _duration.revertIfZero(ZeroDuration.selector);
 
         uint256 streamId = getStreamId(msg.sender, _receiver);
         Stream storage stream = streams[streamId];
 
         if (stream.amount > 0) {
             // If the stream already exists and isn't expired, revert
-            if (block.timestamp < stream.startTime + stream.amount.divWadUp(stream.ratePerSecond)) {
-                revert StreamAlreadyExists();
+            unchecked {
+                // stream.startTime + duration cannot overflow
+                if (block.timestamp < stream.startTime + _calculateDuration(stream)) revert StreamAlreadyExists();
             }
 
             // if is expired, transfer unclaimed tokens to receiver & emit close event
@@ -144,24 +145,29 @@ contract ERC20Streams is Multicall {
      * @param _additionalDuration The additional duration to add to the stream in seconds
      */
     function topUp(address _receiver, uint256 _additionalAmount, uint256 _additionalDuration) public {
-        _receiver.checkIsZero();
-        _additionalAmount.checkIsZero();
+        _receiver.revertIfZero();
+        _additionalAmount.revertIfZero();
 
         Stream storage stream = streams[getStreamId(msg.sender, _receiver)];
 
         _checkNonExistingStream(stream);
 
-        uint256 timeRemaining = stream.amount.divWadDown(stream.ratePerSecond);
+        uint256 duration = _calculateDuration(stream);
 
-        if (block.timestamp > stream.lastClaimTime + timeRemaining) revert StreamExpired();
+        unchecked {
+            // stream.lastClaimTime + duration cannot overflow
+            if (block.timestamp > stream.lastClaimTime + duration) revert StreamExpired();
 
-        stream.amount += _additionalAmount;
+            // not realistic to overflow
+            stream.amount += _additionalAmount;
 
-        uint256 newRatePerSecond = stream.amount.divWadUp(timeRemaining + _additionalDuration);
+            // duration + _additionalDuration cannot overflow
+            uint256 newRatePerSecond = stream.amount.divWadUp(duration + _additionalDuration);
 
-        if (newRatePerSecond < stream.ratePerSecond) revert RatePerSecondDecreased();
+            if (newRatePerSecond < stream.ratePerSecond) revert RatePerSecondDecreased();
 
-        stream.ratePerSecond = newRatePerSecond;
+            stream.ratePerSecond = newRatePerSecond;
+        }
 
         emit StreamToppedUp(msg.sender, _receiver, _additionalAmount, _additionalDuration);
 
@@ -199,14 +205,13 @@ contract ERC20Streams is Multicall {
      * @return claimed The number of tokens claimed
      */
     function claim(address _streamer, address _sendTo) public returns (uint256 claimed) {
-        _sendTo.checkIsZero();
+        _sendTo.revertIfZero();
 
         uint256 streamId = getStreamId(_streamer, msg.sender);
         Stream storage stream = streams[streamId];
 
         claimed = _previewClaim(stream);
-
-        if (claimed == 0) revert NoTokensToClaim();
+        claimed.revertIfZero(NothingToClaim.selector);
 
         if (claimed == stream.amount) {
             delete streams[streamId];
@@ -215,7 +220,11 @@ contract ERC20Streams is Multicall {
             emit StreamClosed(_streamer, msg.sender, 0, 0);
         } else {
             stream.lastClaimTime = uint128(block.timestamp);
-            stream.amount -= claimed;
+
+            unchecked {
+                // cannot underflow because claimed < stream.amount at this point
+                stream.amount -= claimed;
+            }
         }
 
         emit TokensClaimed(_streamer, msg.sender, claimed);
@@ -280,8 +289,11 @@ contract ERC20Streams is Multicall {
     function _previewClaim(Stream memory _stream) internal view returns (uint256 claimable) {
         _checkNonExistingStream(_stream);
 
-        uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
-        claimable = elapsedTime.mulWadUp(_stream.ratePerSecond);
+        unchecked {
+            // block.timestamp is always greater than or equal to _stream.lastClaimTime
+            uint256 elapsedTime = block.timestamp - _stream.lastClaimTime;
+            claimable = elapsedTime.mulWadUp(_stream.ratePerSecond);
+        }
 
         // Cap the claimalbe amount to the max available amount
         if (claimable > _stream.amount) claimable = _stream.amount;
@@ -295,20 +307,22 @@ contract ERC20Streams is Multicall {
 
         if (streamed > _stream.amount) streamed = _stream.amount;
 
-        remaining = _stream.amount - streamed;
+        unchecked {
+            remaining = _stream.amount - streamed;
+        }
 
         return (remaining, streamed);
+    }
+
+    function _calculateDuration(Stream memory _stream) internal pure returns (uint256) {
+        return _stream.amount.divWadDown(_stream.ratePerSecond);
     }
 
     function _checkOpenStreamToSelf(address _receiver) internal view {
         if (_receiver == msg.sender) revert CannotOpenStreamToSelf();
     }
 
-    function _checkZeroDuration(uint256 _duration) internal pure {
-        if (_duration == 0) revert ZeroDuration();
-    }
-
     function _checkNonExistingStream(Stream memory _stream) internal pure {
-        if (_stream.amount == 0) revert StreamDoesNotExist();
+        _stream.amount.revertIfZero(StreamDoesNotExist.selector);
     }
 }

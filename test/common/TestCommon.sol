@@ -25,12 +25,12 @@ abstract contract TestCommon is Test {
     bytes32 constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
-    function _signPermit(uint256 ownerKey, address _token, address _spender, uint256 _amount, uint256 _deadline)
+    function _signPermit(uint256 _ownerKey, address _token, address _spender, uint256 _amount, uint256 _deadline)
         internal
         view
         returns (uint8 v, bytes32 r, bytes32 s)
     {
-        address owner = vm.addr(ownerKey);
+        address owner = vm.addr(_ownerKey);
         bytes32 data = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -41,7 +41,7 @@ abstract contract TestCommon is Test {
             )
         );
 
-        return vm.sign(ownerKey, data);
+        return vm.sign(_ownerKey, data);
     }
 
     function _depositToVault(IERC4626 _vault, address _from, uint256 _amount) internal returns (uint256 shares) {

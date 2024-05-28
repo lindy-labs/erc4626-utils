@@ -73,6 +73,8 @@ contract YieldStreams is ERC721, Multicall {
     );
 
     // Errors
+    error OwnerZeroAddress();
+    error ReceiverZeroAddress();
     error NoYieldToClaim();
     error LossToleranceExceeded();
     error InputArrayEmpty();
@@ -105,7 +107,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _vault Address of the ERC4626 vault
      */
     constructor(IERC4626 _vault) {
-        address(_vault).checkIsZero();
+        address(_vault).revertIfZero();
 
         name_ = string.concat("Yield Stream - ", _vault.name());
         symbol_ = string.concat("YS-", _vault.symbol());
@@ -156,7 +158,7 @@ contract YieldStreams is ERC721, Multicall {
         public
         returns (uint256 streamId)
     {
-        _owner.checkIsZero();
+        _owner.revertIfZero(OwnerZeroAddress.selector);
 
         uint256 principal = previewOpen(_receiver, _shares, _maxLossOnOpenTolerance);
 
@@ -193,7 +195,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of ERC4626 vault shares to allocate to the new yield stream. These shares are transferred from the streamer to the contract as part of the stream setup.
      * @param _maxLossOnOpenTolerance The maximum loss percentage that the streamer is willing to tolerate upon opening the yield stream.
-     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
@@ -205,12 +207,12 @@ contract YieldStreams is ERC721, Multicall {
         address _receiver,
         uint256 _shares,
         uint256 _maxLossOnOpenTolerance,
-        uint256 deadline,
+        uint256 _deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
     ) external returns (uint256 streamId) {
-        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, _deadline, v, r, s);
 
         streamId = open(_owner, _receiver, _shares, _maxLossOnOpenTolerance);
     }
@@ -239,8 +241,8 @@ contract YieldStreams is ERC721, Multicall {
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) public returns (uint256[] memory streamIds) {
-        _owner.checkIsZero();
-        _shares.checkIsZero();
+        _owner.revertIfZero(OwnerZeroAddress.selector);
+        _shares.revertIfZero();
 
         uint256 principal = vault.convertToAssets(_shares);
         uint256 totalSharesAllocated;
@@ -261,7 +263,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _receivers The addresses of the receivers for the yield streams.
      * @param _allocations The percentage of shares to allocate to each receiver.
      * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
-     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
@@ -273,12 +275,12 @@ contract YieldStreams is ERC721, Multicall {
         address[] calldata _receivers,
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance,
-        uint256 deadline,
+        uint256 _deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
     ) external returns (uint256[] memory streamIds) {
-        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, _deadline, v, r, s);
 
         streamIds = openMultiple(_owner, _shares, _receivers, _allocations, _maxLossOnOpenTolerance);
     }
@@ -306,7 +308,7 @@ contract YieldStreams is ERC721, Multicall {
         public
         returns (uint256 streamId)
     {
-        _owner.checkIsZero();
+        _owner.revertIfZero(OwnerZeroAddress.selector);
 
         uint256 shares = _depositToVault(_principal);
 
@@ -344,7 +346,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The principal amount in asset units to be allocated to the new yield stream.
      * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
-     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
@@ -356,12 +358,12 @@ contract YieldStreams is ERC721, Multicall {
         address _receiver,
         uint256 _principal,
         uint256 _maxLossOnOpenTolerance,
-        uint256 deadline,
+        uint256 _deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
     ) external returns (uint256 streamId) {
-        IERC20Permit(vault.asset()).permit(msg.sender, address(this), _principal, deadline, v, r, s);
+        IERC20Permit(vault.asset()).permit(msg.sender, address(this), _principal, _deadline, v, r, s);
 
         streamId = depositAndOpen(_owner, _receiver, _principal, _maxLossOnOpenTolerance);
     }
@@ -391,7 +393,8 @@ contract YieldStreams is ERC721, Multicall {
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance
     ) public returns (uint256[] memory streamIds) {
-        _principal.checkIsZero();
+        _owner.revertIfZero(OwnerZeroAddress.selector);
+        _principal.revertIfZero();
 
         uint256 shares = _depositToVault(_principal);
         uint256 totalSharesAllocated;
@@ -413,7 +416,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _receivers The addresses of the receivers for the yield streams.
      * @param _allocations The percentage of shares to allocate to each receiver.
      * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
-     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
@@ -425,12 +428,12 @@ contract YieldStreams is ERC721, Multicall {
         address[] calldata _receivers,
         uint256[] calldata _allocations,
         uint256 _maxLossOnOpenTolerance,
-        uint256 deadline,
+        uint256 _deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
     ) external returns (uint256[] memory streamIds) {
-        IERC20Permit(address(asset)).permit(msg.sender, address(this), _principal, deadline, v, r, s);
+        IERC20Permit(address(asset)).permit(msg.sender, address(this), _principal, _deadline, v, r, s);
 
         streamIds = depositAndOpenMultiple(_owner, _principal, _receivers, _allocations, _maxLossOnOpenTolerance);
     }
@@ -445,7 +448,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return principal The added principal amount in asset units.
      */
     function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
-        _shares.checkIsZero();
+        _shares.revertIfZero();
         _checkApprovedOrOwner(_streamId);
 
         principal = vault.convertToAssets(_shares);
@@ -463,17 +466,17 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _shares The number of additional shares to be added to the yield stream.
-     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return principal The added principal amount in asset units.
      */
-    function topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+    function topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 _deadline, uint8 v, bytes32 r, bytes32 s)
         external
         returns (uint256 principal)
     {
-        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, deadline, v, r, s);
+        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, _deadline, v, r, s);
 
         principal = topUp(_streamId, _shares);
     }
@@ -488,7 +491,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return shares The added number of shares to the yield stream.
      */
     function depositAndTopUp(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
-        _principal.checkIsZero();
+        _principal.revertIfZero();
         _checkApprovedOrOwner(_streamId);
 
         shares = _depositToVault(_principal);
@@ -504,7 +507,7 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _principal The additional principal amount in asset units to be added to the yield stream.
-     * @param deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
+     * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
@@ -513,12 +516,12 @@ contract YieldStreams is ERC721, Multicall {
     function depositAndTopUpUsingPermit(
         uint256 _streamId,
         uint256 _principal,
-        uint256 deadline,
+        uint256 _deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
     ) external returns (uint256 shares) {
-        IERC20Permit(address(vault.asset())).permit(msg.sender, address(this), _principal, deadline, v, r, s);
+        IERC20Permit(address(vault.asset())).permit(msg.sender, address(this), _principal, _deadline, v, r, s);
 
         shares = depositAndTopUp(_streamId, _principal);
     }
@@ -581,7 +584,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return assets The total amount of assets claimed as realized yield from all streams.
      */
     function claimYield(address _sendTo) external returns (uint256 assets) {
-        _sendTo.checkIsZero();
+        _sendTo.revertIfZero();
 
         uint256 yieldInShares = previewClaimYieldInShares(msg.sender);
 
@@ -629,7 +632,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return yieldInShares The total number of shares claimed as yield and transferred to the `_sendTo` address.
      */
     function claimYieldInShares(address _sendTo) external returns (uint256 yieldInShares) {
-        _sendTo.checkIsZero();
+        _sendTo.revertIfZero();
 
         yieldInShares = previewClaimYieldInShares(msg.sender);
 
@@ -810,8 +813,8 @@ contract YieldStreams is ERC721, Multicall {
         internal
         view
     {
-        _receiver.checkIsZero();
-        _principal.checkIsZero();
+        _receiver.revertIfZero(ReceiverZeroAddress.selector);
+        _principal.revertIfZero();
 
         // when opening a new stream from sender, check if the receiver is in debt
         uint256 totalPrincipal = receiverTotalPrincipal[_receiver];
@@ -852,7 +855,7 @@ contract YieldStreams is ERC721, Multicall {
         }
 
         // no need to check _allocations array because the first condition would be true
-        if (_receivers.length == 0) revert InputArrayEmpty();
+        _receivers.length.revertIfZero(InputArrayEmpty.selector);
     }
 
     function _checkApprovedOrOwner(uint256 _positionId) internal view {
