@@ -298,15 +298,21 @@ rule integrity_of_openMultipleUsingPermit(address alice, address bob, address ca
 rule integrity_of_depositAndOpen(address streamer, address receiver, uint256 principal, uint256 maxLossOnOpenTolerance) {
     env e;
     // Preconditions
-    require streamer != 0 && receiver != 0 && streamer != receiver && streamer == e.msg.sender;
-    require principal > 0 && asset.balanceOf(streamer) >= principal;
-    require asset.balanceOf(streamer) >= principal && asset.allowance(streamer, currentContract) >= principal;
-    require to_mathint(asset.balanceOf(currentContract)) >= 2 * principal;
+    require streamer != 0 && receiver != 0 && streamer != receiver && streamer == e.msg.sender && principal > 0;
+    require streamer != asset && streamer != vault && streamer != currentContract;
+    require receiver != asset && receiver != vault && receiver != currentContract;
 
     uint256 initialTotalPrincipal = receiverTotalPrincipal(receiver);
     uint256 initialTotalShares = receiverTotalShares(receiver);
+    uint256 initialBalanceStreamer = asset.balanceOf(streamer);
+    uint256 initialBalanceThis = asset.balanceOf(currentContract);
+    uint256 initialVaultBalanceThis = vault.balanceOf(currentContract);
+
+    require asset.balanceOf(currentContract) >= principal;
+
 
     uint256 shares = previewDepositAndOpen(receiver, principal, maxLossOnOpenTolerance);
+    require initialBalanceStreamer >= principal && initialVaultBalanceThis + shares <= 2 ^ 256 - 1;
 
     assert shares == vault.convertToShares(principal);
     require nextStreamId() == 1;
@@ -316,8 +322,12 @@ rule integrity_of_depositAndOpen(address streamer, address receiver, uint256 pri
     assert streamId == 1 &&
      nextStreamId() == 2 &&
      ownerOf(streamId) == streamer &&
+     streamIdToReceiver(streamId) == receiver &&
+     to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares &&
      to_mathint(receiverTotalPrincipal(receiver)) == initialTotalPrincipal + principal &&
-     receiverPrincipal(receiver, 1) == principal;
+     receiverPrincipal(receiver, streamId) == principal;
+    assert to_mathint(asset.balanceOf(streamer)) == initialBalanceStreamer - principal &&
+     to_mathint(vault.balanceOf(currentContract)) == initialVaultBalanceThis + shares;
 }
 
 /**
@@ -329,15 +339,21 @@ rule integrity_of_depositAndOpenUsingPermit(address streamer, address receiver, 
     uint256 deadline, uint8 v, bytes32 r, bytes32 s) {
     env e;
     // Preconditions
-    require streamer != 0 && receiver != 0 && streamer != receiver && streamer == e.msg.sender;
-    require principal > 0 && asset.balanceOf(streamer) >= principal;
-    require asset.balanceOf(streamer) >= principal && asset.allowance(streamer, currentContract) >= principal;
-    require to_mathint(asset.balanceOf(currentContract)) >= 2 * principal;
+    require streamer != 0 && receiver != 0 && streamer != receiver && streamer == e.msg.sender && principal > 0;
+    require streamer != asset && streamer != vault && streamer != currentContract;
+    require receiver != asset && receiver != vault && receiver != currentContract;
 
     uint256 initialTotalPrincipal = receiverTotalPrincipal(receiver);
     uint256 initialTotalShares = receiverTotalShares(receiver);
+    uint256 initialBalanceStreamer = asset.balanceOf(streamer);
+    uint256 initialBalanceThis = asset.balanceOf(currentContract);
+    uint256 initialVaultBalanceThis = vault.balanceOf(currentContract);
+
+    require asset.balanceOf(currentContract) >= principal;
+
 
     uint256 shares = previewDepositAndOpen(receiver, principal, maxLossOnOpenTolerance);
+    require initialBalanceStreamer >= principal && initialVaultBalanceThis + shares <= 2 ^ 256 - 1;
 
     assert shares == vault.convertToShares(principal);
     require nextStreamId() == 1;
@@ -348,8 +364,12 @@ rule integrity_of_depositAndOpenUsingPermit(address streamer, address receiver, 
     assert streamId == 1 &&
      nextStreamId() == 2 &&
      ownerOf(streamId) == streamer &&
+     streamIdToReceiver(streamId) == receiver &&
+     to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares &&
      to_mathint(receiverTotalPrincipal(receiver)) == initialTotalPrincipal + principal &&
-     receiverPrincipal(receiver, 1) == principal;
+     receiverPrincipal(receiver, streamId) == principal;
+    assert to_mathint(asset.balanceOf(streamer)) == initialBalanceStreamer - principal &&
+     to_mathint(vault.balanceOf(currentContract)) == initialVaultBalanceThis + shares;
 }
 
 /**
@@ -361,7 +381,6 @@ rule integrity_of_depositAndOpenUsingPermit(address streamer, address receiver, 
 rule integrity_of_depositAndOpenMultiple(address dave, address bob, uint256 _principal, address[] _receivers, uint256[] _allocations, uint256 _maxLossOnOpenTolerance) {
     env e;
     require dave != bob && dave == e.msg.sender;
-    //require _principal == 10 ^ 18;
     require _principal > 0;
     require asset.balanceOf(dave) == _principal;
 
@@ -412,11 +431,9 @@ rule integrity_of_depositAndOpenMultipleUsingPermit(address dave, address bob, u
         bytes32 s) {
     env e;
     require dave != bob && dave == e.msg.sender;
-    //require principal == 10 ^ 18;
     require principal > 0;
     require to_mathint(deadline) == e.block.timestamp + 1;
     require asset.balanceOf(dave) == principal;
-    //require asset.allowance(dave, currentContract) >= principal;
 
     require(asset.balanceOf(dave) >= principal && asset.allowance(dave, currentContract) >= principal);
 
@@ -687,20 +704,19 @@ rule verify_claimYield_claimsFromAllOpenedStreams(address alice, address carol, 
     require receiverPrincipal(carol, aliceStreamId) == alicesPrincipal;
     require vault.balanceOf(alice) >= _aliceShares;
 
-    //uint256 bobsPrincipal = 30 ^ 18;
     require to_mathint(bobsPrincipal) == (multiple + desloc) * (10 ^ 18);
     uint256 _bobShares = vault.convertToShares(bobsPrincipal);
-    uint256 bobStreamId = aliceStreamId;//nextStreamId++;
+    uint256 bobStreamId = aliceStreamId;
     require streamIdToReceiver(bobStreamId) == carol;
-    require to_mathint(receiverTotalPrincipal(carol)) >= /*receiverTotalPrincipal[carol]*/alicesPrincipal + bobsPrincipal;
+    require to_mathint(receiverTotalPrincipal(carol)) >= alicesPrincipal + bobsPrincipal;
     require receiverPrincipal(carol, bobStreamId) == bobsPrincipal;
     require vault.balanceOf(bob) >= _bobShares;
 
 
     // add X% profit to vault
     require 1 <= desloc;
-    require to_mathint(receiverTotalShares(carol)) >= /*receiverTotalShares[carol]*/_aliceShares + _bobShares + (multiple + desloc) * (10 ^ 18);
-    require to_mathint(vault.balanceOf(currentContract)) >= /*vault.balanceOf(address(this))*/ _aliceShares + _bobShares + (multiple + desloc) * (10 ^ 18);
+    require to_mathint(receiverTotalShares(carol)) >= _aliceShares + _bobShares + (multiple + desloc) * (10 ^ 18);
+    require to_mathint(vault.balanceOf(currentContract)) >= _aliceShares + _bobShares + (multiple + desloc) * (10 ^ 18);
     
     assert delta(to_mathint(previewClaimYield(carol)), alicesPrincipal + bobsPrincipal) <= 1;
 
