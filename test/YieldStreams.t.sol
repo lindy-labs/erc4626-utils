@@ -1258,6 +1258,30 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.receiverPrincipal(bob, streamId), expectedPrincipal, "receiver principal  bob");
     }
 
+    function test_topUp_worksForApprovedCaller() public {
+        uint256 principal = 1e18;
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        uint256 addedPrincipal = 2e18;
+        uint256 addedShares = _depositToVaultAndApprove(alice, addedPrincipal);
+
+        vm.startPrank(alice);
+        vault.approve(address(ys), addedShares);
+        ys.approve(carol, streamId);
+        vm.stopPrank();
+
+        assertTrue(ys.isOwnerOrApproved(carol, streamId), "caller not approved");
+
+        // top up stream by carol
+        vm.prank(carol);
+        ys.topUp(streamId, addedShares);
+
+        uint256 expectedPrincipal = principal + addedPrincipal;
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(expectedPrincipal), "receiver shares bob");
+        assertEq(ys.receiverTotalPrincipal(bob), expectedPrincipal, "principal bob");
+        assertEq(ys.receiverPrincipal(bob, streamId), expectedPrincipal, "receiver principal  bob");
+    }
+
     function test_topUp_emitsEvent() public {
         uint256 streamId = _openYieldStream(alice, bob, 1e18);
 
@@ -1335,6 +1359,12 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.receiverTotalPrincipal(bob), principal * 2, "receiver total principal");
     }
 
+    /*
+     * --------------------
+     *  #topUpUsingPermit
+     * --------------------
+     */
+
     function test_topUpUsingPermit() public {
         uint256 principal = 1 ether;
         uint256 streamId = _openYieldStream(dave, bob, principal);
@@ -1360,6 +1390,42 @@ contract YieldStreamsTest is TestCommon {
 
         // top up stream
         vm.prank(dave);
+        ys.topUpUsingPermit(streamId, addedShares, deadline, v, r, s);
+
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(principal) + addedShares, "receiver shares");
+        assertEq(ys.receiverPrincipal(bob, streamId), principal + addedPrincipal, "receiver principal");
+        assertEq(ys.receiverTotalPrincipal(bob), principal + addedPrincipal, "receiver total principal");
+    }
+
+    function test_topUpUsingPermit_worksForApprovedCaller() public {
+        uint256 principal = 1 ether;
+        uint256 streamId = _openYieldStream(dave, bob, principal);
+
+        // deposit to vault
+        uint256 addedPrincipal = 2 ether;
+        uint256 addedShares = _depositToVault(dave, addedPrincipal);
+
+        uint256 nonce = vault.nonces(dave);
+        uint256 deadline = block.timestamp + 1 days;
+
+        // Sign the permit message
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            davesPrivateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    MockERC4626(address(vault)).DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(PERMIT_TYPEHASH, dave, address(ys), addedShares, nonce, deadline))
+                )
+            )
+        );
+
+        // approve carol as operator
+        vm.prank(dave);
+        ys.approve(carol, streamId);
+
+        // top up stream by carol
+        vm.prank(carol);
         ys.topUpUsingPermit(streamId, addedShares, deadline, v, r, s);
 
         assertEq(ys.receiverTotalShares(bob), vault.convertToShares(principal) + addedShares, "receiver shares");
@@ -1414,6 +1480,28 @@ contract YieldStreamsTest is TestCommon {
         _approveAssetsAndPreviewDeposit(alice, addedPrincipal);
 
         vm.prank(alice);
+        ys.depositAndTopUp(streamId, addedPrincipal);
+
+        uint256 expectedTotalPrincipal = principal + addedPrincipal;
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(expectedTotalPrincipal), "receiver shares bob");
+        assertEq(ys.receiverTotalPrincipal(bob), expectedTotalPrincipal, "principal bob");
+        assertEq(ys.receiverPrincipal(bob, streamId), expectedTotalPrincipal, "receiver principal  bob");
+    }
+
+    function test_depositAndTopUp_worksForApprovedCaller() public {
+        uint256 principal = 1e18;
+        uint256 streamId = _openYieldStream(alice, bob, principal);
+
+        uint256 addedPrincipal = 2e18;
+        _dealAndApprove(IERC20(address(asset)), alice, address(ys), addedPrincipal);
+
+        vm.prank(alice);
+        ys.approve(carol, streamId);
+
+        assertTrue(ys.isOwnerOrApproved(carol, streamId), "caller not approved");
+
+        // top up stream by carol
+        vm.prank(carol);
         ys.depositAndTopUp(streamId, addedPrincipal);
 
         uint256 expectedTotalPrincipal = principal + addedPrincipal;
@@ -1504,6 +1592,12 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.receiverTotalPrincipal(bob), principal + addedPrincipal, "receiver total principal");
     }
 
+    /*
+     * --------------------
+     *  #previewClaimYield
+     * --------------------
+     */
+
     function test_depositAndTopUpUsingPermit() public {
         uint256 principal = 1 ether;
         uint256 streamId = _openYieldStream(dave, bob, principal);
@@ -1519,6 +1613,33 @@ contract YieldStreamsTest is TestCommon {
 
         // top up stream
         vm.prank(dave);
+        ys.depositAndTopUpUsingPermit(streamId, addedPrincipal, deadline, v, r, s);
+
+        uint256 expectedTotalPrincipal = principal + addedPrincipal;
+        assertEq(ys.receiverTotalShares(bob), vault.convertToShares(expectedTotalPrincipal), "receiver shares");
+        assertEq(ys.receiverPrincipal(bob, streamId), expectedTotalPrincipal, "receiver principal");
+        assertEq(ys.receiverTotalPrincipal(bob), expectedTotalPrincipal, "receiver total principal");
+    }
+
+    function test_depositAndTopUpUsingPermit_worksForApprovedCaller() public {
+        uint256 principal = 1 ether;
+        uint256 streamId = _openYieldStream(dave, bob, principal);
+
+        // deposit to vault
+        uint256 addedPrincipal = 2 ether;
+        uint256 deadline = block.timestamp + 1 days;
+        deal(address(asset), dave, addedPrincipal);
+
+        // Sign the permit message
+        (uint8 v, bytes32 r, bytes32 s) =
+            _signPermit(davesPrivateKey, address(asset), address(ys), addedPrincipal, deadline);
+
+        // approve carol as operator
+        vm.prank(dave);
+        ys.approve(carol, streamId);
+
+        // top up stream by carol
+        vm.prank(carol);
         ys.depositAndTopUpUsingPermit(streamId, addedPrincipal, deadline, v, r, s);
 
         uint256 expectedTotalPrincipal = principal + addedPrincipal;
@@ -1989,6 +2110,27 @@ contract YieldStreamsTest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(sharesReturned), principal, 1, "alices principal");
         assertEq(asset.balanceOf(alice), 0, "alice's assets");
         assertEq(asset.balanceOf(bob), 0, "bob's assets");
+    }
+
+    function test_close_worksForApprovedCaller() public {
+        uint256 principal = 1e18;
+        uint256 streamId = _openYieldStream(alice, bob, principal);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        vm.prank(alice);
+        ys.approve(carol, streamId);
+
+        vm.prank(carol);
+        uint256 sharesReturned = ys.close(streamId);
+
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
+        ys.ownerOf(streamId);
+        assertEq(ys.balanceOf(alice), 0, "alice's nfts after");
+        assertEq(ys.receiverPrincipal(bob, streamId), 0, "receiver principal");
+        assertApproxEqAbs(ys.receiverTotalShares(bob), vault.convertToShares(0.5e18), 1, "receiver shares");
+        assertEq(vault.balanceOf(alice), sharesReturned, "alice's balance");
     }
 
     function test_close_emitsEvent() public {

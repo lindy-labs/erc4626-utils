@@ -135,7 +135,7 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /// @inheritdoc ERC721
-    function tokenURI(uint256 id) public view virtual override returns (string memory) {}
+    function tokenURI(uint256 id) public view override returns (string memory) {}
 
     /**
      * @notice Opens a new yield stream between the caller (streamer) and a receiver, represented by an ERC721 token.
@@ -310,7 +310,7 @@ contract YieldStreams is ERC721, Multicall {
     {
         _owner.revertIfZero(OwnerZeroAddress.selector);
 
-        uint256 shares = _depositToVault(_principal);
+        uint256 shares = _depositToVault(msg.sender, _principal);
 
         _canOpenStream(_receiver, shares, _principal, _maxLossOnOpenTolerance);
 
@@ -396,7 +396,7 @@ contract YieldStreams is ERC721, Multicall {
         _owner.revertIfZero(OwnerZeroAddress.selector);
         _principal.revertIfZero();
 
-        uint256 shares = _depositToVault(_principal);
+        uint256 shares = _depositToVault(msg.sender, _principal);
         uint256 totalSharesAllocated;
         (totalSharesAllocated, streamIds) =
             _openStreams(_owner, shares, _principal, _receivers, _allocations, _maxLossOnOpenTolerance);
@@ -455,7 +455,7 @@ contract YieldStreams is ERC721, Multicall {
 
         _topUpStream(_streamId, _shares, principal);
 
-        _vaultTransferFrom(msg.sender, _shares);
+        _vaultTransferFrom(_ownerOf(_streamId), _shares);
     }
 
     /**
@@ -476,7 +476,7 @@ contract YieldStreams is ERC721, Multicall {
         external
         returns (uint256 principal)
     {
-        IERC20Permit(address(vault)).permit(msg.sender, address(this), _shares, _deadline, v, r, s);
+        IERC20Permit(address(vault)).permit(_ownerOf(_streamId), address(this), _shares, _deadline, v, r, s);
 
         principal = topUp(_streamId, _shares);
     }
@@ -494,7 +494,7 @@ contract YieldStreams is ERC721, Multicall {
         _principal.revertIfZero();
         _checkApprovedOrOwner(_streamId);
 
-        shares = _depositToVault(_principal);
+        shares = _depositToVault(_ownerOf(_streamId), _principal);
 
         _topUpStream(_streamId, shares, _principal);
     }
@@ -521,7 +521,7 @@ contract YieldStreams is ERC721, Multicall {
         bytes32 r,
         bytes32 s
     ) external returns (uint256 shares) {
-        IERC20Permit(address(vault.asset())).permit(msg.sender, address(this), _principal, _deadline, v, r, s);
+        IERC20Permit(address(vault.asset())).permit(_ownerOf(_streamId), address(this), _principal, _deadline, v, r, s);
 
         shares = depositAndTopUp(_streamId, _principal);
     }
@@ -541,6 +541,7 @@ contract YieldStreams is ERC721, Multicall {
     function close(uint256 _streamId) external returns (uint256 shares) {
         _checkApprovedOrOwner(_streamId);
 
+        address owner = _ownerOf(_streamId);
         address receiver = streamIdToReceiver[_streamId];
 
         uint256 principal;
@@ -558,7 +559,7 @@ contract YieldStreams is ERC721, Multicall {
 
         emit StreamClosed(_streamId, msg.sender, receiver, shares, principal);
 
-        _vaultTransferTo(msg.sender, shares);
+        _vaultTransferTo(owner, shares);
     }
 
     /**
@@ -586,14 +587,7 @@ contract YieldStreams is ERC721, Multicall {
     function claimYield(address _sendTo) external returns (uint256 assets) {
         _sendTo.revertIfZero();
 
-        uint256 yieldInShares = previewClaimYieldInShares(msg.sender);
-
-        if (yieldInShares == 0) revert NoYieldToClaim();
-
-        unchecked {
-            // impossible to underflow because total shares are always > yield
-            receiverTotalShares[msg.sender] -= yieldInShares;
-        }
+        uint256 yieldInShares = _claim(msg.sender);
 
         assets = vault.redeem(yieldInShares, _sendTo, address(this));
 
@@ -634,14 +628,7 @@ contract YieldStreams is ERC721, Multicall {
     function claimYieldInShares(address _sendTo) external returns (uint256 yieldInShares) {
         _sendTo.revertIfZero();
 
-        yieldInShares = previewClaimYieldInShares(msg.sender);
-
-        if (yieldInShares == 0) revert NoYieldToClaim();
-
-        unchecked {
-            // impossible to underflow because total shares are always > yield
-            receiverTotalShares[msg.sender] -= yieldInShares;
-        }
+        yieldInShares = _claim(msg.sender);
 
         emit YieldClaimed(msg.sender, _sendTo, 0, yieldInShares);
 
@@ -685,11 +672,6 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @dev Retrieves the principal amount allocated to a specific stream.
-     * @param _streamId The token ID of the stream.
-     * @return principal The principal amount allocated to the stream, in asset units.
-     */
-    /**
      * @notice Retrieves the principal amount allocated to a specific yield stream, identified by the ERC721 token ID.
      *
      * @param _streamId The unique identifier of the yield stream for which the principal is being queried, represented by an ERC721 token.
@@ -699,8 +681,8 @@ contract YieldStreams is ERC721, Multicall {
         return _getPrincipal(_streamId, streamIdToReceiver[_streamId]);
     }
 
-    function isOwnerOrApproved(uint256 _streamId) external view returns (bool) {
-        return _isApprovedOrOwner(msg.sender, _streamId);
+    function isOwnerOrApproved(address _account, uint256 _streamId) external view returns (bool) {
+        return _isApprovedOrOwner(_account, _streamId);
     }
 
     /* 
@@ -799,8 +781,19 @@ contract YieldStreams is ERC721, Multicall {
         shares = ask > have ? have : ask;
     }
 
-    function _depositToVault(uint256 _amount) internal returns (uint256 shares) {
-        address(asset).safeTransferFrom(msg.sender, address(this), _amount);
+    // accounting logic for claiming yield
+    function _claim(address _receiver) internal returns (uint256 yieldInShares) {
+        yieldInShares = previewClaimYieldInShares(_receiver);
+        yieldInShares.revertIfZero(NoYieldToClaim.selector);
+
+        unchecked {
+            // impossible to underflow because total shares are always > yield
+            receiverTotalShares[_receiver] -= yieldInShares;
+        }
+    }
+
+    function _depositToVault(address _from, uint256 _amount) internal returns (uint256 shares) {
+        address(asset).safeTransferFrom(_from, address(this), _amount);
 
         shares = vault.deposit(_amount, address(this));
     }
