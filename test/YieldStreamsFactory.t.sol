@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
@@ -9,8 +8,9 @@ import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {CommonErrors} from "src/common/CommonErrors.sol";
 import {YieldStreamsFactory} from "src/YieldStreamsFactory.sol";
 import {YieldStreams} from "src/YieldStreams.sol";
+import {TestCommon} from "./common/TestCommon.sol";
 
-contract YieldStreamsFactoryTest is Test {
+contract YieldStreamsFactoryTest is TestCommon {
     YieldStreamsFactory public factory;
     MockERC20 public asset;
     IERC4626 public vault;
@@ -46,15 +46,13 @@ contract YieldStreamsFactoryTest is Test {
         assertEq(address(deployed.vault()), address(vault), "vault");
 
         // open yield stream to confirm correcntess
-        asset.mint(address(this), 1 ether);
-        asset.approve(address(vault), 1 ether);
-        uint256 shares = vault.deposit(1 ether, address(this));
-        vault.approve(address(deployed), shares);
-        address receiver = address(0x02);
+        uint256 shares = _depositToVaultAndApprove(vault, alice, address(deployed), 1000);
 
-        deployed.open(address(this), receiver, shares, 0);
+        vm.prank(alice);
+        deployed.open(alice, bob, shares, 0);
 
         assertEq(vault.balanceOf(address(deployed)), shares, "stream shares");
+        assertEq(vault.balanceOf(alice), 0, "alice's shares");
     }
 
     function test_create_emitsEvent() public {

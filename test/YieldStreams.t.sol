@@ -16,6 +16,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 
 import {TestCommon} from "./common/TestCommon.sol";
+import {NFTHolderMock} from "./mock/NFTHolderMock.sol";
 import {YieldStreams} from "src/YieldStreams.sol";
 import "src/common/CommonErrors.sol";
 
@@ -147,6 +148,29 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.receiverTotalShares(carol), shares, "receiver shares");
         assertEq(ys.receiverTotalPrincipal(carol), principal, "receiver total principal");
         assertEq(ys.receiverPrincipal(carol, 1), principal, "receiver principal");
+    }
+
+    function test_open_failsIfOwnerIsContractAndDoesNotImplementIERC721Receiver() public {
+        uint256 principal = 1e18;
+        uint256 shares = _depositToVaultAndApprove(alice, principal);
+
+        vm.expectRevert(ERC721.TransferToNonERC721ReceiverImplementer.selector);
+
+        vm.prank(alice);
+        ys.open(address(this), bob, shares, 0);
+    }
+
+    function test_open_worksIfOwnerIsContractAndImplementsIERC721Receiver() public {
+        uint256 principal = 1e18;
+        uint256 shares = _depositToVaultAndApprove(alice, principal);
+
+        NFTHolderMock receiver = new NFTHolderMock();
+
+        vm.prank(alice);
+        ys.open(address(receiver), bob, shares, 0);
+
+        assertEq(ys.ownerOf(1), address(receiver), "owner of token");
+        assertEq(ys.balanceOf(address(receiver)), 1, "nft balance of receiver");
     }
 
     function test_open_emitsEvent() public {

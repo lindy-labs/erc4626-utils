@@ -19,7 +19,6 @@ import {CommonErrors} from "./common/CommonErrors.sol";
  * It leverages the ERC4626 standard for tokenized vault interactions, assuming that these tokens appreciate over time, generating yield for their holders.
  */
 // TODO: update docs
-// TODO: update events
 // TODO: safe mint
 // TODO: add approved claimers
 contract YieldStreams is ERC721, Multicall {
@@ -720,7 +719,7 @@ contract YieldStreams is ERC721, Multicall {
             // id's are not going to overflow
             streamId = nextStreamId++;
 
-            _mint(_owner, streamId);
+            _safeMint(_owner, streamId);
             streamIdToReceiver[streamId] = _receiver;
 
             // not realistic to overflow
