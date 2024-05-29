@@ -18,6 +18,10 @@ import {CommonErrors} from "./common/CommonErrors.sol";
  * This approach enables users to create, top-up, transfer, and close yield streams as well as facilitating the flow of yield from appreciating assets to designated beneficiaries (receivers).
  * It leverages the ERC4626 standard for tokenized vault interactions, assuming that these tokens appreciate over time, generating yield for their holders.
  */
+// TODO: update docs
+// TODO: update events
+// TODO: safe mint
+// TODO: add approved claimers
 contract YieldStreams is ERC721, Multicall {
     using CommonErrors for uint256;
     using CommonErrors for address;
@@ -27,25 +31,52 @@ contract YieldStreams is ERC721, Multicall {
     /**
      * @notice Emitted when a new yield stream is opened between a streamer and a receiver.
      * @param streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
-     * @param streamer The address of the streamer who opened the yield stream.
+     * @param owner The address of the streamer who opened the yield stream.
      * @param receiver The address of the receiver for the yield stream.
      * @param shares The number of shares allocated to the new yield stream.
      * @param principal The principal amount in asset units, i.e. the value of the shares at the time of opening the stream.
      */
     event StreamOpened(
-        uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+        address caller,
+        address indexed owner,
+        address indexed receiver,
+        uint256 indexed streamId,
+        uint256 shares,
+        uint256 principal
     );
 
     /**
      * @notice Emitted when more shares are added to an existing yield stream.
      * @param streamId The unique identifier of the yield stream (ERC721 token) to which shares are added.
-     * @param streamer The address of the streamer who added the shares to the yield stream.
+     * @param owner The address of the streamer who added the shares to the yield stream.
      * @param receiver The address of the receiver for the yield stream.
      * @param shares The number of additional shares added to the yield stream.
      * @param principal The principal amount in asset units, i.e. the value of the shares at the time of the addition.
      */
     event StreamToppedUp(
-        uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
+        address caller,
+        address indexed owner,
+        address indexed receiver,
+        uint256 indexed streamId,
+        uint256 shares,
+        uint256 principal
+    );
+
+    /**
+     * @notice Emitted when a yield stream is closed, returning the remaining shares to the streamer.
+     * @param streamId The unique identifier of the yield stream that is being closed, represented by an ERC721 token.
+     * @param owner The address of the streamer who is closing the yield stream.
+     * @param receiver The address of the receiver for the yield stream.
+     * @param shares The number of shares returned to the streamer upon closing the yield stream.
+     * @param principal The principal amount in asset units, i.e. the value of the shares at the time of closing the stream.
+     */
+    event StreamClosed(
+        address caller,
+        address indexed owner,
+        address indexed receiver,
+        uint256 indexed streamId,
+        uint256 shares,
+        uint256 principal
     );
 
     /**
@@ -58,18 +89,6 @@ contract YieldStreams is ERC721, Multicall {
      */
     event YieldClaimed(
         address indexed receiver, address indexed claimedTo, uint256 assetsClaimed, uint256 sharesClaimed
-    );
-
-    /**
-     * @notice Emitted when a yield stream is closed, returning the remaining shares to the streamer.
-     * @param streamId The unique identifier of the yield stream that is being closed, represented by an ERC721 token.
-     * @param streamer The address of the streamer who is closing the yield stream.
-     * @param receiver The address of the receiver for the yield stream.
-     * @param shares The number of shares returned to the streamer upon closing the yield stream.
-     * @param principal The principal amount in asset units, i.e. the value of the shares at the time of closing the stream.
-     */
-    event StreamClosed(
-        uint256 indexed streamId, address indexed streamer, address indexed receiver, uint256 shares, uint256 principal
     );
 
     // Errors
@@ -553,11 +572,12 @@ contract YieldStreams is ERC721, Multicall {
         delete streamIdToReceiver[_streamId];
         delete receiverPrincipal[receiver][_streamId];
 
+        // TODO: address this if possible
         // possible to underflow because of rounding errors
         receiverTotalPrincipal[receiver] -= principal;
         receiverTotalShares[receiver] -= shares;
 
-        emit StreamClosed(_streamId, msg.sender, receiver, shares, principal);
+        emit StreamClosed(msg.sender, owner, receiver, _streamId, shares, principal);
 
         _vaultTransferTo(owner, shares);
     }
@@ -709,7 +729,7 @@ contract YieldStreams is ERC721, Multicall {
             receiverPrincipal[_receiver][streamId] = _principal;
         }
 
-        emit StreamOpened(streamId, msg.sender, _receiver, _shares, _principal);
+        emit StreamOpened(msg.sender, _owner, _receiver, streamId, _shares, _principal);
     }
 
     // accounting logic for opening multiple streams
@@ -758,7 +778,7 @@ contract YieldStreams is ERC721, Multicall {
             receiverPrincipal[_receiver][_streamId] += _principal;
         }
 
-        emit StreamToppedUp(_streamId, msg.sender, _receiver, _shares, _principal);
+        emit StreamToppedUp(msg.sender, _ownerOf(_streamId), _receiver, _streamId, _shares, _principal);
     }
 
     function _previewClose(uint256 _streamId, address _receiver)
