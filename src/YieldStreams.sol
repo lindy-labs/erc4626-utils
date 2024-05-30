@@ -13,14 +13,30 @@ import {CommonErrors} from "./common/CommonErrors.sol";
 
 /**
  * @title YieldStreams
- * @dev Implements a yield streaming system where streams are represented as ERC721 tokens and uses ERC4626 vaults for yield generation.
- * Each yield stream is uniquely identified by an ERC721 token, allowing for transparent tracking and management of individual streams.
- * This approach enables users to create, top-up, transfer, and close yield streams as well as facilitating the flow of yield from appreciating assets to designated beneficiaries (receivers).
+ * @notice Implements a yield streaming system where streams are represented as ERC721 tokens and uses ERC4626 vaults for yield generation.
+ * @dev Each yield stream is uniquely identified by an ERC721 token, allowing for transparent tracking and management of individual streams.
+ * This contract enables users to create, top-up, transfer, and close yield streams, as well as facilitating the flow of yield from appreciating assets to designated beneficiaries (receivers).
  * It leverages the ERC4626 standard for tokenized vault interactions, assuming that these tokens appreciate over time, generating yield for their holders.
+ *
+ * ## Key Features
+ * - **Stream Management:** Allows users to open, top-up, transfer, and close yield streams represented by ERC721 tokens.
+ * - **Yield Generation:** Utilizes ERC4626 vaults for generating yield on deposited assets.
+ * - **Ownership and Transferability:** Uses ERC721 standard for ownership and transferability of yield streams.
+ * - **Multicall Support:** Supports batched execution of multiple functions in a single transaction for gas optimization and convenience.
+ *
+ * ## External Integrations
+ * - **ERC4626 Vault:** Manages the underlying asset and generates yield.
+ * - **ERC20 Token:** Acts as the underlying asset for the ERC4626 vault.
+ *
+ * ## Security Considerations
+ * - **Input Validation:** Ensures all input parameters are valid and within acceptable ranges.
+ * - **Ownership and Transferability:** Uses ERC721 standard to ensure only approved operators can manage yield streams.
+ * - **Use of Safe Libraries:** Utilizes SafeTransferLib and other safety libraries to prevent overflows and other potential issues.
+ * - **Non-Upgradeable:** The contract is designed to be non-upgradeable to simplify security and maintainability.
+ *
+ * ## Usage
+ * Users can open and manage yield streams using both direct interactions and ERC20 permit-based approvals. Each stream is represented as an ERC721 token, enabling easy tracking and management of individual investments. The contract also supports multicall functionality, allowing users to execute multiple operations in a single transaction for enhanced efficiency.
  */
-// TODO: update docs
-// TODO: safe mint
-// TODO: add approved claimers
 contract YieldStreams is ERC721, Multicall {
     using CommonErrors for uint256;
     using CommonErrors for address;
@@ -29,11 +45,12 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Emitted when a new yield stream is opened between a streamer and a receiver.
-     * @param streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
-     * @param owner The address of the streamer who opened the yield stream.
+     * @param caller The address of the caller who initiated the stream opening.
+     * @param owner The address that owns the ERC721 token representing the yield stream.
      * @param receiver The address of the receiver for the yield stream.
+     * @param streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      * @param shares The number of shares allocated to the new yield stream.
-     * @param principal The principal amount in asset units, i.e. the value of the shares at the time of opening the stream.
+     * @param principal The principal amount in asset units, i.e., the value of the shares at the time of opening the stream.
      */
     event StreamOpened(
         address caller,
@@ -46,11 +63,12 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Emitted when more shares are added to an existing yield stream.
-     * @param streamId The unique identifier of the yield stream (ERC721 token) to which shares are added.
-     * @param owner The address of the streamer who added the shares to the yield stream.
+     * @param caller The address of the caller who initiated the top-up.
+     * @param owner The address that owns the ERC721 token representing the yield stream.
      * @param receiver The address of the receiver for the yield stream.
+     * @param streamId The unique identifier of the yield stream (ERC721 token) to which shares are added.
      * @param shares The number of additional shares added to the yield stream.
-     * @param principal The principal amount in asset units, i.e. the value of the shares at the time of the addition.
+     * @param principal The principal amount in asset units, i.e., the value of the shares at the time of the addition.
      */
     event StreamToppedUp(
         address caller,
@@ -63,11 +81,12 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Emitted when a yield stream is closed, returning the remaining shares to the streamer.
-     * @param streamId The unique identifier of the yield stream that is being closed, represented by an ERC721 token.
-     * @param owner The address of the streamer who is closing the yield stream.
+     * @param caller The address of the caller who initiated the stream closure.
+     * @param owner The address that owns the ERC721 token representing the yield stream.
      * @param receiver The address of the receiver for the yield stream.
-     * @param shares The number of shares returned to the streamer upon closing the yield stream.
-     * @param principal The principal amount in asset units, i.e. the value of the shares at the time of closing the stream.
+     * @param streamId The unique identifier of the yield stream that is being closed, represented by an ERC721 token.
+     * @param shares The number of shares returned to the owner upon closing the yield stream.
+     * @param principal The principal amount in asset units, i.e., the value of the shares at the time of closing the stream.
      */
     event StreamClosed(
         address caller,
@@ -80,7 +99,6 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Emitted when the yield generated from a stream is claimed by the receiver and transferred to a specified address.
-     * Either assetsClaimed or sharesClaimed will be non-zero depending on the type of yield claimed.
      * @param receiver The address of the receiver for the yield stream.
      * @param claimedTo The address where the claimed yield is sent.
      * @param assetsClaimed The total amount of assets claimed as realized yield, set to zero if yield is claimed in shares.
@@ -103,16 +121,34 @@ contract YieldStreams is ERC721, Multicall {
     /// @notice the underlying ERC20 asset of the ERC4626 vault
     IERC20 public immutable asset;
 
-    /// @notice receiver addresses to the total shares amount allocated to their streams
+    /**
+     * @notice Mapping of receiver addresses to the total shares amount allocated to their streams.
+     * @dev This mapping tracks the total number of shares allocated to each receiver across all their yield streams.
+     */
     mapping(address => uint256) public receiverTotalShares;
-    /// @notice receiver addresses to the total principal amount allocated to their streams
+
+    /**
+     * @notice Mapping of receiver addresses to the total principal amount allocated to their streams.
+     * @dev This mapping tracks the total principal amount allocated to each receiver across all their yield streams, expressed in asset units.
+     */
     mapping(address => uint256) public receiverTotalPrincipal;
-    /// @notice receiver addresses to the principal amount allocated to each stream (receiver => (streamId => principal))
+
+    /**
+     * @notice Mapping of receiver addresses to the principal amount allocated to each stream.
+     * @dev This mapping tracks the principal amount allocated to each yield stream for a given receiver, represented as (receiver => (streamId => principal)).
+     */
     mapping(address => mapping(uint256 => uint256)) public receiverPrincipal;
-    /// @notice stream ID to receiver address
+
+    /**
+     * @notice Mapping of stream ID to receiver address.
+     * @dev This mapping tracks the receiver address associated with each yield stream, identified by the ERC721 token ID.
+     */
     mapping(uint256 => address) public streamIdToReceiver;
 
-    /// @notice identifier of the next stream to be opened (ERC721 token ID)
+    /**
+     * @notice Identifier of the next stream to be opened (ERC721 token ID).
+     * @dev This variable holds the identifier for the next yield stream to be opened, ensuring unique ERC721 token IDs for each stream.
+     */
     uint256 public nextStreamId = 1;
 
     // ERC721 name and symbol
@@ -120,9 +156,9 @@ contract YieldStreams is ERC721, Multicall {
     string private symbol_;
 
     /**
-     * @notice Creates a new YieldStreams contract, initializing the ERC721 token with custom names and setting the vault address.
-     * @dev The constructor initializes an ERC721 token with a dynamic name and symbol derived from the underlying vault's characteristics.
-     * @param _vault Address of the ERC4626 vault
+     * @notice Initializes the YieldStreams contract by setting up the ERC721 token with custom names and linking it to the specified ERC4626 vault.
+     * @dev The constructor initializes the ERC721 token's name and symbol based on the underlying vault's characteristics. It also sets up the vault and asset references, and grants maximum approval for the vault to manage the asset.
+     * @param _vault The address of the ERC4626 vault that will be used for yield generation. This vault manages the underlying asset and facilitates yield generation through its tokenized structure.
      */
     constructor(IERC4626 _vault) {
         address(_vault).revertIfZero();
@@ -157,20 +193,24 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Opens a new yield stream between the caller (streamer) and a receiver, represented by an ERC721 token.
-     * The streamer allocates a specified number of ERC4626 shares to the stream, which are used to generate yield for the receiver.
-     * Yield is defined as the difference between the current value of the shares in asset units and the value of the shares at the time of opening the stream (principal).
-     * @dev When a new stream is opened, an ERC721 token is minted to the streamer, uniquely identifying the stream.
-     * This token represents the ownership of the yield stream (and principal allocated to it) and can be held, transferred, or utilized in other contracts.
-     * The function calculates the principal amount based on the shares provided, updating the total principal allocated to the receiver.
-     * If the receiver is in debt (where the total value of their streams is less than the allocated principal),
-     * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
-     * Emits an Open event upon successful stream creation.
+     * @dev When a new stream is opened, an ERC721 token is minted to the specified owner address, uniquely identifying the stream.
+     * This token represents the ownership of the yield stream and can be held, transferred, or utilized in other contracts.
+     * The function calculates the principal amount based on the shares provided and updates the total principal allocated to the receiver.
+     * If the receiver is in debt (where the total value of their streams is less than the allocated principal), the function checks if the new shares would cause an immediate loss exceeding the specified tolerance.
      *
+     * @param _owner The address that will own the ERC721 token representing the yield stream. If the owner is a contract, it must implement IERC721Receiver-onERC721Received.
      * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of shares to allocate to the new yield stream.
-     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
-     * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
+     *
+     * Requirements:
+     * - The `_owner` address must not be the zero address.
+     * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
+     * - The `_shares` amount must be greater than zero.
+     * - The new shares allocated to the receiver must not cause the streamer's tolerated loss, due to the receiver's existing debt, to be exceeded.
+     *
+     * Emits a {StreamOpened} event upon successful stream creation.
      */
     function open(address _owner, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         public
@@ -186,12 +226,18 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Provides a preview of the shares that would be allocated upon opening a new yield stream and reverts if the operation would fail.
+     * @notice Provides a preview of the principal amount based on the shares to be allocated and verifies if the receiver's existing debt would cause an immediate loss exceeding the specified tolerance.
+     * @dev This function checks if the operation to open a new yield stream would exceed the specified loss tolerance for the streamer by considering the receiver's existing debt.
      *
-     * @param _receiver The address of the receiver.
+     * @param _receiver The address of the receiver for the yield stream.
      * @param _shares The number of shares to allocate to the new yield stream.
-     * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
-     * @return principal The principal amount in asset units (ie shares value at open)
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
+     * @return principal The principal amount in asset units, i.e., the value of the shares at the time of opening the stream.
+     *
+     * Requirements:
+     * - The `_receiver` address must not be the zero address.
+     * - The `_shares` amount must be greater than zero.
+     * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
      */
     function previewOpen(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         public
@@ -204,21 +250,29 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Opens a new yield stream with ERC4626 vault shares for a specified receiver using ERC4626 permit for setting the allowance.
+     * @notice Opens a new yield stream for a specified receiver using ERC4626 permit for setting the allowance.
      * @dev This function allows opening of a new yield stream without requiring a separate approval transaction, by utilizing the "permit" functionality.
      * It enables a seamless user experience by allowing approval and stream creation in a single transaction.
-     * The function mints a new ERC721 token to represent the yield stream, assigning ownership to the streamer.
-     * Emits an Open event upon successful stream creation.
+     * The function mints a new ERC721 token to represent the yield stream, assigning ownership to the specified owner.
      *
+     * @param _owner The address that will own the ERC721 token representing the yield stream. If the owner is a contract, it must implement IERC721Receiver-onERC721Received.
      * @param _receiver The address of the receiver for the yield stream.
-     * @param _shares The number of ERC4626 vault shares to allocate to the new yield stream. These shares are transferred from the streamer to the contract as part of the stream setup.
-     * @param _maxLossOnOpenTolerance The maximum loss percentage that the streamer is willing to tolerate upon opening the yield stream.
+     * @param _shares The number of ERC4626 vault shares to allocate to the new yield stream.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
-     * This token encapsulates the stream's details and ownership, enabling further interactions and management.
+     *
+     * Requirements:
+     * - The `_owner` address must not be the zero address.
+     * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
+     * - The `_shares` amount must be greater than zero.
+     * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
+     * - The permit must be valid and signed correctly.
+     *
+     * Emits a {StreamOpened} event upon successful stream creation.
      */
     function openUsingPermit(
         address _owner,
@@ -236,21 +290,28 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers, represented by ERC721 tokens.
-     * The streamer allocates a specified number of ERC4626 shares to each stream, which are used to generate yield for the respective receivers.
-     * Only shares that are allocated to the streams are transferred to the contract.
-     * @dev When new streams are opened, ERC721 tokens are minted to the streamer, uniquely identifying each stream.
-     * These tokens represent the ownership of the yield streams (and principal allocated to them) and can be held, transferred, or utilized in other contracts.
-     * If a receiver is in debt (where the total value of their streams is less than the allocated principal),
-     * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
-     * Emits an Open event for each successful stream creation.
+     * @notice Opens multiple yield streams between a specified owner and multiple receivers, represented by ERC721 tokens.
+     * @dev When new streams are opened, ERC721 tokens are minted to the specified owner address, uniquely identifying each stream.
+     * These tokens represent the ownership of the yield streams and can be held, transferred, or utilized in other contracts.
+     * The function calculates the principal amount based on the shares provided and verifies if the receiver's existing debt would cause an immediate loss exceeding the specified tolerance.
+     * If a receiver is in debt, the new shares will share the existing loss proportionally.
      *
-     * @param _shares The total number of shares to allocate to yield streams.
+     * @param _owner The address that will own the ERC721 tokens representing the yield streams. If the owner is a contract, it must implement IERC721Receiver-onERC721Received.
+     * @param _shares The total number of shares to allocate to the yield streams.
      * @param _receivers The addresses of the receivers for the yield streams.
-     * @param _allocations The percentage of shares to allocate to each receiver.
-     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
-     * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening a stream.
+     * @param _allocations The percentage of shares to allocate to each receiver (in WAD format, e.g., 0.1e18 for 10%).
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening each stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
+     *
+     * Requirements:
+     * - The `_owner` address must not be the zero address.
+     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - The `_shares` amount must be greater than zero.
+     * - The lengths of `_receivers` and `_allocations` arrays must be equal and greater than zero.
+     * - The sum of `_allocations` must not exceed `1e18` (100% in WAD format).
+     * - The loss incurred by the new shares, due to each receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage for any receiver.
+     *
+     * Emits a {StreamOpened} event for each successful stream creation.
      */
     function openMultiple(
         address _owner,
@@ -271,21 +332,31 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers using ERC4626 permit for setting the allowance.
-     * Only shares that are allocated to the streams are transferred to the contract.
+     * @notice Opens multiple yield streams between a specified owner and multiple receivers using ERC4626 permit for setting the allowance.
      * @dev This function allows opening of multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
-     * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
-     * Emits an Open event for each successful stream creation.
+     * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the specified owner.
      *
-     * @param _shares The total number of shares to allocate to yield streams.
+     * @param _owner The address that will own the ERC721 tokens representing the yield streams. If the owner is a contract, it must implement IERC721Receiver-onERC721Received.
+     * @param _shares The total number of shares to allocate to the yield streams.
      * @param _receivers The addresses of the receivers for the yield streams.
-     * @param _allocations The percentage of shares to allocate to each receiver.
-     * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
+     * @param _allocations The percentage of shares to allocate to each receiver (in WAD format, e.g., 0.1e18 for 10%).
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening each stream (in WAD format, e.g., 0.01e18 for 1%).
      * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
+     *
+     * Requirements:
+     * - The `_owner` address must not be the zero address.
+     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - The `_shares` amount must be greater than zero.
+     * - The lengths of `_receivers` and `_allocations` arrays must be equal and greater than zero.
+     * - The sum of `_allocations` must not exceed `1e18` (100% in WAD format).
+     * - The loss incurred by the new shares, due to each receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage for any receiver.
+     * - The permit must be valid and signed correctly.
+     *
+     * Emits a {StreamOpened} event for each successful stream creation.
      */
     function openMultipleUsingPermit(
         address _owner,
@@ -304,23 +375,24 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Opens a new yield stream between the caller (streamer) and a receiver, represented by an ERC721 token.
-     * The streamer allocates a specified number of the vault's underlying ERC20 asset to the stream, representing the principal amount.
-     * This amount is then deposited to the ERC4626 vault to obtan the corresponding shares, which are used to generate yield for the receiver.
-     * Yield is defined as the difference between the current value of the shares in asset units and the value of the shares at the time of opening the stream (principal).
-     * @dev When a new stream is opened, an ERC721 token is minted to the streamer, uniquely identifying the stream.
-     * This token represents the ownership of the yield stream (and principal allocated to it) and can be held, transferred, or utilized in other contracts.
-     * The function calculates the principal amount based on the shares provided, updating the total principal allocated to the receiver.
-     * If the receiver is in debt (where the total value of their streams is less than the allocated principal),
-     * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
-     * Emits an Open event upon successful stream creation.
+     * @notice Opens a new yield stream between a specified owner and a receiver, represented by an ERC721 token.
+     * @dev The specified principal amount of the vault's underlying ERC20 asset is deposited to obtain corresponding shares,
+     * which are used to generate yield for the receiver. When a new stream is opened, an ERC721 token is minted to the specified owner address,
+     * uniquely identifying the stream. This token represents the ownership of the yield stream and can be held, transferred, or utilized in other contracts.
      *
+     * @param _owner The address that will own the ERC721 token representing the yield stream. If the owner is a contract, it must implement IERC721Receiver-onERC721Received.
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The principal amount in asset units to be allocated to the new yield stream.
-     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
-     * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
-     * This token encapsulates the stream's details and ownership, enabling further interactions and management.
+     *
+     * Requirements:
+     * - The `_owner` address must not be the zero address.
+     * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
+     * - The `_principal` amount must be greater than zero.
+     * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
+     *
+     * Emits a {StreamOpened} event upon successful stream creation.
      */
     function depositAndOpen(address _owner, address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
@@ -336,13 +408,19 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Provides a preview of the shares that would be allocated upon opening a new yield stream with the specified principal amount,
-     * and reverts if the operation would fail.
+     * @notice Provides a preview of the shares that would be allocated upon opening a new yield stream with the specified principal amount.
+     * @dev This function calculates the number of shares that would be obtained by depositing the given principal amount into the ERC4626 vault.
+     * It also checks if opening the stream would exceed the specified loss tolerance due to the receiver's existing debt.
      *
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The principal amount in asset units to be allocated to the new yield stream.
-     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return shares The estimated number of shares that would be allocated to the receiver upon opening the yield stream.
+     *
+     * Requirements:
+     * - The `_receiver` address must not be the zero address.
+     * - The `_principal` amount must be greater than zero.
+     * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
      */
     function previewDepositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
@@ -355,21 +433,31 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Opens a new yield stream with ERC4626 vault's underlying ERC20 asset for a specified receiver using ERC20 permit for setting the allowance.
+     * @notice Opens a new yield stream for a specified receiver using the vault's underlying ERC20 asset and ERC20 permit for setting the allowance.
      * @dev This function allows opening of a new yield stream without requiring a separate approval transaction, by utilizing the "permit" functionality.
      * It enables a seamless user experience by allowing approval and stream creation in a single transaction.
-     * The function mints a new ERC721 token to represent the yield stream, assigning ownership to the streamer.
-     * Emits an Open event upon successful stream creation.
+     * The function mints a new ERC721 token to represent the yield stream, assigning ownership to the specified owner.
+     * The specified principal amount of the vault's underlying ERC20 asset is deposited to obtain corresponding shares,
+     * which are used to generate yield for the receiver.
      *
+     * @param _owner The address that will own the ERC721 token representing the yield stream. If the owner is a contract, it must implement IERC721Receiver-onERC721Received.
      * @param _receiver The address of the receiver for the yield stream.
      * @param _principal The principal amount in asset units to be allocated to the new yield stream.
-     * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
-     * This token encapsulates the stream's details and ownership, enabling further interactions and management.
+     *
+     * Requirements:
+     * - The `_owner` address must not be the zero address.
+     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - The `_principal` amount must be greater than zero.
+     * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
+     * - The permit must be valid and signed correctly.
+     *
+     * Emits a {StreamOpened} event upon successful stream creation.
      */
     function depositAndOpenUsingPermit(
         address _owner,
@@ -381,28 +469,34 @@ contract YieldStreams is ERC721, Multicall {
         bytes32 r,
         bytes32 s
     ) external returns (uint256 streamId) {
-        IERC20Permit(vault.asset()).permit(msg.sender, address(this), _principal, _deadline, v, r, s);
+        IERC20Permit(address(vault.asset())).permit(msg.sender, address(this), _principal, _deadline, v, r, s);
 
         streamId = depositAndOpen(_owner, _receiver, _principal, _maxLossOnOpenTolerance);
     }
 
     /**
-     * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers, represented by ERC721 tokens.
-     * The streamer allocates a specified amount of the vault's underlying ERC20 asset to each stream, representing the principal amount.
+     * @notice Opens multiple yield streams between a specified owner and multiple receivers, represented by ERC721 tokens.
+     * @dev The streamer allocates a specified amount of the vault's underlying ERC20 asset to each stream, representing the principal amount.
      * This amount is then deposited to the ERC4626 vault to obtain the corresponding shares, which are used to generate yield for the respective receivers.
      * Any unallocated shares are returned to the streamer.
-     * @dev When new streams are opened, ERC721 tokens are minted to represent each stream, uniquely identifying them.
-     * These tokens represent the ownership of the yield streams (and principal allocated to them) and can be held, transferred, or utilized in other contracts.
-     * If a receiver is in debt (where the total value of their streams is less than the allocated principal),
-     * the function assesses if the new shares would incur an immediate loss exceeding the streamer's specified tolerance.
-     * Emits an Open event for each successful stream creation.
+     * The function mints new ERC721 tokens to represent each yield stream, assigning ownership to the specified owner.
      *
+     * @param _owner The address that will own the ERC721 tokens representing the yield streams. If the owner is a contract, it must implement IERC721Receiver-onERC721Received.
      * @param _principal The total principal amount in asset units to be allocated to new yield streams.
      * @param _receivers The addresses of the receivers for the yield streams.
-     * @param _allocations The percentage of shares to allocate to each receiver.
-     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream.
-     * This parameter is crucial if the receiver is in debt, affecting the feasibility of opening the stream.
+     * @param _allocations The percentage of shares to allocate to each receiver (in WAD format, e.g., 0.1e18 for 10%).
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening each stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
+     *
+     * Requirements:
+     * - The `_owner` address must not be the zero address.
+     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - The `_principal` amount must be greater than zero.
+     * - The lengths of `_receivers` and `_allocations` arrays must be equal and greater than zero.
+     * - The sum of `_allocations` must not exceed `1e18` (100% in WAD format).
+     * - The loss incurred by the new shares, due to each receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage for any receiver.
+     *
+     * Emits a {StreamOpened} event for each successful stream creation.
      */
     function depositAndOpenMultiple(
         address _owner,
@@ -424,21 +518,34 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Opens multiple yield streams between the caller (streamer) and multiple receivers using ERC20 permit for setting the allowance.
-     * Any unallocated shares are returned to the streamer.
-     * @dev This function allows opening of multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
-     * The function mints new ERC721 tokens to represent the yield streams, assigning ownership to the streamer.
-     * Emits an Open event for each successful stream creation.
+     * @notice Opens multiple yield streams for a specified owner and multiple receivers using the vault's underlying ERC20 asset and ERC20 permit for setting the allowance.
+     * @dev This function allows opening multiple yield streams without requiring separate approval transactions, by utilizing the "permit" functionality.
+     * It enables a seamless user experience by allowing approval and stream creation in a single transaction.
+     * The function mints new ERC721 tokens to represent each yield stream, assigning ownership to the specified owner.
+     * The specified principal amount of the vault's underlying ERC20 asset is deposited to obtain corresponding shares,
+     * which are used to generate yield for the respective receivers. Any unallocated shares are returned to the streamer.
      *
+     * @param _owner The address that will own the ERC721 tokens representing the yield streams. If the owner is a contract, it must implement IERC721Receiver-onERC721Received.
      * @param _principal The total principal amount in asset units to be allocated to new yield streams.
      * @param _receivers The addresses of the receivers for the yield streams.
-     * @param _allocations The percentage of shares to allocate to each receiver.
-     * @param _maxLossOnOpenTolerance The maximum loss percentage tolerated by the sender.
+     * @param _allocations The percentage of shares to allocate to each receiver (in WAD format, e.g., 0.1e18 for 10%).
+     * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening each stream (in WAD format, e.g., 0.01e18 for 1%).
      * @param _deadline The timestamp by which the permit must be used, ensuring the permit does not remain valid indefinitely.
      * @param v The recovery byte of the signature, a part of the permit approval process.
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
+     *
+     * Requirements:
+     * - The `_owner` address must not be the zero address.
+     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - The `_principal` amount must be greater than zero.
+     * - The lengths of `_receivers` and `_allocations` arrays must be equal and greater than zero.
+     * - The sum of `_allocations` must not exceed `1e18` (100% in WAD format).
+     * - The loss incurred by the new shares, due to each receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage for any receiver.
+     * - The permit must be valid and signed correctly.
+     *
+     * Emits a {StreamOpened} event for each successful stream creation.
      */
     function depositAndOpenMultipleUsingPermit(
         address _owner,
@@ -458,12 +565,18 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Adds additional shares to an existing yield stream, increasing the principal allocated to the receiver.
-     * @dev The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
-     * Emits a TopUp event upon successful addition of shares to the stream.
+     * @dev The function requires that the caller is either the owner or an approved operator of the ERC721 token associated with the yield stream.
+     * The specified number of shares are transferred from the owner's balance to the contract, and the corresponding principal amount is added to the yield stream.
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _shares The number of additional shares to be added to the yield stream.
      * @return principal The added principal amount in asset units.
+     *
+     * Requirements:
+     * - The `_shares` amount must be greater than zero.
+     * - The caller must be the owner or an approved operator of the specified `_streamId`.
+     *
+     * Emits a {StreamToppedUp} event upon successful addition of shares to the stream.
      */
     function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
         _shares.revertIfZero();
@@ -477,10 +590,10 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Adds additional shares to an existing yield stream, increasing the principal allocated to the receiver using ERC20 permit for token allowance.
-     * @dev It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
-     * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
-     * Emits a TopUp event upon successful addition of shares to the stream.
+     * @notice Adds additional shares to an existing yield stream using ERC20 permit for setting the allowance, increasing the principal allocated to the receiver.
+     * @dev The function requires that the caller is either the owner or an approved operator of the ERC721 token associated with the yield stream.
+     * It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
+     * The specified number of shares are transferred from the owner's balance to the contract, and the corresponding principal amount is added to the yield stream.
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _shares The number of additional shares to be added to the yield stream.
@@ -489,6 +602,13 @@ contract YieldStreams is ERC721, Multicall {
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return principal The added principal amount in asset units.
+     *
+     * Requirements:
+     * - The `_shares` amount must be greater than zero.
+     * - The caller must be the owner or an approved operator of the specified `_streamId`.
+     * - The permit must be valid and signed correctly.
+     *
+     * Emits a {StreamToppedUp} event upon successful addition of shares to the stream.
      */
     function topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 _deadline, uint8 v, bytes32 r, bytes32 s)
         external
@@ -501,12 +621,19 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Adds additional principal to an existing yield stream, increasing the principal allocated to the receiver.
-     * @dev The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
-     * Emits a TopUp event upon successful addition of shares to the stream.
+     * @dev The function requires that the caller is either the owner or an approved operator of the ERC721 token associated with the yield stream.
+     * The specified principal amount of the vault's underlying ERC20 asset is deposited to obtain the corresponding shares,
+     * which are then added to the yield stream.
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _principal The additional principal amount in asset units to be added to the yield stream.
      * @return shares The added number of shares to the yield stream.
+     *
+     * Requirements:
+     * - The `_principal` amount must be greater than zero.
+     * - The caller must be the owner or an approved operator of the specified `_streamId`.
+     *
+     * Emits a {StreamToppedUp} event upon successful addition of principal to the stream.
      */
     function depositAndTopUp(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
         _principal.revertIfZero();
@@ -518,10 +645,11 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Adds additional principal to an existing yield stream, increasing the principal allocated to the receiver using ERC20 permit for token allowance.
-     * @dev It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
-     * The function requires that the caller is the owner of the ERC721 token associated with the yield stream.
-     * Emits a TopUp event upon successful addition of shares to the stream.
+     * @notice Adds additional principal to an existing yield stream using ERC20 permit for setting the allowance, increasing the principal allocated to the receiver.
+     * @dev The function requires that the caller is either the owner or an approved operator of the ERC721 token associated with the yield stream.
+     * It uses the ERC20 permit function to approve the token transfer and top-up the yield stream in a single transaction.
+     * The specified principal amount of the vault's underlying ERC20 asset is deposited to obtain the corresponding shares,
+     * which are then added to the yield stream.
      *
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to be topped up.
      * @param _principal The additional principal amount in asset units to be added to the yield stream.
@@ -530,6 +658,13 @@ contract YieldStreams is ERC721, Multicall {
      * @param r The first 32 bytes of the signature, another component of the permit.
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return shares The added number of shares to the yield stream.
+     *
+     * Requirements:
+     * - The `_principal` amount must be greater than zero.
+     * - The caller must be the owner or an approved operator of the specified `_streamId`.
+     * - The permit must be valid and signed correctly.
+     *
+     * Emits a {StreamToppedUp} event upon successful addition of principal to the stream.
      */
     function depositAndTopUpUsingPermit(
         uint256 _streamId,
@@ -546,15 +681,19 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Closes an existing yield stream identified by the ERC721 token, returning the remaining shares to the streamer. Any outstanding yield is not automatically claimed.
-     * @dev This function allows the streamer to terminate an existing yield stream.
+     * @dev The function requires that the caller is either the owner or an approved operator of the ERC721 token associated with the yield stream.
      * Upon closure, the function calculates and returns the remaining shares to the streamer,
      * after which the ERC721 token representing the yield stream is burned to ensure it cannot be reused or transferred.
      * This action effectively removes the stream from the contract's tracking, settling any allocated principal and shares back to the streamer.
-     * Emits a Close event upon successful stream closure.
      *
-     * @param _streamId The unique identifier of the yield stream to be closed, represented by an ERC721 token. This token must be owned by the caller.
+     * @param _streamId The unique identifier of the yield stream to be closed, represented by an ERC721 token.
      * @return shares The number of shares returned to the streamer upon closing the yield stream.
      * This represents the balance of shares not attributed to generated yield, effectively the remaining principal.
+     *
+     * Requirements:
+     * - The caller must be the owner or an approved operator of the specified `_streamId`.
+     *
+     * Emits a {StreamClosed} event upon successful stream closure.
      */
     function close(uint256 _streamId) external returns (uint256 shares) {
         _checkApprovedOrOwner(_streamId);
@@ -586,7 +725,10 @@ contract YieldStreams is ERC721, Multicall {
      * @dev This function calculates and returns the number of shares that would be credited back to the streamer upon closing the stream.
      *
      * @param _streamId The unique identifier associated with an active yield stream.
-     * @return shares The estimated number of shares that would be returned to the streamer representing the principal in share terms.
+     * @return shares The estimated number of shares that would be returned to the streamer, representing the principal in share terms.
+     *
+     * Requirements:
+     * - The `_streamId` must represent an existing yield stream.
      */
     function previewClose(uint256 _streamId) public view returns (uint256 shares) {
         (shares,) = _previewClose(_streamId, streamIdToReceiver[_streamId]);
@@ -597,11 +739,15 @@ contract YieldStreams is ERC721, Multicall {
      * @dev This function calculates the total yield generated for the caller across all yield streams where they are the designated receiver.
      * This function redeems the shares representing the generated yield, converting them into the underlying asset and transferring the resultant assets to a specified address.
      * Note that this function operates on all yield streams associated with the caller, aggregating the total yield available.
-     * Reverts if the total yield is zero or the receiver is currently in debt (i.e., the value of their allocated shares is less than the principal).
-     * Emits a ClaimYield event upon successful yield claim.
      *
      * @param _sendTo The address where the claimed yield should be sent. This can be the caller's address or another specified recipient.
      * @return assets The total amount of assets claimed as realized yield from all streams.
+     *
+     * Requirements:
+     * - The `_sendTo` address must not be the zero address.
+     * - The caller must have yield available to claim.
+     *
+     * Emits a {YieldClaimed} event with `sharesClaimed` set to `0` upon successful yield claim, as the yield is claimed in the form of assets.
      */
     function claimYield(address _sendTo) external returns (uint256 assets) {
         _sendTo.revertIfZero();
@@ -620,6 +766,9 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _receiver The address of the receiver for whom the yield preview is being requested.
      * @return yield The estimated amount of yield available to be claimed by the receiver, expressed in the underlying asset units.
+     *
+     * Requirements:
+     * - The `_receiver` address must not be the zero address.
      */
     function previewClaimYield(address _receiver) public view returns (uint256 yield) {
         uint256 principal = receiverTotalPrincipal[_receiver];
@@ -636,13 +785,18 @@ contract YieldStreams is ERC721, Multicall {
      * @dev This function enables receivers to claim the yield generated across all their yield streams in the form of shares, rather than the underlying asset.
      * It calculates the total yield in shares that the caller can claim, then transfers those shares to the specified address.
      * The operation is based on the difference between the current share value allocated to the receiver and the total principal in share terms.
-     * Emits a ClaimYieldInShares event upon successful yield claim.
      *
      * Unlike `claimYield`, which redeems shares for the underlying asset and transfers the assets, `claimYieldInShares` directly transfers the shares,
      * keeping the yield within the same asset class. This might be preferable for receivers looking to maintain their position in the underlying vault.
      *
      * @param _sendTo The address where the claimed yield shares should be sent. This can be the caller's address or another specified recipient.
      * @return yieldInShares The total number of shares claimed as yield and transferred to the `_sendTo` address.
+     *
+     * Requirements:
+     * - The `_sendTo` address must not be the zero address.
+     * - The caller must have yield available to claim.
+     *
+     * Emits a {YieldClaimed} event with `assetsClaimed` set to `0` upon successful yield claim, as the yield is claimed in the form of shares.
      */
     function claimYieldInShares(address _sendTo) external returns (uint256 yieldInShares) {
         _sendTo.revertIfZero();
@@ -661,6 +815,9 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _receiver The address of the receiver for whom the yield preview is being requested.
      * @return yieldInShares The estimated amount of yield available to be claimed by the receiver, expressed in shares.
+     *
+     * Requirements:
+     * - The `_receiver` address must not be the zero address.
      */
     function previewClaimYieldInShares(address _receiver) public view returns (uint256 yieldInShares) {
         uint256 principalInShares = vault.convertToShares(receiverTotalPrincipal[_receiver]);
@@ -674,13 +831,16 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Calculates the total debt for a given receiver across all yield streams.
-     * @dev  The debt is calculated by comparing the current total asset value of the receiver's shares against the total principal.
+     * @dev The debt is calculated by comparing the current total asset value of the receiver's shares against the total principal.
      * If the asset value exceeds the principal, indicating a positive yield, the function returns zero, as there is no debt.
      * Conversely, if the principal exceeds the asset value, the function returns the difference, quantifying the receiver's debt.
      *
      * @param _receiver The address of the receiver for whom the debt is being calculated.
      * @return debt The total calculated debt for the receiver, expressed in the underlying asset units.
      * If the receiver has no debt or a positive yield, the function returns zero.
+     *
+     * Requirements:
+     * - The `_receiver` address must not be the zero address.
      */
     function debtFor(address _receiver) public view returns (uint256) {
         uint256 principal = receiverTotalPrincipal[_receiver];
@@ -692,14 +852,29 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Retrieves the principal amount allocated to a specific yield stream, identified by the ERC721 token ID.
+     * @dev This function returns the principal amount in asset units that was initially allocated to the yield stream.
      *
      * @param _streamId The unique identifier of the yield stream for which the principal is being queried, represented by an ERC721 token.
      * @return principal The principal amount in asset units initially allocated to the yield stream identified by the given token ID.
+     *
+     * Requirements:
+     * - The `_streamId` must represent an existing yield stream.
      */
     function getPrincipal(uint256 _streamId) external view returns (uint256) {
         return _getPrincipal(_streamId, streamIdToReceiver[_streamId]);
     }
 
+    /**
+     * @notice Checks if the specified account is the owner or an approved operator of the given yield stream.
+     * @dev This function verifies ownership or approval status for the specified ERC721 token representing the yield stream.
+     *
+     * @param _account The address of the account to check for ownership or approval.
+     * @param _streamId The unique identifier of the yield stream (ERC721 token) to check.
+     * @return bool True if the `_account` is the owner or an approved operator of the `_streamId`, false otherwise.
+     *
+     * Requirements:
+     * - The `_streamId` must represent an existing yield stream.
+     */
     function isOwnerOrApproved(address _account, uint256 _streamId) external view returns (bool) {
         return _isApprovedOrOwner(_account, _streamId);
     }
