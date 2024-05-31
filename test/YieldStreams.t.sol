@@ -54,7 +54,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 assetsClaimed,
         uint256 sharesClaimed
     );
-    event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
+    event TokenCIDUpdated(address indexed caller, address indexed owner, uint256 indexed tokenId, string cid);
 
     YieldStreams public ys;
     MockERC4626 public vault;
@@ -2305,6 +2305,7 @@ contract YieldStreamsTest is TestCommon {
         ys.ownerOf(streamId);
         assertEq(ys.balanceOf(alice), 0, "alice's nfts after");
         assertEq(ys.receiverPrincipal(bob, streamId), 0, "receiver principal");
+        assertEq(ys.streamIdToReceiver(streamId), address(0), "streamIdToReceiver mapping not updated");
 
         assertApproxEqAbs(sharesReturned, shares - yieldValueInShares, 1, "shares returned");
         assertEq(vault.balanceOf(alice), sharesReturned, "alice's shares");
@@ -2604,14 +2605,116 @@ contract YieldStreamsTest is TestCommon {
 
     /*
      * --------------------
+     *     #setTokenCID
+     * --------------------
+     */
+
+    function test_setTokenCID_failsIfTokenDoesntExist() public {
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
+        ys.setTokenCID(1, "123");
+    }
+
+    function test_setTokenCID_failsIfCIDIsEmptyString() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        vm.expectRevert(YieldStreams.EmptyCID.selector);
+        vm.prank(alice);
+        ys.setTokenCID(streamId, "");
+    }
+
+    function test_setTokenCID_storesExpectedValue() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        assertEq(ys.tokenCIDs(streamId), "", "token CID not empty");
+
+        // hello world CID
+        string memory cid = "QmYwAPJzv5CZsnAzt8auVZRn1pfejwPXv8rVd5NdKAX3io";
+
+        vm.prank(alice);
+        ys.setTokenCID(streamId, cid);
+
+        assertEq(ys.tokenCIDs(streamId), cid, "CID not set");
+    }
+
+    function test_setTokenCID_overwritesExistingValue() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        // set initial CID
+        vm.startPrank(alice);
+        ys.setTokenCID(streamId, "123");
+
+        // image example
+        string memory newCid = "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDd7N8UMLrZw2";
+
+        // update CID
+        ys.setTokenCID(streamId, newCid);
+
+        assertEq(ys.tokenCIDs(streamId), newCid, "CID not updated");
+    }
+
+    function test_setTokenCID_failsIfCallerIsNotApproved() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
+        vm.prank(carol);
+        ys.setTokenCID(streamId, "123");
+    }
+
+    function test_setTokenCID_worksIfCallerIsApproved() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        vm.prank(alice);
+        ys.approve(carol, streamId);
+
+        vm.prank(carol);
+        ys.setTokenCID(streamId, "123");
+
+        assertEq(ys.tokenCIDs(streamId), "123", "CID not set");
+    }
+
+    function test_setTokenCID_emitsEvent() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        string memory cid = "QmYwAPJzv5CZsnAzt8auVZRn1pfejwPXv8rVd5NdKAX3io";
+
+        vm.prank(alice);
+        ys.approve(carol, streamId);
+
+        vm.expectEmit(true, true, true, true);
+        emit TokenCIDUpdated(carol, alice, streamId, cid);
+
+        vm.prank(carol);
+        ys.setTokenCID(streamId, cid);
+    }
+
+    /*
+     * --------------------
      *      #tokenUri
      * --------------------
      */
 
-    function test_tokenUri_returnsEmptyString() public {
+    function test_tokenUri_failsIfTokenDoesntExist() public {
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
+        ys.tokenURI(1);
+    }
+
+    function test_tokenUri_returnsEmptyStringIfCIDIsntSet() public {
         _openYieldStream(alice, bob, 1e18);
 
         assertEq(ys.tokenURI(1), "", "token uri not empty");
+    }
+
+    function test_tokenUri_returnsCorrectCID() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        // hello world CID
+        string memory cid = "QmYwAPJzv5CZsnAzt8auVZRn1pfejwPXv8rVd5NdKAX3io";
+
+        vm.prank(alice);
+        ys.setTokenCID(streamId, cid);
+
+        assertEq(ys.tokenCIDs(streamId), cid, "CID not set");
+        assertEq(ys.tokenURI(streamId), string.concat("ipfs://", cid), "token URI");
     }
 
     /*

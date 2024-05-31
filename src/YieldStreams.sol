@@ -112,6 +112,7 @@ contract YieldStreams is ERC721, Multicall {
         uint256 assetsClaimed,
         uint256 sharesClaimed
     );
+    event TokenCIDUpdated(address indexed caller, address indexed owner, uint256 indexed tokenId, string cid);
 
     // Errors
     error OwnerZeroAddress();
@@ -121,6 +122,7 @@ contract YieldStreams is ERC721, Multicall {
     error InputArrayEmpty();
     error InputArraysLengthMismatch(uint256 length1, uint256 length2);
     error NotReceiverNorApprovedClaimer();
+    error EmptyCID();
 
     /// @notice the underlying ERC4626 vault
     IERC4626 public immutable vault;
@@ -152,6 +154,9 @@ contract YieldStreams is ERC721, Multicall {
     mapping(uint256 => address) public streamIdToReceiver;
 
     mapping(address => mapping(address => bool)) public receiverToApprovedClaimers;
+
+    // Mapping from token ID to CID
+    mapping(uint256 => string) public tokenCIDs;
 
     /**
      * @notice Identifier of the next stream to be opened (ERC721 token ID).
@@ -196,8 +201,36 @@ contract YieldStreams is ERC721, Multicall {
         return symbol_;
     }
 
-    /// @inheritdoc ERC721
-    function tokenURI(uint256 id) public view override returns (string memory) {}
+    /**
+     * @notice Returns the URI for a given token ID.
+     * @dev This function returns the full IPFS URL based on the CID stored for the token.
+     * @param _tokenId The ID of the token to get the URI for.
+     * @return The full IPFS URL for the token's metadata.
+     */
+    function tokenURI(uint256 _tokenId) public view override returns (string memory) {
+        if (!_exists(_tokenId)) revert ERC721.TokenDoesNotExist();
+
+        string memory cid = tokenCIDs[_tokenId];
+
+        if (bytes(cid).length == 0) return "";
+
+        return string(abi.encodePacked("ipfs://", cid));
+    }
+    /**
+     * @notice Sets the CID for a given token ID.
+     * @dev This function allows the owner or an approved operator to set the CID for a token.
+     * @param _tokenId The ID of the token to set the CID for.
+     * @param _cid The CID to be associated with the token.
+     */
+
+    function setTokenCID(uint256 _tokenId, string memory _cid) public {
+        bytes(_cid).length.revertIfZero(EmptyCID.selector);
+        _checkOwnerOrApproved(_tokenId);
+
+        tokenCIDs[_tokenId] = _cid;
+
+        emit TokenCIDUpdated(msg.sender, _ownerOf(_tokenId), _tokenId, _cid);
+    }
 
     /**
      * @notice Opens a new yield stream between the caller (streamer) and a receiver, represented by an ERC721 token.
