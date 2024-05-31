@@ -272,7 +272,8 @@ contract YieldStreamsTest is TestCommon {
         vm.prank(bob);
         uint256 streamId = ys.open(bob, carol, bobsShares, toleratedLossOnOpenPct);
 
-        uint256 principalWithLoss = vault.convertToAssets(ys.previewClose(2));
+        (uint256 sharesToReturn,) = ys.previewClose(2);
+        uint256 principalWithLoss = vault.convertToAssets(sharesToReturn);
         uint256 bobsLossOnOpen = bobsPrincipal - principalWithLoss;
 
         assertTrue(principalWithLoss < bobsPrincipal, "principal with loss > bobs deposit");
@@ -847,7 +848,8 @@ contract YieldStreamsTest is TestCommon {
         vm.prank(bob);
         uint256 streamId = ys.depositAndOpen(bob, carol, bobsPrincipal, toleratedLossOnOpenPct);
 
-        uint256 principalWithLoss = vault.convertToAssets(ys.previewClose(2));
+        (uint256 sharesToReturn,) = ys.previewClose(2);
+        uint256 principalWithLoss = vault.convertToAssets(sharesToReturn);
         uint256 bobsLossOnOpen = bobsPrincipal - principalWithLoss;
 
         assertTrue(principalWithLoss < bobsPrincipal, "principal with loss > bobs deposit");
@@ -2473,8 +2475,11 @@ contract YieldStreamsTest is TestCommon {
      * --------------------
      */
 
-    function test_previewClose_returns0IfTokenDoesntExist() public {
-        assertEq(ys.previewClose(1), 0);
+    function test_previewClose_returnsZerosIfTokenDoesntExist() public {
+        (uint256 shares, uint256 principal) = ys.previewClose(1);
+
+        assertEq(shares, 0, "shares");
+        assertEq(principal, 0, "principal");
     }
 
     function test_previewClose_returnsSharesToBeReturned() public {
@@ -2488,7 +2493,10 @@ contract YieldStreamsTest is TestCommon {
         uint256 yield = ys.previewClaimYield(bob);
         uint256 yieldValueInShares = vault.convertToShares(yield);
 
-        assertApproxEqAbs(ys.previewClose(streamId), shares - yieldValueInShares, 1, "shares returned");
+        (uint256 sharesToReturn, uint256 valueInAssets) = ys.previewClose(streamId);
+
+        assertApproxEqAbs(sharesToReturn, shares - yieldValueInShares, 1, "shares returned");
+        assertEq(valueInAssets, principal, "principal");
     }
 
     /*
