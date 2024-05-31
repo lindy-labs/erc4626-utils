@@ -121,7 +121,6 @@ rule integrity_of_open(address _receiver, uint256 _shares, uint256 _maxLossOnOpe
     require _maxLossOnOpenTolerance <= 10 ^ 17; // 10%
     uint256 initialStreamerShareBalance = vault.balanceOf(e.msg.sender);
     require initialStreamerShareBalance >= _shares;
-    uint256 initialThisShareBalance = vault.balanceOf(currentContract);
 
     // Get the initial state
     uint256 receiverTotalSharesBefore = receiverTotalShares(_receiver);
@@ -163,7 +162,6 @@ rule integrity_of_openUsingPermit(
     require _maxLossOnOpenTolerance <= 10 ^ 17; // 10%
     uint256 initialStreamerShareBalance = vault.balanceOf(e.msg.sender);
     require initialStreamerShareBalance >= _shares;
-    uint256 initialThisShareBalance = vault.balanceOf(currentContract);
 
     // Get the initial state
     uint256 receiverTotalSharesBefore = receiverTotalShares(_receiver);
@@ -207,12 +205,19 @@ rule integrity_of_openMultiple(address alice, address bob, address carol, uint25
     uint256 shares = vault.deposit(e, initFunds, currentContract);
     asset.approve(e, currentContract, shares);
     uint256 bobTotalPrincipalBefore = receiverTotalPrincipal(bob);
+    uint256 carolTotalPrincipalBefore = receiverTotalPrincipal(carol);
 
     // Call the openMultiple function
     address[] receivers = [bob, carol];
 
-    openMultiple(e, shares, receivers, allocations, 0);
+    require nextStreamId() == 1;
 
+    uint256[] streamIds = openMultiple(e, shares, receivers, allocations, 0);
+
+    // Postconditions
+    assert streamIds.length == 1;
+    assert streamIds[0] == 1;
+    assert nextStreamId() == 2;
     // Check the state updates
     uint256 aliceSharesAfter = vault.balanceOf(alice);
     uint256 contractSharesAfter = vault.balanceOf(currentContract);
@@ -228,6 +233,9 @@ rule integrity_of_openMultiple(address alice, address bob, address carol, uint25
 
     assert to_mathint(receiverTotalPrincipal(bob)) == bobTotalPrincipalBefore + initFunds &&
      receiverPrincipal(bob, 1) == initFunds;
+
+    assert to_mathint(receiverTotalPrincipal(carol)) == carolTotalPrincipalBefore + initFunds &&
+     receiverPrincipal(carol, 1) == initFunds;
 }
 
 /**
@@ -252,6 +260,7 @@ rule integrity_of_openMultipleUsingPermit(address alice, address bob, address ca
     uint256 initialAliceShares = vault.balanceOf(alice);
     uint256 initialContractShares = vault.balanceOf(currentContract);
     uint256 bobTotalPrincipalBefore = receiverTotalPrincipal(bob);
+    uint256 carolTotalPrincipalBefore = receiverTotalPrincipal(carol);
 
     require asset.allowance(alice, currentContract) >= initFunds;
     require asset.balanceOf(alice) >= initFunds;
@@ -287,7 +296,9 @@ rule integrity_of_openMultipleUsingPermit(address alice, address bob, address ca
 
     assert to_mathint(receiverTotalPrincipal(bob)) == bobTotalPrincipalBefore + initFunds &&
      receiverPrincipal(bob, 1) == initFunds;
-}
+
+    assert to_mathint(receiverTotalPrincipal(carol)) == carolTotalPrincipalBefore + initFunds &&
+     receiverPrincipal(carol, 1) == initFunds;}
 
 
 /**
@@ -484,7 +495,6 @@ rule integrity_of_topUp(uint256 _streamId, uint256 _shares) {
     env e;
     address streamer = e.msg.sender;
     address receiver = streamIdToReceiver(_streamId);
-    uint256 principal;
 
     // Preconditions
     require _shares > 0;
@@ -497,7 +507,7 @@ rule integrity_of_topUp(uint256 _streamId, uint256 _shares) {
     uint256 initialPrincipal = receiverPrincipal(receiver, _streamId);
 
     // Call the `topUp` function
-    principal = topUp(e, _streamId, _shares);
+    uint256 principal = topUp(e, _streamId, _shares);
 
     // Postconditions
     assert to_mathint(receiverTotalShares(receiver)) == initialTotalShares + _shares;
@@ -515,7 +525,6 @@ rule integrity_of_topUpPermit(uint256 _streamId, uint256 _shares, uint256 deadli
     env e;
     address streamer = e.msg.sender;
     address receiver = streamIdToReceiver(_streamId);
-    uint256 principal;
 
     // Preconditions
     require _shares > 0;
@@ -529,7 +538,7 @@ rule integrity_of_topUpPermit(uint256 _streamId, uint256 _shares, uint256 deadli
     //uint256 initialStreamerShareBalance = vault.balanceOf(streamer);
 
     // Call the `topUp` function
-    principal = topUpUsingPermit(e, _streamId, _shares, deadline, v, r, s);
+    uint256 principal = topUpUsingPermit(e, _streamId, _shares, deadline, v, r, s);
 
     // Postconditions
     assert to_mathint(receiverTotalShares(receiver)) == initialTotalShares + _shares;
@@ -548,7 +557,6 @@ rule integrity_of_depositAndTopUp(uint256 _streamId, uint256 _principal) {
     env e;
     address streamer = e.msg.sender;
     address receiver = streamIdToReceiver(_streamId);
-    uint256 shares;
 
     // Preconditions
     require _principal > 0;
@@ -561,7 +569,7 @@ rule integrity_of_depositAndTopUp(uint256 _streamId, uint256 _principal) {
     uint256 initialPrincipal = receiverPrincipal(receiver, _streamId);
 
     // Call the `depositAndTopUp` function
-    shares = depositAndTopUp(e, _streamId, _principal);
+    uint256 shares = depositAndTopUp(e, _streamId, _principal);
 
     // Postconditions
     assert to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares;
@@ -579,7 +587,6 @@ rule integrity_of_depositAndTopUpPermit(uint256 _streamId, uint256 _principal, u
     env e;
     address streamer = e.msg.sender;
     address receiver = streamIdToReceiver(_streamId);
-    uint256 shares;
 
     // Preconditions
     require _principal > 0;
@@ -592,7 +599,7 @@ rule integrity_of_depositAndTopUpPermit(uint256 _streamId, uint256 _principal, u
     uint256 initialPrincipal = receiverPrincipal(receiver, _streamId);
 
     // Call the `depositAndTopUpUsingPermit` function
-    shares = depositAndTopUpUsingPermit(e, _streamId, _principal, deadline, v, r, s);
+    uint256 shares = depositAndTopUpUsingPermit(e, _streamId, _principal, deadline, v, r, s);
 
     // Postconditions
     assert to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares;
@@ -609,7 +616,6 @@ rule integrity_of_close(uint256 _streamId, address streamer, address receiver) {
     env e;
     require streamer == e.msg.sender;
     require receiver == streamIdToReceiver(_streamId);
-    uint256 principal;
 
     // Preconditions
     require ownerOf(_streamId) == streamer;
