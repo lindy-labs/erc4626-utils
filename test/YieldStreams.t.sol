@@ -48,7 +48,11 @@ contract YieldStreamsTest is TestCommon {
         uint256 principal
     );
     event YieldClaimed(
-        address indexed receiver, address indexed claimedTo, uint256 assetsClaimed, uint256 sharesClaimed
+        address indexed caller,
+        address indexed receiver,
+        address indexed claimedTo,
+        uint256 assetsClaimed,
+        uint256 sharesClaimed
     );
     event LossTolerancePercentUpdated(address indexed owner, uint256 oldValue, uint256 newValue);
 
@@ -1771,7 +1775,7 @@ contract YieldStreamsTest is TestCommon {
         vm.stopPrank();
 
         vm.prank(bob);
-        ys.claimYield(bob);
+        ys.claimYield(bob, bob);
 
         assertEq(ys.previewClaimYield(bob), 0, "bob's yield");
         assertApproxEqAbs(asset.balanceOf(bob), principal / 2, 1, "bob's assets");
@@ -1800,7 +1804,7 @@ contract YieldStreamsTest is TestCommon {
         _generateYield(0.5e18);
 
         vm.prank(bob);
-        ys.claimYield(bob);
+        ys.claimYield(bob, bob);
 
         assertEq(vault.balanceOf(alice), 0, "alice's shares");
         assertApproxEqAbs(asset.balanceOf(bob), principal / 2, 1, "bob's assets");
@@ -1815,7 +1819,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 previewClaim = ys.previewClaimYield(bob);
 
         vm.prank(bob);
-        uint256 claimed = ys.claimYield(carol);
+        uint256 claimed = ys.claimYield(bob, carol);
 
         assertApproxEqAbs(claimed, previewClaim, 1, "claimed");
 
@@ -1830,16 +1834,19 @@ contract YieldStreamsTest is TestCommon {
         // add 50% profit to vault
         _generateYield(0.5e18);
 
+        vm.prank(bob);
+        ys.approveClaimer(dave);
+
         uint256 yield = ys.previewClaimYield(bob);
 
         vm.expectEmit(true, true, true, true);
-        emit YieldClaimed(bob, carol, yield, 0);
+        emit YieldClaimed(dave, bob, carol, yield, 0);
 
-        vm.prank(bob);
-        ys.claimYield(carol);
+        vm.prank(dave);
+        ys.claimYield(bob, carol);
     }
 
-    function test_claimYield_revertsToAddressIs0() public {
+    function test_claimYield_revertsIfSendToIsZeroAddress() public {
         _openYieldStream(alice, bob, 1e18);
 
         // add 50% profit to vault
@@ -1847,7 +1854,77 @@ contract YieldStreamsTest is TestCommon {
 
         vm.expectRevert(CommonErrors.ZeroAddress.selector);
         vm.prank(bob);
-        ys.claimYield(address(0));
+        ys.claimYield(bob, address(0));
+    }
+
+    function test_claimYield_revertsIfReceiverIsZeroAddress() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        vm.expectRevert(YieldStreams.ReceiverZeroAddress.selector);
+        vm.prank(bob);
+        ys.claimYield(address(0), bob);
+    }
+
+    function test_claimYield_revertsIfCallerIsNotApprovedClaimer() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        vm.expectRevert(YieldStreams.NotReceiverNorApprovedClaimer.selector);
+        vm.prank(carol);
+        ys.claimYield(bob, carol);
+    }
+
+    function test_claimYield_worksForApprovedClaimer() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        vm.prank(bob);
+        ys.approveClaimer(carol);
+
+        assertTrue(ys.isApprovedClaimer(carol, bob), "claimer not approved");
+
+        vm.prank(carol);
+        uint256 claimed = ys.claimYield(bob, carol);
+
+        assertEq(asset.balanceOf(carol), claimed, "claimed");
+    }
+
+    function test_claimYield_approvedClaimerCanBeRevoked() public {
+        // bob is receiver and carol is approved claimer
+        _openYieldStream(alice, bob, 1e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        // approve
+        vm.prank(bob);
+        ys.approveClaimer(carol);
+
+        assertTrue(ys.isApprovedClaimer(carol, bob), "claimer not approved");
+
+        // claim once
+        vm.prank(carol);
+        ys.claimYield(bob, carol);
+
+        // add more yield
+        _generateYield(0.5e18);
+
+        // revoke approval
+        vm.prank(bob);
+        ys.revokeClaimer(carol);
+
+        assertFalse(ys.isApprovedClaimer(carol, bob), "claimer approval not revoked");
+
+        vm.expectRevert(YieldStreams.NotReceiverNorApprovedClaimer.selector);
+        vm.prank(carol);
+        ys.claimYield(bob, carol);
     }
 
     function test_claimYield_revertsIfNoYield() public {
@@ -1857,7 +1934,7 @@ contract YieldStreamsTest is TestCommon {
 
         vm.expectRevert(YieldStreams.NoYieldToClaim.selector);
         vm.prank(bob);
-        ys.claimYield(bob);
+        ys.claimYield(bob, bob);
     }
 
     function test_claimYield_revertsIfVaultMadeLosses() public {
@@ -1868,7 +1945,7 @@ contract YieldStreamsTest is TestCommon {
 
         vm.expectRevert(YieldStreams.NoYieldToClaim.selector);
         vm.prank(bob);
-        ys.claimYield(bob);
+        ys.claimYield(bob, bob);
     }
 
     function test_claimYield_claimsFromAllOpenedStreams() public {
@@ -1884,7 +1961,7 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.previewClaimYield(carol), alicesPrincipal + bobsPrincipal, "carol's yield");
 
         vm.prank(carol);
-        uint256 claimed = ys.claimYield(carol);
+        uint256 claimed = ys.claimYield(carol, carol);
 
         assertEq(claimed, alicesPrincipal + bobsPrincipal, "claimed");
         assertEq(asset.balanceOf(carol), claimed, "carol's assets");
@@ -1907,7 +1984,7 @@ contract YieldStreamsTest is TestCommon {
         ys.close(2);
 
         vm.prank(carol);
-        uint256 claimed = ys.claimYield(carol);
+        uint256 claimed = ys.claimYield(carol, carol);
 
         assertEq(claimed, alicesPrincipal + bobsPrincipal, "claimed");
         assertEq(asset.balanceOf(carol), claimed, "carol's assets");
@@ -1915,7 +1992,7 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.previewClaimYield(carol), 0, "carols's yield");
     }
 
-    function test_claimYield_worksIfAllStreamsAreClosed() public {
+    function test_claimYield_yieldRemainsToBeClaimedAfterAllStreamsAreClosed() public {
         uint256 alicesPrincipal = 1e18;
         _openYieldStream(alice, carol, alicesPrincipal);
 
@@ -1933,7 +2010,7 @@ contract YieldStreamsTest is TestCommon {
         ys.close(1);
 
         vm.prank(carol);
-        uint256 claimed = ys.claimYield(carol);
+        uint256 claimed = ys.claimYield(carol, carol);
 
         assertApproxEqAbs(claimed, (alicesPrincipal + bobsPrincipal) / 2, 1, "claimed");
         assertEq(asset.balanceOf(carol), claimed, "carol's assets");
@@ -1957,7 +2034,7 @@ contract YieldStreamsTest is TestCommon {
         uint256 expectedYieldInShares = vault.convertToShares(principal / 2);
 
         vm.prank(bob);
-        uint256 claimed = ys.claimYieldInShares(bob);
+        uint256 claimed = ys.claimYieldInShares(bob, bob);
 
         assertApproxEqAbs(claimed, expectedYieldInShares, 1, "bob's shares");
         assertEq(asset.balanceOf(bob), 0, "bob's assets");
@@ -1975,29 +2052,13 @@ contract YieldStreamsTest is TestCommon {
         uint256 expectedYieldInShares = vault.convertToShares(principal / 2);
 
         vm.prank(bob);
-        uint256 claimed = ys.claimYieldInShares(carol);
+        uint256 claimed = ys.claimYieldInShares(bob, carol);
 
         assertApproxEqAbs(claimed, expectedYieldInShares, 1, "claimed yield in shares");
         assertEq(vault.balanceOf(alice), 0, "alice's shares");
         assertEq(vault.balanceOf(bob), 0, "bob's shares");
         assertApproxEqAbs(vault.balanceOf(carol), claimed, 1, "carol's shares");
         assertEq(asset.balanceOf(carol), 0, "carol's assets");
-    }
-
-    function test_claimYieldInShares_emitsEvent() public {
-        uint256 principal = 3e18;
-        _openYieldStream(alice, bob, principal);
-
-        // add 50% profit to vault
-        _generateYield(0.5e18);
-
-        uint256 expectedYieldInShares = ys.previewClaimYieldInShares(bob);
-
-        vm.expectEmit(true, true, true, true);
-        emit YieldClaimed(bob, carol, 0, expectedYieldInShares);
-
-        vm.prank(bob);
-        ys.claimYieldInShares(carol);
     }
 
     function test_claimYieldInShares_revertsToAddressIs0() public {
@@ -2008,7 +2069,95 @@ contract YieldStreamsTest is TestCommon {
 
         vm.expectRevert(CommonErrors.ZeroAddress.selector);
         vm.prank(bob);
-        ys.claimYieldInShares(address(0));
+        ys.claimYieldInShares(bob, address(0));
+    }
+
+    function test_claimYieldInShares_reversIfReceiverIsZeroAddress() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        vm.expectRevert(YieldStreams.ReceiverZeroAddress.selector);
+        vm.prank(bob);
+        ys.claimYieldInShares(address(0), bob);
+    }
+
+    function test_claimYieldInShares_revertsIfCallerIsNotApprovedClaimer() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        vm.expectRevert(YieldStreams.NotReceiverNorApprovedClaimer.selector);
+        vm.prank(carol);
+        ys.claimYieldInShares(bob, carol);
+    }
+
+    function test_claimYieldInSharesd_worksForApprovedClaimer() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        vm.prank(bob);
+        ys.approveClaimer(carol);
+
+        assertTrue(ys.isApprovedClaimer(carol, bob), "claimer not approved");
+
+        vm.prank(carol);
+        uint256 claimed = ys.claimYieldInShares(bob, carol);
+
+        assertEq(vault.balanceOf(carol), claimed, "claimed");
+    }
+
+    function test_claimYieldInShares_approvedClaimerCanBeRevoked() public {
+        // bob is receiver and carol is approved claimer
+        _openYieldStream(alice, bob, 1e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        // approve
+        vm.prank(bob);
+        ys.approveClaimer(carol);
+
+        assertTrue(ys.isApprovedClaimer(carol, bob), "claimer not approved");
+
+        // claim once
+        vm.prank(carol);
+        ys.claimYieldInShares(bob, carol);
+
+        // add more yield
+        _generateYield(0.5e18);
+
+        // revoke approval
+        vm.prank(bob);
+        ys.revokeClaimer(carol);
+
+        assertFalse(ys.isApprovedClaimer(carol, bob), "claimer approval not revoked");
+
+        vm.expectRevert(YieldStreams.NotReceiverNorApprovedClaimer.selector);
+        vm.prank(carol);
+        ys.claimYieldInShares(bob, carol);
+    }
+
+    function test_claimYieldInShares_emitsEvent() public {
+        _openYieldStream(alice, bob, 3e18);
+
+        // add 50% profit to vault
+        _generateYield(0.5e18);
+
+        uint256 expectedYieldInShares = ys.previewClaimYieldInShares(bob);
+
+        vm.prank(bob);
+        ys.approveClaimer(dave);
+
+        vm.expectEmit(true, true, true, true);
+        emit YieldClaimed(dave, bob, carol, 0, expectedYieldInShares);
+
+        vm.prank(dave);
+        ys.claimYieldInShares(bob, carol);
     }
 
     function test_claimYieldInShares_revertsIfNoYield() public {
@@ -2018,7 +2167,7 @@ contract YieldStreamsTest is TestCommon {
 
         vm.expectRevert(YieldStreams.NoYieldToClaim.selector);
         vm.prank(bob);
-        ys.claimYieldInShares(bob);
+        ys.claimYieldInShares(bob, bob);
     }
 
     function test_claimYieldInShares_revertsIfVaultMadeLosses() public {
@@ -2029,7 +2178,7 @@ contract YieldStreamsTest is TestCommon {
 
         vm.expectRevert(YieldStreams.NoYieldToClaim.selector);
         vm.prank(bob);
-        ys.claimYield(bob);
+        ys.claimYieldInShares(bob, bob);
     }
 
     function test_claimYieldInShares_claimsFromAllOpenedStreams() public {
@@ -2047,7 +2196,7 @@ contract YieldStreamsTest is TestCommon {
         assertApproxEqAbs(ys.previewClaimYieldInShares(carol), expectedYieldInShares, 1, "carol's yield");
 
         vm.prank(carol);
-        uint256 claimed = ys.claimYieldInShares(carol);
+        uint256 claimed = ys.claimYieldInShares(carol, carol);
 
         assertApproxEqAbs(claimed, expectedYieldInShares, 1, "claimed");
         assertEq(vault.balanceOf(carol), claimed, "carol's shares");
@@ -2071,7 +2220,7 @@ contract YieldStreamsTest is TestCommon {
         ys.close(2);
 
         vm.prank(carol);
-        uint256 claimed = ys.claimYieldInShares(carol);
+        uint256 claimed = ys.claimYieldInShares(carol, carol);
 
         assertEq(claimed, expectedYieldInShares, "claimed");
         assertEq(asset.balanceOf(carol), 0, "carol's assets");
@@ -2079,7 +2228,7 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.previewClaimYield(carol), 0, "carols's yield");
     }
 
-    function test_claimYieldInShares_worksIfAllStreamsAreClosed() public {
+    function test_claimYieldInShares_yieldRemainsToBeClaimedAfterAllStreamsAreClosed() public {
         uint256 alicesPrincipal = 1e18;
         _openYieldStream(alice, carol, alicesPrincipal);
         uint256 bobsPrincipal = 3e18;
@@ -2097,7 +2246,7 @@ contract YieldStreamsTest is TestCommon {
         ys.close(1);
 
         vm.prank(carol);
-        uint256 claimed = ys.claimYieldInShares(carol);
+        uint256 claimed = ys.claimYieldInShares(carol, carol);
 
         assertApproxEqAbs(claimed, expectedYieldInShares, 1, "claimed");
         assertEq(asset.balanceOf(carol), 0, "carol's assets");
@@ -2226,7 +2375,7 @@ contract YieldStreamsTest is TestCommon {
         assertEq(asset.balanceOf(bob), 0, "bob's assets after profit");
 
         vm.prank(bob);
-        ys.claimYield(bob);
+        ys.claimYield(bob, bob);
 
         assertApproxEqAbs(asset.balanceOf(bob), expectedYield, 1, "bob's assets after claim");
 
@@ -2344,6 +2493,54 @@ contract YieldStreamsTest is TestCommon {
 
     /*
      * --------------------
+     *   #approveClaimer
+     * --------------------
+     */
+
+    function test_approveClaimer_failsForZeroAddress() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
+        vm.prank(bob);
+        ys.approveClaimer(address(0));
+    }
+
+    function test_approveClaimer_canBeCalledByReceiverOnly() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        // alice is not receiver of the stream
+        vm.prank(alice);
+        ys.approveClaimer(carol);
+
+        assertFalse(ys.isApprovedClaimer(carol, bob), "claimer not approved");
+    }
+
+    /*
+     * --------------------
+     *   #revokeClaimer
+     * --------------------
+     */
+
+    function test_revokeClaimer_failsForZeroAddress() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        vm.expectRevert(CommonErrors.ZeroAddress.selector);
+        vm.prank(bob);
+        ys.revokeClaimer(address(0));
+    }
+
+    function test_revokeClaimer_canBeCalledByReceiverOnly() public {
+        _openYieldStream(alice, bob, 1e18);
+
+        // alice is not receiver of the stream
+        vm.prank(alice);
+        ys.revokeClaimer(carol);
+
+        assertFalse(ys.isApprovedClaimer(carol, bob), "claimer not approved");
+    }
+
+    /*
+     * --------------------
      *     #multicall
      * --------------------
      */
@@ -2456,7 +2653,7 @@ contract YieldStreamsTest is TestCommon {
             assertEq(ys.previewClaimYield(receivers[i]), expectedYield, "yield");
 
             vm.prank(receivers[i]);
-            ys.claimYield(receivers[i]);
+            ys.claimYield(receivers[i], receivers[i]);
 
             assertApproxEqAbs(asset.balanceOf(receivers[i]), expectedYield, 3, "assets");
             assertEq(ys.previewClaimYield(receivers[i]), 0, "yield");

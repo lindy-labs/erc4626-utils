@@ -99,13 +99,18 @@ contract YieldStreams is ERC721, Multicall {
 
     /**
      * @notice Emitted when the yield generated from a stream is claimed by the receiver and transferred to a specified address.
+     * @param caller The address of the caller who initiated the yield claim.
      * @param receiver The address of the receiver for the yield stream.
      * @param claimedTo The address where the claimed yield is sent.
      * @param assetsClaimed The total amount of assets claimed as realized yield, set to zero if yield is claimed in shares.
      * @param sharesClaimed The total amount of shares claimed as realized yield, set to zero if yield is claimed in assets.
      */
     event YieldClaimed(
-        address indexed receiver, address indexed claimedTo, uint256 assetsClaimed, uint256 sharesClaimed
+        address indexed caller,
+        address indexed receiver,
+        address indexed claimedTo,
+        uint256 assetsClaimed,
+        uint256 sharesClaimed
     );
 
     // Errors
@@ -115,6 +120,7 @@ contract YieldStreams is ERC721, Multicall {
     error LossToleranceExceeded();
     error InputArrayEmpty();
     error InputArraysLengthMismatch(uint256 length1, uint256 length2);
+    error NotReceiverNorApprovedClaimer();
 
     /// @notice the underlying ERC4626 vault
     IERC4626 public immutable vault;
@@ -144,6 +150,8 @@ contract YieldStreams is ERC721, Multicall {
      * @dev This mapping tracks the receiver address associated with each yield stream, identified by the ERC721 token ID.
      */
     mapping(uint256 => address) public streamIdToReceiver;
+
+    mapping(address => mapping(address => bool)) public receiverToApprovedClaimers;
 
     /**
      * @notice Identifier of the next stream to be opened (ERC721 token ID).
@@ -580,7 +588,7 @@ contract YieldStreams is ERC721, Multicall {
      */
     function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
         _shares.revertIfZero();
-        _checkApprovedOrOwner(_streamId);
+        _checkOwnerOrApproved(_streamId);
 
         principal = vault.convertToAssets(_shares);
 
@@ -637,7 +645,7 @@ contract YieldStreams is ERC721, Multicall {
      */
     function depositAndTopUp(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
         _principal.revertIfZero();
-        _checkApprovedOrOwner(_streamId);
+        _checkOwnerOrApproved(_streamId);
 
         shares = _depositToVault(_ownerOf(_streamId), _principal);
 
@@ -696,7 +704,7 @@ contract YieldStreams is ERC721, Multicall {
      * Emits a {StreamClosed} event upon successful stream closure.
      */
     function close(uint256 _streamId) external returns (uint256 shares) {
-        _checkApprovedOrOwner(_streamId);
+        _checkOwnerOrApproved(_streamId);
 
         address owner = _ownerOf(_streamId);
         address receiver = streamIdToReceiver[_streamId];
@@ -735,28 +743,29 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Claims the generated yield from all streams for the caller and transfers it to a specified address.
-     * @dev This function calculates the total yield generated for the caller across all yield streams where they are the designated receiver.
+     * @notice Claims the generated yield from all streams for the specified receiver and transfers it to a specified address.
+     * @dev This function calculates the total yield generated for the receiver across all yield streams where they are the designated receiver.
      * This function redeems the shares representing the generated yield, converting them into the underlying asset and transferring the resultant assets to a specified address.
-     * Note that this function operates on all yield streams associated with the caller, aggregating the total yield available.
+     * Note that this function operates on all yield streams associated with the receiver, aggregating the total yield available.
      *
+     * @param _receiver The address of the receiver for whom the yield is being claimed.
      * @param _sendTo The address where the claimed yield should be sent. This can be the caller's address or another specified recipient.
      * @return assets The total amount of assets claimed as realized yield from all streams.
      *
      * Requirements:
      * - The `_sendTo` address must not be the zero address.
-     * - The caller must have yield available to claim.
+     * - The caller must be an approved claimer or the receiver.
      *
      * Emits a {YieldClaimed} event with `sharesClaimed` set to `0` upon successful yield claim, as the yield is claimed in the form of assets.
      */
-    function claimYield(address _sendTo) external returns (uint256 assets) {
+    function claimYield(address _receiver, address _sendTo) external returns (uint256 assets) {
         _sendTo.revertIfZero();
 
-        uint256 yieldInShares = _claim(msg.sender);
+        uint256 yieldInShares = _claim(_receiver);
 
         assets = vault.redeem(yieldInShares, _sendTo, address(this));
 
-        emit YieldClaimed(msg.sender, _sendTo, assets, 0);
+        emit YieldClaimed(msg.sender, _receiver, _sendTo, assets, 0);
     }
 
     /**
@@ -781,7 +790,7 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     /**
-     * @notice Claims the generated yield from all streams for the caller and transfers it in shares to a specified address.
+     * @notice Claims the generated yield from all streams for the specified receiver and transfers it in shares to a specified address.
      * @dev This function enables receivers to claim the yield generated across all their yield streams in the form of shares, rather than the underlying asset.
      * It calculates the total yield in shares that the caller can claim, then transfers those shares to the specified address.
      * The operation is based on the difference between the current share value allocated to the receiver and the total principal in share terms.
@@ -789,21 +798,22 @@ contract YieldStreams is ERC721, Multicall {
      * Unlike `claimYield`, which redeems shares for the underlying asset and transfers the assets, `claimYieldInShares` directly transfers the shares,
      * keeping the yield within the same asset class. This might be preferable for receivers looking to maintain their position in the underlying vault.
      *
+     * @param _receiver The address of the receiver for whom the yield is being claimed.
      * @param _sendTo The address where the claimed yield shares should be sent. This can be the caller's address or another specified recipient.
      * @return yieldInShares The total number of shares claimed as yield and transferred to the `_sendTo` address.
      *
      * Requirements:
      * - The `_sendTo` address must not be the zero address.
-     * - The caller must have yield available to claim.
+     * - The caller must be an approved claimer or the receiver.
      *
      * Emits a {YieldClaimed} event with `assetsClaimed` set to `0` upon successful yield claim, as the yield is claimed in the form of shares.
      */
-    function claimYieldInShares(address _sendTo) external returns (uint256 yieldInShares) {
+    function claimYieldInShares(address _receiver, address _sendTo) external returns (uint256 yieldInShares) {
         _sendTo.revertIfZero();
 
-        yieldInShares = _claim(msg.sender);
+        yieldInShares = _claim(_receiver);
 
-        emit YieldClaimed(msg.sender, _sendTo, 0, yieldInShares);
+        emit YieldClaimed(msg.sender, _receiver, _sendTo, 0, yieldInShares);
 
         _vaultTransferTo(_sendTo, yieldInShares);
     }
@@ -827,6 +837,53 @@ contract YieldStreams is ERC721, Multicall {
             // if vault made a loss, there is no yield
             yieldInShares = shares > principalInShares ? shares - principalInShares : 0;
         }
+    }
+
+    /**
+     * @notice Approves a specified address to claim yield on behalf of the receiver.
+     * @dev This function allows the receiver to authorize another address to claim yield from their streams.
+     *
+     * @param _claimer The address to be approved for claiming yield on behalf of the receiver.
+     *
+     * Requirements:
+     * - The caller must be the receiver authorizing the claim.
+     */
+    function approveClaimer(address _claimer) external {
+        _claimer.revertIfZero();
+
+        receiverToApprovedClaimers[msg.sender][_claimer] = true;
+    }
+
+    /**
+     * @notice Revokes approval for a specified address to claim yield on behalf of the receiver.
+     * @dev This function allows the receiver to revoke the authorization for another address to claim yield from their streams.
+     *
+     * @param _claimer The address whose approval is being revoked.
+     *
+     * Requirements:
+     * - The caller must be the receiver revoking the claim approval.
+     */
+    function revokeClaimer(address _claimer) external {
+        _claimer.revertIfZero();
+
+        receiverToApprovedClaimers[msg.sender][_claimer] = false;
+    }
+
+    /**
+     * @notice Checks if a specified address is an approved claimer for the receiver.
+     * @dev This function verifies if the specified address is authorized to claim yield on behalf of the receiver.
+     *
+     * @param _claimer The address to check for claim approval.
+     * @param _receiver The address of the receiver whose approval is being checked.
+     * @return bool True if the `_claimer` is approved to claim yield on behalf of the `_receiver`, false otherwise.
+     *
+     * Requirements:
+     * - The `_receiver` address must not be the zero address.
+     */
+    function isApprovedClaimer(address _claimer, address _receiver) public view returns (bool) {
+        if (_claimer == _receiver) return true;
+
+        return receiverToApprovedClaimers[_receiver][_claimer];
     }
 
     /**
@@ -977,6 +1034,9 @@ contract YieldStreams is ERC721, Multicall {
 
     // accounting logic for claiming yield
     function _claim(address _receiver) internal returns (uint256 yieldInShares) {
+        _receiver.revertIfZero(ReceiverZeroAddress.selector);
+        _checkReceiverOrApprovedClaimer(msg.sender, _receiver);
+
         yieldInShares = previewClaimYieldInShares(_receiver);
         yieldInShares.revertIfZero(NoYieldToClaim.selector);
 
@@ -1037,16 +1097,19 @@ contract YieldStreams is ERC721, Multicall {
     }
 
     function _checkInputArraysLength(address[] memory _receivers, uint256[] memory _allocations) internal pure {
+        _receivers.length.revertIfZero(InputArrayEmpty.selector);
+
         if (_receivers.length != _allocations.length) {
             revert InputArraysLengthMismatch(_receivers.length, _allocations.length);
         }
-
-        // no need to check _allocations array because the first condition would be true
-        _receivers.length.revertIfZero(InputArrayEmpty.selector);
     }
 
-    function _checkApprovedOrOwner(uint256 _positionId) internal view {
+    function _checkOwnerOrApproved(uint256 _positionId) internal view {
         if (!_isApprovedOrOwner(msg.sender, _positionId)) revert ERC721.NotOwnerNorApproved();
+    }
+
+    function _checkReceiverOrApprovedClaimer(address _claimer, address _receiver) internal view {
+        if (!isApprovedClaimer(_claimer, _receiver)) revert NotReceiverNorApprovedClaimer();
     }
 
     function _vaultTransferFrom(address _from, uint256 _shares) internal {

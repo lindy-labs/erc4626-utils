@@ -57,7 +57,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(scEthYield.previewClaimYield(bob), expectedYield, 1, "yield before claim");
 
         vm.prank(bob);
-        scEthYield.claimYield(bob);
+        scEthYield.claimYield(bob, bob);
 
         assertEq(scEthYield.previewClaimYield(bob), 0, "yield not 0 after claim");
         assertEq(weth.balanceOf(bob), expectedYield, "bob's balance");
@@ -96,13 +96,13 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(scUsdcYield.previewClaimYield(carol), carolsExpectedYield, 1, "carol's yield before claim");
 
         vm.prank(bob);
-        scUsdcYield.claimYield(bob);
+        scUsdcYield.claimYield(bob, bob);
 
         assertEq(scUsdcYield.previewClaimYield(bob), 0, "bob's yield not 0 after claim");
         assertEq(usdc.balanceOf(bob), bobsExpectedYield, "bob's balance");
 
         vm.prank(carol);
-        scUsdcYield.claimYield(carol);
+        scUsdcYield.claimYield(carol, carol);
         assertEq(scUsdcYield.previewClaimYield(carol), 0, "carol's yield not 0 after claim");
         assertApproxEqAbs(usdc.balanceOf(carol), carolsExpectedYield, 1, "carol's balance");
 
@@ -131,7 +131,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(scEthYield.previewClaimYield(bob), expectedYield, 1, "yield");
 
         vm.prank(bob);
-        scEthYield.claimYield(bob);
+        scEthYield.claimYield(bob, bob);
         assertEq(scEthYield.previewClaimYield(bob), 0, "yield not 0 after claim");
 
         uint256 sharesBeforeTopUp = scEthYield.receiverTotalShares(bob);
@@ -181,7 +181,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(scEthYield.previewClaimYield(carol), expectedYield, 1, "carol's yield before claim");
 
         vm.prank(carol);
-        scEthYield.claimYield(carol);
+        scEthYield.claimYield(carol, carol);
 
         assertEq(scEthYield.previewClaimYield(carol), 0, "carol's yield not 0 after claim");
         assertApproxEqAbs(weth.balanceOf(carol), expectedYield, 1, "carol's assets");
@@ -208,7 +208,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(scUsdcYield.previewClaimYield(bob), expectedYield, 1, "yield");
 
         vm.prank(bob);
-        uint256 claimed = scUsdcYield.claimYield(bob);
+        uint256 claimed = scUsdcYield.claimYield(bob, bob);
 
         assertEq(scUsdcYield.previewClaimYield(bob), 0, "yield not 0 after claim");
         assertEq(usdc.balanceOf(bob), claimed, "bob's assets");
@@ -293,7 +293,7 @@ contract YieldStreamsForkTest is TestCommon {
         assertApproxEqAbs(scEthYield.previewClaimYield(bob), expectedYield, 1, "yieldFor bob");
 
         vm.prank(bob);
-        scEthYield.claimYield(bob);
+        scEthYield.claimYield(bob, bob);
 
         assertEq(scEthYield.previewClaimYield(bob), 0, "yieldFor bob");
         assertEq(weth.balanceOf(bob), expectedYield, "bob's balance");
@@ -324,7 +324,7 @@ contract YieldStreamsForkTest is TestCommon {
         scEthYield.close(1);
 
         vm.prank(carol);
-        scEthYield.claimYield(carol);
+        scEthYield.claimYield(carol, carol);
 
         assertEq(scEthYield.previewClaimYield(carol), 0, "carol yield not 0 after claim");
         assertApproxEqAbs(weth.balanceOf(carol), expectedYield, 1, "carol's balance");
