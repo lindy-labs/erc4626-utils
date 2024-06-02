@@ -112,6 +112,14 @@ contract YieldStreams is ERC721, Multicall {
         uint256 assetsClaimed,
         uint256 sharesClaimed
     );
+
+    /**
+     * @notice Emitted when the CID (Content Identifier) is updated for a token.
+     * @param caller The address of the caller who updated the CID.
+     * @param owner The address that owns the token.
+     * @param tokenId The ID of the token for which the CID was updated.
+     * @param cid The new CID associated with the token.
+     */
     event TokenCIDUpdated(address indexed caller, address indexed owner, uint256 indexed tokenId, string cid);
 
     // Errors
@@ -153,9 +161,17 @@ contract YieldStreams is ERC721, Multicall {
      */
     mapping(uint256 => address) public streamIdToReceiver;
 
+    /**
+     * @notice Mapping of receiver addresses to approved claimers.
+     * @dev This mapping allows receivers to approve specific addresses to claim yield on their behalf.
+     */
     mapping(address => mapping(address => bool)) public receiverToApprovedClaimers;
 
-    // Mapping from token ID to CID
+    /**
+     * @notice Mapping from token ID to IPFS CID (Content Identifier).
+     * @dev This mapping stores the IPFS CID associated with each token ID.
+     * The CID is used to generate the tokenURI.
+     */
     mapping(uint256 => string) public tokenCIDs;
 
     /**
@@ -204,8 +220,15 @@ contract YieldStreams is ERC721, Multicall {
     /**
      * @notice Returns the URI for a given token ID.
      * @dev This function returns the full IPFS URL based on the CID stored for the token.
+     * If the CID is not set, it returns an empty string.
      * @param _tokenId The ID of the token to get the URI for.
-     * @return The full IPFS URL for the token's metadata.
+     * @return The full IPFS URL for the token's metadata, or an empty string if no CID is set.
+     *
+     * @custom:requirements
+     * - The `_tokenId` must represent an existing token.
+     *
+     * @custom:reverts
+     * - `ERC721.TokenDoesNotExist` if the `_tokenId` does not represent an existing token.
      */
     function tokenURI(uint256 _tokenId) public view override returns (string memory) {
         if (!_exists(_tokenId)) revert ERC721.TokenDoesNotExist();
@@ -216,13 +239,25 @@ contract YieldStreams is ERC721, Multicall {
 
         return string(abi.encodePacked("ipfs://", cid));
     }
+
     /**
-     * @notice Sets the CID for a given token ID.
+     * @notice Sets the IPFS CID (Content Identifier) for a given token ID.
      * @dev This function allows the owner or an approved operator to set the CID for a token.
+     * The CID is used to generate the tokenURI.
      * @param _tokenId The ID of the token to set the CID for.
      * @param _cid The CID to be associated with the token.
+     *
+     * @custom:requirements
+     * - The `_cid` must not be an empty string.
+     * - The caller must be the owner or an approved operator of the `_tokenId`.
+     *
+     * @custom:reverts
+     * - `EmptyCID` if the `_cid` is an empty string.
+     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator.
+     *
+     * @custom:emits
+     * - Emits a {TokenCIDUpdated} event upon successful CID update.
      */
-
     function setTokenCID(uint256 _tokenId, string memory _cid) public {
         bytes(_cid).length.revertIfZero(EmptyCID.selector);
         _checkOwnerOrApproved(_tokenId);
@@ -245,13 +280,17 @@ contract YieldStreams is ERC721, Multicall {
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_owner` address must not be the zero address.
      * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
      * - The `_shares` amount must be greater than zero.
      * - The new shares allocated to the receiver must not cause the streamer's tolerated loss, due to the receiver's existing debt, to be exceeded.
      *
-     * Emits a {StreamOpened} event upon successful stream creation.
+     * @custom:reverts
+     * - `OwnerZeroAddress` if the `_owner` address is the zero address.
+     *
+     * @custom:emits
+     * - Emits a {StreamOpened} event upon successful stream creation.
      */
     function open(address _owner, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         public
@@ -275,10 +314,14 @@ contract YieldStreams is ERC721, Multicall {
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return principal The principal amount in asset units, i.e., the value of the shares at the time of opening the stream.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_receiver` address must not be the zero address.
      * - The `_shares` amount must be greater than zero.
      * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
+     *
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
      */
     function previewOpen(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance)
         public
@@ -306,14 +349,19 @@ contract YieldStreams is ERC721, Multicall {
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_owner` address must not be the zero address.
      * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
      * - The `_shares` amount must be greater than zero.
      * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
      * - The permit must be valid and signed correctly.
      *
-     * Emits a {StreamOpened} event upon successful stream creation.
+     * @custom:reverts
+     * - `OwnerZeroAddress` if the `_owner` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
+     *
+     * @custom:emits
+     * - Emits a {StreamOpened} event upon successful stream creation.
      */
     function openUsingPermit(
         address _owner,
@@ -344,15 +392,22 @@ contract YieldStreams is ERC721, Multicall {
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening each stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_owner` address must not be the zero address.
-     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
      * - The `_shares` amount must be greater than zero.
      * - The lengths of `_receivers` and `_allocations` arrays must be equal and greater than zero.
      * - The sum of `_allocations` must not exceed `1e18` (100% in WAD format).
      * - The loss incurred by the new shares, due to each receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage for any receiver.
      *
-     * Emits a {StreamOpened} event for each successful stream creation.
+     * @custom:reverts
+     * - `OwnerZeroAddress` if the `_owner` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
+     * - `InputArrayEmpty` if the `_receivers` array is empty.
+     * - `InputArraysLengthMismatch` if the lengths of `_receivers` and `_allocations` arrays do not match.
+     *
+     * @custom:emits
+     * - Emits a {StreamOpened} event for each successful stream creation.
      */
     function openMultiple(
         address _owner,
@@ -388,16 +443,23 @@ contract YieldStreams is ERC721, Multicall {
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_owner` address must not be the zero address.
-     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
      * - The `_shares` amount must be greater than zero.
      * - The lengths of `_receivers` and `_allocations` arrays must be equal and greater than zero.
      * - The sum of `_allocations` must not exceed `1e18` (100% in WAD format).
      * - The loss incurred by the new shares, due to each receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage for any receiver.
      * - The permit must be valid and signed correctly.
      *
-     * Emits a {StreamOpened} event for each successful stream creation.
+     * @custom:reverts
+     * - `OwnerZeroAddress` if the `_owner` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
+     * - `InputArrayEmpty` if the `_receivers` array is empty.
+     * - `InputArraysLengthMismatch` if the lengths of `_receivers` and `_allocations` arrays do not match.
+     *
+     * @custom:emits
+     * - Emits a {StreamOpened} event for each successful stream creation.
      */
     function openMultipleUsingPermit(
         address _owner,
@@ -427,13 +489,18 @@ contract YieldStreams is ERC721, Multicall {
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_owner` address must not be the zero address.
      * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
      * - The `_principal` amount must be greater than zero.
      * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
      *
-     * Emits a {StreamOpened} event upon successful stream creation.
+     * @custom:reverts
+     * - `OwnerZeroAddress` if the `_owner` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
+     *
+     * @custom:emits
+     * - Emits a {StreamOpened} event upon successful stream creation.
      */
     function depositAndOpen(address _owner, address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
@@ -458,10 +525,14 @@ contract YieldStreams is ERC721, Multicall {
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening the stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return shares The estimated number of shares that would be allocated to the receiver upon opening the yield stream.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_receiver` address must not be the zero address.
      * - The `_principal` amount must be greater than zero.
      * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
+     *
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
      */
     function previewDepositAndOpen(address _receiver, uint256 _principal, uint256 _maxLossOnOpenTolerance)
         public
@@ -491,14 +562,19 @@ contract YieldStreams is ERC721, Multicall {
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return streamId The unique identifier for the newly opened yield stream, represented by an ERC721 token.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_owner` address must not be the zero address.
-     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
      * - The `_principal` amount must be greater than zero.
      * - The loss incurred by the new shares, due to the receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage.
      * - The permit must be valid and signed correctly.
      *
-     * Emits a {StreamOpened} event upon successful stream creation.
+     * @custom:reverts
+     * - `OwnerZeroAddress` if the `_owner` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
+     *
+     * @custom:emits
+     * - Emits a {StreamOpened} event upon successful stream creation.
      */
     function depositAndOpenUsingPermit(
         address _owner,
@@ -529,15 +605,22 @@ contract YieldStreams is ERC721, Multicall {
      * @param _maxLossOnOpenTolerance The maximum percentage of loss on the principal that the streamer is willing to tolerate upon opening each stream (in WAD format, e.g., 0.01e18 for 1%).
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_owner` address must not be the zero address.
-     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
      * - The `_principal` amount must be greater than zero.
      * - The lengths of `_receivers` and `_allocations` arrays must be equal and greater than zero.
      * - The sum of `_allocations` must not exceed `1e18` (100% in WAD format).
      * - The loss incurred by the new shares, due to each receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage for any receiver.
      *
-     * Emits a {StreamOpened} event for each successful stream creation.
+     * @custom:reverts
+     * - `OwnerZeroAddress` if the `_owner` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
+     * - `InputArrayEmpty` if the `_receivers` array is empty.
+     * - `InputArraysLengthMismatch` if the lengths of `_receivers` and `_allocations` arrays do not match.
+     *
+     * @custom:emits
+     * - Emits a {StreamOpened} event for each successful stream creation.
      */
     function depositAndOpenMultiple(
         address _owner,
@@ -577,16 +660,23 @@ contract YieldStreams is ERC721, Multicall {
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return streamIds The unique identifiers for the newly opened yield streams, represented by ERC721 tokens.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_owner` address must not be the zero address.
-     * - If the `_owner` address is a contract, it must implement IERC721Receiver-onERC721Received.
+     * - If the `_owner` address is a contract, it must implement `IERC721Receiver-onERC721Received`.
      * - The `_principal` amount must be greater than zero.
      * - The lengths of `_receivers` and `_allocations` arrays must be equal and greater than zero.
      * - The sum of `_allocations` must not exceed `1e18` (100% in WAD format).
      * - The loss incurred by the new shares, due to each receiver's existing debt, must not exceed the `_maxLossOnOpenTolerance` percentage for any receiver.
      * - The permit must be valid and signed correctly.
      *
-     * Emits a {StreamOpened} event for each successful stream creation.
+     * @custom:reverts
+     * - `OwnerZeroAddress` if the `_owner` address is the zero address.
+     * - `LossToleranceExceeded` if the loss incurred by the new shares exceeds the specified tolerance.
+     * - `InputArrayEmpty` if the `_receivers` array is empty.
+     * - `InputArraysLengthMismatch` if the lengths of `_receivers` and `_allocations` arrays do not match.
+     *
+     * @custom:emits
+     * - Emits a {StreamOpened} event for each successful stream creation.
      */
     function depositAndOpenMultipleUsingPermit(
         address _owner,
@@ -613,11 +703,15 @@ contract YieldStreams is ERC721, Multicall {
      * @param _shares The number of additional shares to be added to the yield stream.
      * @return principal The added principal amount in asset units.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_shares` amount must be greater than zero.
      * - The caller must be the owner or an approved operator of the specified `_streamId`.
      *
-     * Emits a {StreamToppedUp} event upon successful addition of shares to the stream.
+     * @custom:reverts
+     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator.
+     *
+     * @custom:emits
+     * - Emits a {StreamToppedUp} event upon successful addition of shares to the stream.
      */
     function topUp(uint256 _streamId, uint256 _shares) public returns (uint256 principal) {
         _shares.revertIfZero();
@@ -644,12 +738,16 @@ contract YieldStreams is ERC721, Multicall {
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return principal The added principal amount in asset units.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_shares` amount must be greater than zero.
      * - The caller must be the owner or an approved operator of the specified `_streamId`.
      * - The permit must be valid and signed correctly.
      *
-     * Emits a {StreamToppedUp} event upon successful addition of shares to the stream.
+     * @custom:reverts
+     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator.
+     *
+     * @custom:emits
+     * - Emits a {StreamToppedUp} event upon successful addition of shares to the stream.
      */
     function topUpUsingPermit(uint256 _streamId, uint256 _shares, uint256 _deadline, uint8 v, bytes32 r, bytes32 s)
         external
@@ -670,11 +768,15 @@ contract YieldStreams is ERC721, Multicall {
      * @param _principal The additional principal amount in asset units to be added to the yield stream.
      * @return shares The added number of shares to the yield stream.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_principal` amount must be greater than zero.
      * - The caller must be the owner or an approved operator of the specified `_streamId`.
      *
-     * Emits a {StreamToppedUp} event upon successful addition of principal to the stream.
+     * @custom:reverts
+     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator.
+     *
+     * @custom:emits
+     * - Emits a {StreamToppedUp} event upon successful addition of principal to the stream.
      */
     function depositAndTopUp(uint256 _streamId, uint256 _principal) public returns (uint256 shares) {
         _principal.revertIfZero();
@@ -700,12 +802,16 @@ contract YieldStreams is ERC721, Multicall {
      * @param s The second 32 bytes of the signature, completing the permit approval requirements.
      * @return shares The added number of shares to the yield stream.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_principal` amount must be greater than zero.
      * - The caller must be the owner or an approved operator of the specified `_streamId`.
      * - The permit must be valid and signed correctly.
      *
-     * Emits a {StreamToppedUp} event upon successful addition of principal to the stream.
+     * @custom:reverts
+     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator.
+     *
+     * @custom:emits
+     * - Emits a {StreamToppedUp} event upon successful addition of principal to the stream.
      */
     function depositAndTopUpUsingPermit(
         uint256 _streamId,
@@ -731,10 +837,14 @@ contract YieldStreams is ERC721, Multicall {
      * @return shares The number of shares returned to the streamer upon closing the yield stream.
      * This represents the balance of shares not attributed to generated yield, effectively the remaining principal.
      *
-     * Requirements:
+     * @custom:requirements
      * - The caller must be the owner or an approved operator of the specified `_streamId`.
      *
-     * Emits a {StreamClosed} event upon successful stream closure.
+     * @custom:reverts
+     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator.
+     *
+     * @custom:emits
+     * - Emits a {StreamClosed} event upon successful stream closure.
      */
     function close(uint256 _streamId) external returns (uint256 shares) {
         _checkOwnerOrApproved(_streamId);
@@ -769,7 +879,7 @@ contract YieldStreams is ERC721, Multicall {
      * @return shares The estimated number of shares that would be returned to the streamer, representing the principal in share terms.
      * @return principal The expected value of returned shares in asset units, representing the remaining principal.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_streamId` must represent an existing yield stream.
      */
     function previewClose(uint256 _streamId) public view returns (uint256 shares, uint256 principal) {
@@ -799,11 +909,17 @@ contract YieldStreams is ERC721, Multicall {
      * @param _sendTo The address where the claimed yield should be sent. This can be the caller's address or another specified recipient.
      * @return assets The total amount of assets claimed as realized yield from all streams.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_sendTo` address must not be the zero address.
      * - The caller must be an approved claimer or the receiver.
      *
-     * Emits a {YieldClaimed} event with `sharesClaimed` set to `0` upon successful yield claim, as the yield is claimed in the form of assets.
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
+     * - `NotReceiverNorApprovedClaimer` if the caller is not an approved claimer or the receiver.
+     * - `NoYieldToClaim` if there is no yield to claim.
+     *
+     * @custom:emits
+     * - Emits a {YieldClaimed} event with `sharesClaimed` set to `0` upon successful yield claim, as the yield is claimed in the form of assets.
      */
     function claimYield(address _receiver, address _sendTo) external returns (uint256 assets) {
         _sendTo.revertIfZero();
@@ -823,8 +939,11 @@ contract YieldStreams is ERC721, Multicall {
      * @param _receiver The address of the receiver for whom the yield preview is being requested.
      * @return yield The estimated amount of yield available to be claimed by the receiver, expressed in the underlying asset units.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_receiver` address must not be the zero address.
+     *
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
      */
     function previewClaimYield(address _receiver) public view returns (uint256 yield) {
         uint256 principal = receiverTotalPrincipal[_receiver];
@@ -849,11 +968,17 @@ contract YieldStreams is ERC721, Multicall {
      * @param _sendTo The address where the claimed yield shares should be sent. This can be the caller's address or another specified recipient.
      * @return yieldInShares The total number of shares claimed as yield and transferred to the `_sendTo` address.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_sendTo` address must not be the zero address.
      * - The caller must be an approved claimer or the receiver.
      *
-     * Emits a {YieldClaimed} event with `assetsClaimed` set to `0` upon successful yield claim, as the yield is claimed in the form of shares.
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
+     * - `NotReceiverNorApprovedClaimer` if the caller is not an approved claimer or the receiver.
+     * - `NoYieldToClaim` if there is no yield to claim.
+     *
+     * @custom:emits
+     * - Emits a {YieldClaimed} event with `assetsClaimed` set to `0` upon successful yield claim, as the yield is claimed in the form of shares.
      */
     function claimYieldInShares(address _receiver, address _sendTo) external returns (uint256 yieldInShares) {
         _sendTo.revertIfZero();
@@ -873,8 +998,11 @@ contract YieldStreams is ERC721, Multicall {
      * @param _receiver The address of the receiver for whom the yield preview is being requested.
      * @return yieldInShares The estimated amount of yield available to be claimed by the receiver, expressed in shares.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_receiver` address must not be the zero address.
+     *
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
      */
     function previewClaimYieldInShares(address _receiver) public view returns (uint256 yieldInShares) {
         uint256 principalInShares = vault.convertToShares(receiverTotalPrincipal[_receiver]);
@@ -892,8 +1020,11 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _claimer The address to be approved for claiming yield on behalf of the receiver.
      *
-     * Requirements:
+     * @custom:requirements
      * - The caller must be the receiver authorizing the claim.
+     *
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
      */
     function approveClaimer(address _claimer) external {
         _claimer.revertIfZero();
@@ -907,8 +1038,11 @@ contract YieldStreams is ERC721, Multicall {
      *
      * @param _claimer The address whose approval is being revoked.
      *
-     * Requirements:
+     * @custom:requirements
      * - The caller must be the receiver revoking the claim approval.
+     *
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
      */
     function revokeClaimer(address _claimer) external {
         _claimer.revertIfZero();
@@ -924,7 +1058,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _receiver The address of the receiver whose approval is being checked.
      * @return bool True if the `_claimer` is approved to claim yield on behalf of the `_receiver`, false otherwise.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_receiver` address must not be the zero address.
      */
     function isApprovedClaimer(address _claimer, address _receiver) public view returns (bool) {
@@ -943,8 +1077,11 @@ contract YieldStreams is ERC721, Multicall {
      * @return debt The total calculated debt for the receiver, expressed in the underlying asset units.
      * If the receiver has no debt or a positive yield, the function returns zero.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_receiver` address must not be the zero address.
+     *
+     * @custom:reverts
+     * - `ReceiverZeroAddress` if the `_receiver` address is the zero address.
      */
     function debtFor(address _receiver) public view returns (uint256) {
         uint256 principal = receiverTotalPrincipal[_receiver];
@@ -961,7 +1098,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _streamId The unique identifier of the yield stream for which the principal is being queried, represented by an ERC721 token.
      * @return principal The principal amount in asset units initially allocated to the yield stream identified by the given token ID.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_streamId` must represent an existing yield stream.
      */
     function getPrincipal(uint256 _streamId) external view returns (uint256) {
@@ -976,7 +1113,7 @@ contract YieldStreams is ERC721, Multicall {
      * @param _streamId The unique identifier of the yield stream (ERC721 token) to check.
      * @return bool True if the `_account` is the owner or an approved operator of the `_streamId`, false otherwise.
      *
-     * Requirements:
+     * @custom:requirements
      * - The `_streamId` must represent an existing yield stream.
      */
     function isOwnerOrApproved(address _account, uint256 _streamId) external view returns (bool) {
