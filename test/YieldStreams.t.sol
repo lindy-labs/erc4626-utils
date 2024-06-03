@@ -2550,61 +2550,6 @@ contract YieldStreamsTest is TestCommon {
 
     /*
      * --------------------
-     *     #multicall
-     * --------------------
-     */
-
-    function test_multicall_OpenMultipleYieldStreams() public {
-        uint256 shares = _depositToVault(alice, 1e18);
-
-        bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeCall(YieldStreams.open, (alice, bob, (shares * 3) / 4, 0));
-        data[1] = abi.encodeCall(YieldStreams.open, (alice, carol, shares / 4, 0));
-
-        vm.startPrank(alice);
-        vault.approve(address(ys), shares);
-        ys.multicall(data);
-        vm.stopPrank();
-
-        assertEq(vault.balanceOf(alice), 0, "alice's shares");
-        assertEq(ys.receiverTotalShares(bob), (shares * 3) / 4, "receiver shares bob");
-        assertEq(ys.receiverTotalShares(carol), shares / 4, "receiver shares carol");
-    }
-
-    /*
-     * --------------------
-     *      #transfer
-     * --------------------
-     */
-
-    function test_transfer() public {
-        uint256 principal = 1e18;
-        uint256 shares = _depositToVault(alice, principal);
-        _approveYieldStreamsContract(alice, shares);
-
-        vm.startPrank(alice);
-        ys.open(alice, bob, shares, 0);
-
-        _generateYield(0.5e18);
-
-        ys.transferFrom(alice, carol, 1);
-        vm.stopPrank();
-
-        assertEq(ys.balanceOf(alice), 0, "alice's nfts");
-        assertEq(ys.balanceOf(carol), 1, "carol's nfts");
-        assertEq(ys.ownerOf(1), carol, "owner");
-        assertEq(ys.previewClaimYield(bob), 1e18 / 2, "bob's yield");
-
-        vm.prank(carol);
-        ys.close(1);
-
-        assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(carol)), principal, 1, "carol's assets");
-        assertEq(ys.balanceOf(carol), 0, "carol's nfts");
-        assertApproxEqAbs(ys.previewClaimYield(bob), 1e18 / 2, 1, "bob's yield");
-    }
-
-    /*
-     * --------------------
      *     #setTokenCID
      * --------------------
      */
@@ -2689,6 +2634,35 @@ contract YieldStreamsTest is TestCommon {
 
     /*
      * --------------------
+     *    #getTokenCID
+     * --------------------
+     */
+
+    function test_getTokenCID_returnsEmptyStringIfCIDIsntSet() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        assertEq(ys.tokenCIDs(streamId), "", "token CID not empty");
+    }
+
+    function test_getTokenCID_returnsEmptyStringAfterStreamIsClosed() public {
+        uint256 streamId = _openYieldStream(alice, bob, 1e18);
+
+        // hello world CID
+        string memory cid = "QmYwAPJzv5CZsnAzt8auVZRn1pfejwPXv8rVd5NdKAX3io";
+
+        vm.prank(alice);
+        ys.setTokenCID(streamId, cid);
+
+        assertEq(ys.tokenCIDs(streamId), cid, "CID not set");
+
+        vm.prank(alice);
+        ys.close(streamId);
+
+        assertEq(ys.tokenCIDs(streamId), "", "token CID not empty");
+    }
+
+    /*
+     * --------------------
      *      #tokenUri
      * --------------------
      */
@@ -2716,6 +2690,79 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.tokenCIDs(streamId), cid, "CID not set");
         assertEq(ys.tokenURI(streamId), string.concat("ipfs://", cid), "token URI");
     }
+
+
+    /*
+     * --------------------
+     *     #multicall
+     * --------------------
+     */
+
+    function test_multicall_openMultipleYieldStreams() public {
+        uint256 shares = _depositToVault(alice, 1e18);
+
+        bytes[] memory data = new bytes[](2);
+        data[0] = abi.encodeCall(YieldStreams.open, (alice, bob, (shares * 3) / 4, 0));
+        data[1] = abi.encodeCall(YieldStreams.open, (alice, carol, shares / 4, 0));
+
+        vm.startPrank(alice);
+        vault.approve(address(ys), shares);
+        ys.multicall(data);
+        vm.stopPrank();
+
+        assertEq(vault.balanceOf(alice), 0, "alice's shares");
+        assertEq(ys.receiverTotalShares(bob), (shares * 3) / 4, "receiver shares bob");
+        assertEq(ys.receiverTotalShares(carol), shares / 4, "receiver shares carol");
+    }
+
+    function test_multicall_openStreamAndSetCID() public {
+        uint256 shares = _depositToVaultAndApprove(alice, 1e18);
+        uint256 streamId = ys.nextStreamId();
+
+        bytes[] memory data = new bytes[](2);
+        data[0] = abi.encodeCall(YieldStreams.open, (alice, bob, shares, 0));
+        data[1] = abi.encodeCall(YieldStreams.setTokenCID, (streamId, "123"));
+
+        vm.prank(alice);
+        ys.multicall(data);
+
+        assertEq(ys.ownerOf(streamId), alice, "owner");
+        assertEq(ys.streamIdToReceiver(streamId), bob, "receiver");
+        assertEq(ys.tokenCIDs(1), "123", "CID not set");
+    }
+
+    /*
+     * --------------------
+     *      #transfer
+     * --------------------
+     */
+
+    function test_transfer() public {
+        uint256 principal = 1e18;
+        uint256 shares = _depositToVault(alice, principal);
+        _approveYieldStreamsContract(alice, shares);
+
+        vm.startPrank(alice);
+        ys.open(alice, bob, shares, 0);
+
+        _generateYield(0.5e18);
+
+        ys.transferFrom(alice, carol, 1);
+        vm.stopPrank();
+
+        assertEq(ys.balanceOf(alice), 0, "alice's nfts");
+        assertEq(ys.balanceOf(carol), 1, "carol's nfts");
+        assertEq(ys.ownerOf(1), carol, "owner");
+        assertEq(ys.previewClaimYield(bob), 1e18 / 2, "bob's yield");
+
+        vm.prank(carol);
+        ys.close(1);
+
+        assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(carol)), principal, 1, "carol's assets");
+        assertEq(ys.balanceOf(carol), 0, "carol's nfts");
+        assertApproxEqAbs(ys.previewClaimYield(bob), 1e18 / 2, 1, "bob's yield");
+    }
+
 
     /*
      * --------------------

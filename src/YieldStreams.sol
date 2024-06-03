@@ -856,17 +856,22 @@ contract YieldStreams is ERC721, Multicall {
 
         _burn(_streamId);
 
-        // update state and transfer shares
+        // update state
         delete streamIdToReceiver[_streamId];
         delete receiverPrincipal[receiver][_streamId];
+        delete tokenCIDs[_streamId];
 
-        // TODO: address this if possible
-        // possible to underflow because of rounding errors
-        receiverTotalPrincipal[receiver] -= principal;
-        receiverTotalShares[receiver] -= shares;
+        // not possible to underflow because of the previewClose logic
+        // principal is not calculated value so it is safe to use unchecked
+        // shares is calculated but capped to the available shares
+        unchecked {
+            receiverTotalPrincipal[receiver] -= principal;
+            receiverTotalShares[receiver] -= shares;
+        }
 
         emit StreamClosed(msg.sender, owner, receiver, _streamId, shares, principal);
 
+        // transfer the remaining shares back to the owner
         _vaultTransferTo(owner, shares);
     }
 
@@ -1199,7 +1204,7 @@ contract YieldStreams is ERC721, Multicall {
     // accounting logic for claiming yield
     function _claim(address _receiver) internal returns (uint256 yieldInShares) {
         _receiver.revertIfZero(ReceiverZeroAddress.selector);
-        _checkReceiverOrApprovedClaimer(msg.sender, _receiver);
+        _checkReceiverOrApprovedClaimer(_receiver);
 
         yieldInShares = previewClaimYieldInShares(_receiver);
         yieldInShares.revertIfZero(NoYieldToClaim.selector);
@@ -1272,8 +1277,8 @@ contract YieldStreams is ERC721, Multicall {
         if (!_isApprovedOrOwner(msg.sender, _positionId)) revert ERC721.NotOwnerNorApproved();
     }
 
-    function _checkReceiverOrApprovedClaimer(address _claimer, address _receiver) internal view {
-        if (!isApprovedClaimer(_claimer, _receiver)) revert NotReceiverNorApprovedClaimer();
+    function _checkReceiverOrApprovedClaimer(address _receiver) internal view {
+        if (!isApprovedClaimer(msg.sender, _receiver)) revert NotReceiverNorApprovedClaimer();
     }
 
     function _vaultTransferFrom(address _from, uint256 _shares) internal {
