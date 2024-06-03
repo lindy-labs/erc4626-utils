@@ -2691,7 +2691,6 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.tokenURI(streamId), string.concat("ipfs://", cid), "token URI");
     }
 
-
     /*
      * --------------------
      *     #multicall
@@ -2762,7 +2761,6 @@ contract YieldStreamsTest is TestCommon {
         assertEq(ys.balanceOf(carol), 0, "carol's nfts");
         assertApproxEqAbs(ys.previewClaimYield(bob), 1e18 / 2, 1, "bob's yield");
     }
-
 
     /*
      * --------------------
