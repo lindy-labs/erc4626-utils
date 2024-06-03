@@ -175,8 +175,8 @@ rule integrity_of_openUsingPermit(
     assert streamIdToReceiver(streamId) == _receiver;
     assert to_mathint(receiverTotalShares(_receiver)) == receiverTotalSharesBefore + _shares;
     assert to_mathint(nextStreamId()) == nextStreamIdBefore + 1;
-    assert to_mathint(receiverTotalPrincipal(_receiver)) == receiverTotalPrincipalBefore + principal &&
-     receiverPrincipal(_receiver, streamId) == principal;
+    assert to_mathint(receiverTotalPrincipal(_receiver)) == receiverTotalPrincipalBefore + principal;
+    assert receiverPrincipal(_receiver, streamId) == principal;
 }
 
 /**
@@ -234,8 +234,8 @@ rule integrity_of_openMultiple(address alice, address bob, address carol, uint25
     assert to_mathint(receiverTotalPrincipal(bob)) == bobTotalPrincipalBefore + initFunds &&
      receiverPrincipal(bob, 1) == initFunds;
 
-    assert to_mathint(receiverTotalPrincipal(carol)) == carolTotalPrincipalBefore + initFunds &&
-     receiverPrincipal(carol, 1) == initFunds;
+    assert to_mathint(receiverTotalPrincipal(carol)) == carolTotalPrincipalBefore + initFunds;
+    assert receiverPrincipal(carol, 1) == initFunds;
 }
 
 /**
@@ -294,11 +294,11 @@ rule integrity_of_openMultipleUsingPermit(address alice, address bob, address ca
     // Carol's shares
      to_mathint(receiverTotalShares(carol)) == shares * allocations[1] / WAD();
 
-    assert to_mathint(receiverTotalPrincipal(bob)) == bobTotalPrincipalBefore + initFunds &&
-     receiverPrincipal(bob, 1) == initFunds;
+    assert to_mathint(receiverTotalPrincipal(bob)) == bobTotalPrincipalBefore + initFunds;
+    assert receiverPrincipal(bob, 1) == initFunds;
 
-    assert to_mathint(receiverTotalPrincipal(carol)) == carolTotalPrincipalBefore + initFunds &&
-     receiverPrincipal(carol, 1) == initFunds;}
+    assert to_mathint(receiverTotalPrincipal(carol)) == carolTotalPrincipalBefore + initFunds;
+    assert receiverPrincipal(carol, 1) == initFunds;}
 
 
 /**
@@ -330,15 +330,15 @@ rule integrity_of_depositAndOpen(address streamer, address receiver, uint256 pri
 
     uint256 streamId = depositAndOpen(e, receiver, principal, maxLossOnOpenTolerance);
 
-    assert streamId == 1 &&
-     nextStreamId() == 2 &&
-     ownerOf(streamId) == streamer &&
-     streamIdToReceiver(streamId) == receiver &&
-     to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares &&
-     to_mathint(receiverTotalPrincipal(receiver)) == initialTotalPrincipal + principal &&
-     receiverPrincipal(receiver, streamId) == principal;
-    assert to_mathint(asset.balanceOf(streamer)) == initialBalanceStreamer - principal &&
-     to_mathint(vault.balanceOf(currentContract)) == initialVaultBalanceThis + shares;
+    assert streamId == 1;
+    assert nextStreamId() == 2;
+    assert ownerOf(streamId) == streamer;
+    assert streamIdToReceiver(streamId) == receiver;
+    assert to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares;
+    assert to_mathint(receiverTotalPrincipal(receiver)) == initialTotalPrincipal + principal;
+    assert receiverPrincipal(receiver, streamId) == principal;
+    assert to_mathint(asset.balanceOf(streamer)) == initialBalanceStreamer - principal;
+    assert to_mathint(vault.balanceOf(currentContract)) == initialVaultBalanceThis + shares;
 }
 
 /**
@@ -372,15 +372,15 @@ rule integrity_of_depositAndOpenUsingPermit(address streamer, address receiver, 
     // Call the `depositAndOpen` function
     uint256 streamId = depositAndOpenUsingPermit(e, receiver, principal, maxLossOnOpenTolerance, deadline, v, r, s);
 
-    assert streamId == 1 &&
-     nextStreamId() == 2 &&
-     ownerOf(streamId) == streamer &&
-     streamIdToReceiver(streamId) == receiver &&
-     to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares &&
-     to_mathint(receiverTotalPrincipal(receiver)) == initialTotalPrincipal + principal &&
-     receiverPrincipal(receiver, streamId) == principal;
-    assert to_mathint(asset.balanceOf(streamer)) == initialBalanceStreamer - principal &&
-     to_mathint(vault.balanceOf(currentContract)) == initialVaultBalanceThis + shares;
+    assert streamId == 1;
+    assert nextStreamId() == 2;
+    assert ownerOf(streamId) == streamer;
+    assert streamIdToReceiver(streamId) == receiver;
+    assert to_mathint(receiverTotalShares(receiver)) == initialTotalShares + shares;
+    assert to_mathint(receiverTotalPrincipal(receiver)) == initialTotalPrincipal + principal;
+    assert receiverPrincipal(receiver, streamId) == principal;
+    assert to_mathint(asset.balanceOf(streamer)) == initialBalanceStreamer - principal;
+    assert to_mathint(vault.balanceOf(currentContract)) == initialVaultBalanceThis + shares;
 }
 
 /**
@@ -421,11 +421,11 @@ rule integrity_of_depositAndOpenMultiple(address dave, address bob, uint256 _pri
     require ownerOf(streamIds[0]) == dave;
 
     // Postconditions
-    assert streamIds.length == 1 &&
-     streamIds[0] == initialNextStreamId &&
-     to_mathint(nextStreamId()) == initialNextStreamId + 1;
-    assert to_mathint(receiverTotalPrincipal(bob)) == initialBobPrincipal + _principal &&
-     receiverPrincipal(bob, streamIds[0]) == _principal && vault.balanceOf(currentContract) == shares;
+    assert streamIds.length == 1;
+    assert streamIds[0] == initialNextStreamId;
+    assert to_mathint(nextStreamId()) == initialNextStreamId + 1;
+    assert to_mathint(receiverTotalPrincipal(bob)) == initialBobPrincipal + _principal;
+    assert receiverPrincipal(bob, streamIds[0]) == _principal && vault.balanceOf(currentContract) == shares;
 }
 
 /**
@@ -477,11 +477,11 @@ rule integrity_of_depositAndOpenMultipleUsingPermit(address dave, address bob, u
     require ownerOf(streamIds[0]) == dave;
 
     // Postconditions
-    assert streamIds.length == 1 &&
-     streamIds[0] == initialNextStreamId &&
-     to_mathint(nextStreamId()) == initialNextStreamId + 1;
-    assert to_mathint(receiverTotalPrincipal(bob)) == initialBobPrincipal + principal &&
-     receiverPrincipal(bob, streamIds[0]) == principal && vault.balanceOf(currentContract) == shares;
+    assert streamIds.length == 1;
+    assert streamIds[0] == initialNextStreamId;
+    assert to_mathint(nextStreamId()) == initialNextStreamId + 1;
+    assert to_mathint(receiverTotalPrincipal(bob)) == initialBobPrincipal + principal;
+    assert receiverPrincipal(bob, streamIds[0]) == principal && vault.balanceOf(currentContract) == shares;
 }
 
 
@@ -687,11 +687,10 @@ rule verify_claimYield_toAnotherAccount(address alice, address bob, address caro
 
     mathint claimed = claimYield(e, carol);
 
-    assert delta(claimed, previewClaim) <= 1 &&
-
-     vault.balanceOf(alice) == 0 &&
-     asset.balanceOf(bob) == 0 &&
-     delta(to_mathint(asset.balanceOf(carol)), claimed) <= 1;
+    assert delta(claimed, previewClaim) <= 1;
+    assert vault.balanceOf(alice) == 0;
+    assert asset.balanceOf(bob) == 0;
+    assert delta(to_mathint(asset.balanceOf(carol)), claimed) <= 1;
 }
 
 /**
@@ -728,9 +727,9 @@ rule verify_claimYield_claimsFromAllOpenedStreams(address alice, address carol, 
 
     uint256 claimed = claimYield(e, carol);
 
-    assert to_mathint(claimed) == alicesPrincipal + bobsPrincipal &&
-     asset.balanceOf(carol) == claimed &&
-     previewClaimYield(carol) == 0;
+    assert to_mathint(claimed) == alicesPrincipal + bobsPrincipal;
+    assert asset.balanceOf(carol) == claimed;
+    assert previewClaimYield(carol) == 0;
 }
 
 
@@ -761,10 +760,10 @@ rule verify_claimYieldInShares_toSelf(address alice, address bob, uint256 _princ
 
     uint256 claimed = claimYieldInShares(e, bob);
 
-    assert delta(claimed, expectedYieldInShares) <= 1 &&
-     asset.balanceOf(bob) == 0 &&
-     vault.balanceOf(bob) == claimed &&
-     vault.balanceOf(alice) == 0;
+    assert delta(claimed, expectedYieldInShares) <= 1;
+    assert asset.balanceOf(bob) == 0;
+    assert vault.balanceOf(bob) == claimed;
+    assert vault.balanceOf(alice) == 0;
 }
 
 
@@ -798,9 +797,9 @@ rule verify_claimYieldInShares_toSelf(address alice, address bob, uint256 _princ
 
     mathint claimed = claimYieldInShares(e, carol);
 
-    assert delta(claimed, expectedYieldInShares) <= 1 &&
-     vault.balanceOf(alice) == 0 &&
-     vault.balanceOf(bob) == 0 &&
-     delta(vault.balanceOf(carol), claimed) <= 1 &&
-     asset.balanceOf(carol) == 0;
+    assert delta(claimed, expectedYieldInShares) <= 1;
+    assert vault.balanceOf(alice) == 0;
+    assert vault.balanceOf(bob) == 0;
+    assert delta(vault.balanceOf(carol), claimed) <= 1;
+    assert asset.balanceOf(carol) == 0;
 }
