@@ -70,6 +70,7 @@ contract YieldDCATest is TestCommon {
     event MinYieldPerEpochUpdated(address indexed admin, uint64 oldMinYield, uint64 newMinYield);
     event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
     event DiscrepancyToleranceUpdated(address indexed admin, uint64 oldTolerance, uint64 newTolerance);
+    event TokenCIDUpdated(address indexed caller, address indexed owner, uint256 indexed tokenId, string cid);
 
     event DCAExecuted(
         address indexed keeper,
@@ -2808,6 +2809,167 @@ contract YieldDCATest is TestCommon {
         uint256 gasAverage = (gasBefore - gasAfter) / epochs;
         console2.log("single iteration average gas: ", gasAverage);
         assertTrue(gasAverage < 1000, "average gas greater than 1000");
+    }
+
+    /*
+     * --------------------
+     *     #setTokenCID
+     * --------------------
+     */
+
+    function test_setTokenCID_failsIfTokenDoesntExist() public {
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
+        yieldDca.setTokenCID(1, "123");
+    }
+
+    function test_setTokenCID_failsIfCIDIsEmptyString() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+
+        vm.expectRevert(YieldDCA.EmptyCID.selector);
+        vm.prank(alice);
+        yieldDca.setTokenCID(positionId, "");
+    }
+
+    function test_setTokenCID_storesProvidedValue() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+        assertEq(yieldDca.tokenCIDs(positionId), "", "token CID not empty");
+
+        // hello world CID
+        string memory cid = "QmYwAPJzv5CZsnAzt8auVZRn1pfejwPXv8rVd5NdKAX3io";
+
+        vm.prank(alice);
+        yieldDca.setTokenCID(positionId, cid);
+
+        assertEq(yieldDca.tokenCIDs(positionId), cid, "CID not set");
+    }
+
+    function test_setTokenCID_overwritesExistingValue() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+
+        // set initial CID
+        vm.startPrank(alice);
+        yieldDca.setTokenCID(positionId, "123");
+
+        // image example
+        string memory newCid = "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDd7N8UMLrZw2";
+
+        // update CID
+        yieldDca.setTokenCID(positionId, newCid);
+
+        assertEq(yieldDca.tokenCIDs(positionId), newCid, "CID not updated");
+    }
+
+    function test_setTokenCID_failsIfCallerIsNotApproved() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+
+        vm.expectRevert(ERC721.NotOwnerNorApproved.selector);
+        vm.prank(carol);
+        yieldDca.setTokenCID(positionId, "123");
+    }
+
+    function test_setTokenCID_worksIfCallerIsApproved() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+
+        vm.prank(alice);
+        yieldDca.approve(carol, positionId);
+
+        vm.prank(carol);
+        yieldDca.setTokenCID(positionId, "123");
+
+        assertEq(yieldDca.tokenCIDs(positionId), "123", "CID not set");
+    }
+
+    function test_setTokenCID_emitsEvent() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+        string memory cid = "QmYwAPJzv5CZsnAzt8auVZRn1pfejwPXv8rVd5NdKAX3io";
+
+        vm.prank(alice);
+        yieldDca.approve(carol, positionId);
+
+        vm.expectEmit(true, true, true, true);
+        emit TokenCIDUpdated(carol, alice, positionId, cid);
+
+        vm.prank(carol);
+        yieldDca.setTokenCID(positionId, cid);
+    }
+
+    /*
+     * --------------------
+     *      #tokenCID
+     * --------------------
+     */
+
+    function test_tokenCIDs_returnsEmptyStringIfCIDIsntSet() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+
+        assertEq(yieldDca.tokenCIDs(positionId), "", "token CID not empty");
+    }
+
+    function test_tokenCIDs_returnsEmptyStringAfterPositionIsClosed() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+
+        // hello world CID
+        string memory cid = "QmYwAPJzv5CZsnAzt8auVZRn1pfejwPXv8rVd5NdKAX3io";
+
+        vm.prank(alice);
+        yieldDca.setTokenCID(positionId, cid);
+
+        assertEq(yieldDca.tokenCIDs(positionId), cid, "CID not set");
+
+        vm.prank(alice);
+        yieldDca.closePosition(positionId);
+
+        assertEq(yieldDca.tokenCIDs(positionId), "", "token CID not empty");
+    }
+
+    /*
+     * --------------------
+     *      #tokenUri
+     * --------------------
+     */
+    function test_tokenUri_failsIfTokenDoesntExist() public {
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
+        yieldDca.tokenURI(1);
+    }
+
+    function test_tokenUri_returnsEmptyStringIfCIDIsntSet() public {
+        _openPositionWithPrincipal(alice, 1e18);
+
+        assertEq(yieldDca.tokenURI(1), "", "token uri not empty");
+    }
+
+    function test_tokenUri_returnsCorrectCID() public {
+        uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
+
+        // hello world CID
+        string memory cid = "QmYwAPJzv5CZsnAzt8auVZRn1pfejwPXv8rVd5NdKAX3io";
+
+        vm.prank(alice);
+        yieldDca.setTokenCID(positionId, cid);
+
+        assertEq(yieldDca.tokenCIDs(positionId), cid, "CID not set");
+        assertEq(yieldDca.tokenURI(positionId), string.concat("ipfs://", cid), "token URI");
+    }
+
+    /*
+     * --------------------
+     *     #multicall
+     * --------------------
+     */
+
+    function test_multicall_openPositionAndSetCID() public {
+        uint256 shares = _depositToVaultAndApproveYieldDca(alice, 1e18);
+        uint256 positionId = yieldDca.nextPositionId();
+
+        bytes[] memory data = new bytes[](2);
+        data[0] = abi.encodeCall(YieldDCA.openPosition, (alice, shares));
+        data[1] = abi.encodeCall(YieldDCA.setTokenCID, (positionId, "123"));
+
+        vm.prank(alice);
+        yieldDca.multicall(data);
+
+        assertEq(yieldDca.ownerOf(positionId), alice, "owner");
+        assertEq(yieldDca.tokenCIDs(positionId), "123", "CID not set");
     }
 
     /*

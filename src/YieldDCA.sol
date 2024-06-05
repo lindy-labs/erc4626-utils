@@ -7,6 +7,7 @@ import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {IERC721} from "openzeppelin-contracts/interfaces/IERC721.sol";
+import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC20Permit} from "openzeppelin-contracts/token/ERC20/extensions/IERC20Permit.sol";
@@ -210,6 +211,15 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         address to
     );
 
+    /**
+     * @notice Emitted when the CID (Content Identifier) is updated for a token.
+     * @param caller The address of the caller who updated the CID.
+     * @param owner The address that owns the token.
+     * @param tokenId The ID of the token for which the CID was updated.
+     * @param cid The new CID associated with the token.
+     */
+    event TokenCIDUpdated(address indexed caller, address indexed owner, uint256 indexed tokenId, string cid);
+
     error DCATokenAddressZero();
     error VaultAddressZero();
     error SwapperAddressZero();
@@ -227,6 +237,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     error InsufficientSharesToWithdraw();
     error NothingToClaim();
     error DCADiscrepancyAboveTolerance();
+    error EmptyCID();
 
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
@@ -236,9 +247,9 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     uint64 public constant DISCREPANCY_TOLERANCE_UPPER_BOUND = 1e18; // 100%
 
     /// @notice The ERC20 token used for DCA.
-    IERC20Metadata public immutable dcaToken;
+    IERC20 public immutable dcaToken;
     /// @notice The underlying asset of the ERC4626 vault.
-    IERC20Metadata public immutable asset;
+    IERC20 public immutable asset;
     /// @notice The yield generating ERC4626 vault managing the underlying asset.
     IERC4626 public immutable vault;
 
@@ -293,11 +304,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @dev Maps epoch numbers to their respective `EpochInfo` structures containing DCA and share prices.
      */
     mapping(uint256 => EpochInfo) public epochInfos;
+
     /**
      * @notice The position ID to position details.
      * @dev Maps position IDs to their respective `Position` structures containing shares, principal, DCA balance, and epoch.
      */
     mapping(uint256 => Position) public positions;
+
+    /**
+     * @notice Mapping from token ID to IPFS CID (Content Identifier).
+     * @dev This mapping stores the IPFS CID associated with each token ID.
+     * The CID is used to generate the tokenURI.
+     */
+    mapping(uint256 => string) public tokenCIDs;
 
     modifier onlyAdmin() {
         _checkRole(DEFAULT_ADMIN_ROLE);
@@ -329,7 +348,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * - `_keeper` must not be the zero address.
      */
     constructor(
-        IERC20Metadata _dcaToken,
+        IERC20 _dcaToken,
         IERC4626 _vault,
         ISwapper _swapper,
         uint32 _epochDuration,
@@ -347,15 +366,16 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
 
         // set contract state
         dcaToken = _dcaToken;
-        asset = IERC20Metadata(_vault.asset());
+        asset = IERC20(_vault.asset());
         vault = _vault;
 
         _setSwapper(_swapper);
         _setEpochDuration(_epochDuration);
         _setMinYieldPerEpoch(_minYieldPerEpochPercent);
 
-        name_ = string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", _dcaToken.name()));
-        symbol_ = string(abi.encodePacked("yDCA-", _vault.symbol(), "/", _dcaToken.symbol()));
+        name_ =
+            string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", IERC20Metadata(address(_dcaToken)).name()));
+        symbol_ = string(abi.encodePacked("yDCA-", _vault.symbol(), "/", IERC20Metadata(address(_dcaToken)).symbol()));
 
         // set roles
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
@@ -370,38 +390,6 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     *                   EXTERNAL FUNCTIONS
     * =======================================================
     */
-
-    /// @inheritdoc ERC721
-    function name() public view override returns (string memory) {
-        return name_;
-    }
-
-    /// @inheritdoc ERC721
-    function symbol() public view override returns (string memory) {
-        return symbol_;
-    }
-
-    /**
-     * @inheritdoc ERC721
-     * @dev This function is intentionally left unimplemented as this contract does not rely on token URIs.
-     */
-    function tokenURI(uint256) public view virtual override returns (string memory) {}
-
-    /**
-     * @notice Checks if the contract implements a specific interface.
-     * @dev Implements ERC165 standard for interface detection.
-     * @param _interfaceId The interface identifier, as specified in ERC-165.
-     * @return True if the contract implements the requested interface, false otherwise.
-     */
-    function supportsInterface(bytes4 _interfaceId)
-        public
-        view
-        virtual
-        override(ERC721, AccessControl)
-        returns (bool)
-    {
-        return _interfaceId == type(IERC721).interfaceId || super.supportsInterface(_interfaceId);
-    }
 
     // *** admin functions ***
 
@@ -828,7 +816,83 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         emit DCAExecuted(msg.sender, epoch, yield, amountOut, dcaPrice, sharePrice);
     }
 
+    /**
+     * @notice Sets the IPFS CID (Content Identifier) for a given token (position) ID.
+     * @dev This function allows the owner or an approved operator to set the CID for a token.
+     * The CID is used to generate the tokenURI.
+     * @param _positionId The ID of the token to set the CID for.
+     * @param _cid The CID to be associated with the token.
+     *
+     * @custom:requirements
+     * - The `_cid` must not be an empty string.
+     * - The caller must be the owner or an approved operator of the `_positionId`.
+     *
+     * @custom:reverts
+     * - `EmptyCID` if the `_cid` is an empty string.
+     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator.
+     *
+     * @custom:emits
+     * - Emits a {TokenCIDUpdated} event upon successful CID update.
+     */
+    function setTokenCID(uint256 _positionId, string memory _cid) public {
+        bytes(_cid).length.revertIfZero(EmptyCID.selector);
+        _checkApprovedOrOwner(_positionId);
+
+        tokenCIDs[_positionId] = _cid;
+
+        emit TokenCIDUpdated(msg.sender, _ownerOf(_positionId), _positionId, _cid);
+    }
+
     // *** view functions ***
+
+    /// @inheritdoc ERC721
+    function name() public view override returns (string memory) {
+        return name_;
+    }
+
+    /// @inheritdoc ERC721
+    function symbol() public view override returns (string memory) {
+        return symbol_;
+    }
+
+    /**
+     * @notice Returns the URI for a given token ID.
+     * @dev This function returns the full IPFS URL based on the CID stored for the token.
+     * If the CID is not set, it returns an empty string.
+     * @param _tokenId The ID of the token to get the URI for.
+     * @return The full IPFS URL for the token's metadata, or an empty string if no CID is set.
+     *
+     * @custom:requirements
+     * - The `_tokenId` must represent an existing token.
+     *
+     * @custom:reverts
+     * - `ERC721.TokenDoesNotExist` if the `_tokenId` does not represent an existing token.
+     */
+    function tokenURI(uint256 _tokenId) public view override returns (string memory) {
+        if (!_exists(_tokenId)) revert ERC721.TokenDoesNotExist();
+
+        string memory cid = tokenCIDs[_tokenId];
+
+        if (bytes(cid).length == 0) return "";
+
+        return string(abi.encodePacked("ipfs://", cid));
+    }
+
+    /**
+     * @notice Checks if the contract implements a specific interface.
+     * @dev Implements ERC165 standard for interface detection.
+     * @param _interfaceId The interface identifier, as specified in ERC-165.
+     * @return True if the contract implements the requested interface, false otherwise.
+     */
+    function supportsInterface(bytes4 _interfaceId)
+        public
+        view
+        virtual
+        override(ERC721, AccessControl)
+        returns (bool)
+    {
+        return _interfaceId == type(IERC721).interfaceId || super.supportsInterface(_interfaceId);
+    }
 
     /**
      * @notice Checks if the conditions are met to execute the DCA strategy for the current epoch.
@@ -1017,6 +1081,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         totalPrincipal -= _principal;
         address owner = _ownerOf(_positionId);
 
+        delete tokenCIDs[_positionId];
         delete positions[_positionId];
         _burn(_positionId);
 
