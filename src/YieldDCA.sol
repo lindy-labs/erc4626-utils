@@ -43,7 +43,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * - **Reentrancy Guards:** Protects against reentrancy attacks using checks-effects-interactions pattern and reentrancy guards.
  * - **Access Control:** Restricts critical functions to authorized roles only.
  * - **Use of Safe Libraries:** Utilizes SafeCastLib and other safety libraries to prevent overflows and underflows.
- * - **Non-Upgradeable:** The contract is designed to be non-upgradeable to simplify security and maintainability.
+ * - **Non-Upgradable:** The contract is designed to be non-upgradable to simplify security and maintainability.
  *
  * ## Usage
  * Users and their approved operators can open and manage positions using both direct interactions and ERC20 permit-based approvals. Positions are represented as ERC721 tokens, enabling easy tracking and management of each user's investments.
@@ -173,6 +173,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         uint256 shares,
         uint256 principal
     );
+
     /**
      * @notice Emitted when a DCA position is closed.
      * @param caller The address of the caller who closed the position.
@@ -340,12 +341,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _admin The address with the admin role.
      * @param _keeper The address with the keeper role.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_dcaToken` must not be the zero address.
      * - `_vault` must not be the zero address.
      * - `_dcaToken` must not be the same as the vault's underlying asset.
      * - `_admin` must not be the zero address.
      * - `_keeper` must not be the zero address.
+     *
+     * @custom:reverts
+     * - `DCATokenAddressZero` if `_dcaToken` is the zero address.
+     * - `VaultAddressZero` if `_vault` is the zero address.
+     * - `DCATokenSameAsVaultAsset` if `_dcaToken` is the same as the vault's underlying asset.
+     * - `AdminAddressZero` if `_admin` is the zero address.
+     * - `KeeperAddressZero` if `_keeper` is the zero address.
      */
     constructor(
         IERC20 _dcaToken,
@@ -395,13 +403,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
 
     /**
      * @notice Updates the address of the swapper contract used to exchange yield for DCA tokens.
-     * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The new swapper address must be a valid contract address.
-     * Emits the {SwapperUpdated} event.
+     * @dev Restricted to admin role. The new swapper address must be a valid contract address.
      * @param _newSwapper The address of the new swapper contract.
      *
-     * Requirements:
-     * - The caller must have the DEFAULT_ADMIN_ROLE.
+     * @custom:requirements
      * - `_newSwapper` must not be the zero address.
+     * - caller must have the admin role.
+     *
+     * @custom:reverts
+     * - `SwapperAddressZero` if `_newSwapper` is the zero address.
+     * - `AccessControlUnauthorizedAccount` if the caller does not have the `DEFAULT_ADMIN_ROLE`.
+     *
+     * @custom:emits
+     * - Emits {SwapperUpdated} event upon successful swapper update.
      */
     function setSwapper(ISwapper _newSwapper) external onlyAdmin {
         address oldSwapper = _setSwapper(_newSwapper);
@@ -411,13 +425,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
 
     /**
      * @notice Sets the minimum interval between epochs (DCA executions) in seconds.
-     * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The duration must be between the {EPOCH_DURATION_LOWER_BOUND} and {EPOCH_DURATION_UPPER_BOUND}.
-     * Emits the {EpochDurationUpdated} event.
+     * @dev Restricted to admin role. The duration must be between `EPOCH_DURATION_LOWER_BOUND` and `EPOCH_DURATION_UPPER_BOUND`.
      * @param _newDuration The new minimum duration in seconds.
      *
-     * Requirements:
-     * - The caller must have the DEFAULT_ADMIN_ROLE.
-     * - `_newDuration` must be between {EPOCH_DURATION_LOWER_BOUND} and {EPOCH_DURATION_UPPER_BOUND}.
+     * @custom:requirements
+     * - `_newDuration` must be between `EPOCH_DURATION_LOWER_BOUND` and `EPOCH_DURATION_UPPER_BOUND`.
+     * - caller must have the admin role.
+     *
+     * @custom:reverts
+     * - `EpochDurationOutOfBounds` if `_newDuration` is out of bounds.
+     * - `AccessControlUnauthorizedAccount` if the caller does not have the `DEFAULT_ADMIN_ROLE`.
+     *
+     * @custom:emits
+     * - Emits {EpochDurationUpdated} event upon successful epoch duration update.
      */
     function setEpochDuration(uint32 _newDuration) external onlyAdmin {
         uint32 oldDuration = _setEpochDuration(_newDuration);
@@ -426,14 +446,20 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
     }
 
     /**
-     * @notice Sets the minimum yield required per epoch to execute the DCA strategy.
-     * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The yield must be below the {MIN_YIELD_PER_EPOCH_UPPER_BOUND}.
-     * Emits the {MinYieldPerEpochUpdated} event.
-     * @param _newMinYieldPercent The new minimum yield as a WAD-scaled percentage of the total principal.
+     * @notice Sets the minimum yield required per epoch as a WAD-scaled percentage of the total principal.
+     * @dev Restricted to admin role. The yield must be below the `MIN_YIELD_PER_EPOCH_UPPER_BOUND`.
+     * @param _newMinYieldPercent The new minimum yield as a WAD-scaled percentage.
      *
-     * Requirements:
-     * - The caller must have the DEFAULT_ADMIN_ROLE.
-     * - `_newMinYieldPercent` must be below the {MIN_YIELD_PER_EPOCH_UPPER_BOUND}.
+     * @custom:requirements
+     * - `_newMinYieldPercent` must be below the `MIN_YIELD_PER_EPOCH_UPPER_BOUND`.
+     * - caller must have the admin role.
+     *
+     * @custom:reverts
+     * - `MinYieldPerEpochOutOfBounds` if `_newMinYieldPercent` is out of bounds.
+     * - `AccessControlUnauthorizedAccount` if the caller does not have the `DEFAULT_ADMIN_ROLE`.
+     *
+     * @custom:emits
+     * - Emits {MinYieldPerEpochUpdated} event upon successful yield update.
      */
     function setMinYieldPerEpoch(uint64 _newMinYieldPercent) external onlyAdmin {
         uint64 oldMinYield = _setMinYieldPerEpoch(_newMinYieldPercent);
@@ -443,13 +469,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
 
     /**
      * @notice Sets the maximum discrepancy between the expected and actual DCA token amounts for a claim.
-     * @dev Restricted to only the DEFAULT_ADMIN_ROLE. The discrepancy must be below the {DISCREPANCY_TOLERANCE_UPPER_BOUND}.
-     * Emits the {DiscrepancyToleranceUpdated} event.
+     * @dev Restricted to admin role. The discrepancy must be below the `DISCREPANCY_TOLERANCE_UPPER_BOUND`.
      * @param _newTolerance The new discrepancy tolerance as a WAD-scaled percentage.
      *
-     * Requirements:
-     * - The caller must have the DEFAULT_ADMIN_ROLE.
-     * - `_newTolerance` must be below the {DISCREPANCY_TOLERANCE_UPPER_BOUND}.
+     * @custom:requirements
+     * - `_newTolerance` must be below the `DISCREPANCY_TOLERANCE_UPPER_BOUND`.
+     * - caller must have the admin role.
+     *
+     * @custom:reverts
+     * - `DiscrepancyToleranceOutOfBounds` if `_newTolerance` is out of bounds.
+     * - `AccessControlUnauthorizedAccount` if the caller does not have the `DEFAULT_ADMIN_ROLE`.
+     *
+     * @custom:emits
+     * - Emits {DiscrepancyToleranceUpdated} event upon successful tolerance update.
      */
     function setDiscrepancyTolerance(uint64 _newTolerance) external onlyAdmin {
         if (_newTolerance > DISCREPANCY_TOLERANCE_UPPER_BOUND) revert DiscrepancyToleranceOutOfBounds();
@@ -469,12 +501,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _shares The amount of shares to deposit into the new position.
      * @return positionId The ID of the newly created position.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_shares` must be greater than zero.
      * - The caller must have approved the contract to transfer `_shares` from their address.
      * - If the owner is a contract, it must implement `IERC721Receiver-onERC721Received` to receive the NFT.
      *
-     * Emits a {PositionOpened} event.
+     * @custom:reverts
+     * - `ZeroAmount` if `_shares` is zero.
+     * - `TransferToZeroAddress' if the owner is the zero address.
+     * - `TransferToNonERC721ReceiverImplementer` if the owner is a contract without `IERC721Receiver-onERC721Received`.
+     * - 'TransferFromFailed' if the transfer of shares fails.
+     * 
+     * @custom:emits
+     * - Emits {PositionOpened} event upon successful position opening.
      */
     function openPosition(address _owner, uint256 _shares) public returns (uint256 positionId) {
         _shares.revertIfZero();
@@ -496,12 +535,18 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _s Half of the ECDSA signature pair.
      * @return positionId The ID of the newly created position.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_shares` must be greater than zero.
      * - The permit must be valid and approved by the caller.
      * - If the owner is a contract, it must implement `IERC721Receiver-onERC721Received` to receive the NFT.
      *
-     * Emits a {PositionOpened} event.
+     * @custom:reverts
+     * - `ZeroAmount` if `_shares` is zero.
+     * - `TransferToZeroAddress' if the owner is the zero address.
+     * - `TransferToNonERC721ReceiverImplementer` if the owner is a contract without `IERC721Receiver-onERC721Received`.
+     *
+     * @custom:emits
+     * - Emits {PositionOpened} event upon successful position opening.
      */
     function openPositionUsingPermit(
         address _owner,
@@ -524,12 +569,18 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _principal The amount of the vault's underlying asset to deposit.
      * @return positionId The ID of the newly created position.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_principal` must be greater than zero.
      * - The caller must have approved the contract to transfer `_principal` of the vault's underlying asset from their address.
      * - If the owner is a contract, it must implement `IERC721Receiver-onERC721Received` to receive the NFT.
      *
-     * Emits a {PositionOpened} event.
+     * @custom:reverts
+     * - `ZeroAmount` if `_principal` is zero.
+     * - `TransferToZeroAddress' if the owner is the zero address.
+     * - `TransferToNonERC721ReceiverImplementer` if the owner is a contract without `IERC721Receiver-onERC721Received`.
+     *
+     * @custom:emits
+     * - Emits {PositionOpened} event upon successful position opening.
      */
     function depositAndOpenPosition(address _owner, uint256 _principal) public returns (uint256 positionId) {
         _principal.revertIfZero();
@@ -551,12 +602,18 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _s Half of the ECDSA signature pair.
      * @return positionId The ID of the newly created position.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_principal` must be greater than zero.
      * - The permit must be valid and approved by the caller.
      * - If the owner is a contract, it must implement `IERC721Receiver-onERC721Received` to receive the NFT.
      *
-     * Emits a {PositionOpened} event.
+     * @custom:reverts
+     * - `ZeroAmount` if `_principal` is zero.
+     * - `TransferToZeroAddress' if the owner is the zero address.
+     * - `TransferToNonERC721ReceiverImplementer` if the owner is a contract without `IERC721Receiver-onERC721Received`.
+     *
+     * @custom:emits
+     * - Emits {PositionOpened} event upon successful position opening.
      */
     function depositAndOpenPositionUsingPermit(
         address _owner,
@@ -578,12 +635,18 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _positionId The ID of the position to be increased.
      * @param _shares The amount of shares to add to the position.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_shares` must be greater than zero.
      * - The owner of the position must have approved the contract to transfer `_shares` from their address.
      * - The caller must be the owner or an approved operator of the position.
      *
-     * Emits a {PositionIncreased} event.
+     * @custom:reverts
+     * - `ZeroAmount` if `_shares` is zero.
+     * - `TransferFromFailed` if the transfer of shares fails.
+     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
+     * 
+     * @custom:emits
+     * - Emits {PositionIncreased} event upon successful position increase.
      */
     function increasePosition(uint256 _positionId, uint256 _shares) public {
         _shares.revertIfZero();
@@ -607,12 +670,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _r Half of the ECDSA signature pair.
      * @param _s Half of the ECDSA signature pair.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_shares` must be greater than zero.
      * - The permit must be valid and approved by the owner of the position.
      * - The caller must be the owner or an approved operator of the position.
      *
-     * Emits a {PositionIncreased} event.
+     * @custom:reverts
+     * - `ZeroAmount` if `_shares` is zero.
+     * - `TransferFromFailed` if the transfer of shares fails.
+     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
+     * 
+     *
+     * @custom:emits
+     * - Emits {PositionIncreased} event upon successful position increase.
      */
     function increasePositionUsingPermit(
         uint256 _positionId,
@@ -634,12 +704,18 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _positionId The ID of the position to be increased.
      * @param _assets The amount of the vault's underlying asset to deposit.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_assets` must be greater than zero.
      * - The caller must have approved the contract to transfer `_assets` of the vault's underlying asset from their address.
      * - The caller must be the owner or an approved operator of the position.
      *
-     * Emits a {PositionIncreased} event.
+     * @custom:reverts
+     * - `ZeroAmount` if `_assets` is zero.
+     * - `TransferFromFailed` if the transfer of assets fails.
+     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
+     *
+     * @custom:emits
+     * - Emits {PositionIncreased} event upon successful position increase.
      */
     function depositAndIncreasePosition(uint256 _positionId, uint256 _assets) public {
         _assets.revertIfZero();
@@ -661,12 +737,18 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _r Half of the ECDSA signature pair.
      * @param _s Half of the ECDSA signature pair.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_assets` must be greater than zero.
      * - The permit must be valid and approved by the owner of the position.
      * - The caller must be the owner or an approved operator of the position.
      *
-     * Emits a {PositionIncreased} event.
+     * @custom:reverts
+     * - `ZeroAmount` if `_assets` is zero.
+     * - `TransferFromFailed` if the transfer of assets fails.
+     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
+     *
+     * @custom:emits
+     * - Emits {PositionIncreased} event upon successful position increase.
      */
     function depositAndIncreasePositionUsingPermit(
         uint256 _positionId,
@@ -688,12 +770,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _positionId The ID of the position to be reduced.
      * @param _shares The amount of shares to withdraw from the position.
      *
-     * Requirements:
+     * @custom:requirements
      * - `_shares` must be greater than zero.
      * - The caller must be the owner or an approved operator of the position.
      * - The position must have sufficient shares to withdraw.
      *
-     * Emits a {PositionReduced} event or a {PositionClosed} event if all shares are withdrawn.
+     * @custom:reverts
+     * - `ZeroAmount` if `_shares` is zero.
+     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
+     * - `InsufficientSharesToWithdraw` if the position does not have sufficient shares to withdraw.
+     *
+     * @custom:emits
+     * - Emits {PositionReduced} event upon successful position reduction.
+     * - Emits {PositionClosed} event if all shares are withdrawn.
      */
     function reducePosition(uint256 _positionId, uint256 _shares) external {
         _shares.revertIfZero();
@@ -708,7 +797,6 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
             return;
         }
 
-        // the position will be closed if all shares are withdrawn
         _closePosition(_positionId, position.principal, sharesBalance_, dcaBalance_);
     }
 
@@ -717,10 +805,14 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @dev Transfers all shares and the DCA balance from the contract to the owner of the position, burns the NFT representing the position, and removes the position.
      * @param _positionId The ID of the position to be closed.
      *
-     * Requirements:
+     * @custom:requirements
      * - The caller must be the owner or an approved operator of the position.
      *
-     * Emits a {PositionClosed} event.
+     * @custom:reverts
+     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist. 
+     *
+     * @custom:emits
+     * - Emits {PositionClosed} event upon successful position closing.
      */
     function closePosition(uint256 _positionId) external {
         _checkApprovedOrOwner(_positionId);
@@ -739,12 +831,19 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _to The address to which the DCA balance will be transferred.
      * @return amount The amount of DCA tokens claimed.
      *
-     * Requirements:
+     * @custom:requirements
      * - The caller must be the owner or an approved operator of the position.
      * - The `_to` address must not be zero.
      * - The position must have a non-zero DCA balance.
      *
-     * Emits a {DCABalanceClaimed} event.
+     * @custom:reverts
+     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
+     * - `NothingToClaim` if the position has no DCA balance to claim.
+     * - `ZeroAddress` if the `_to` address is the zero address.
+     * - `DCADiscrepancyAboveTolerance` if the claimed DCA amount is above the discrepancy tolerance.
+     *
+     * @custom:emits
+     * - Emits {DCABalanceClaimed} event upon successful balance claim.
      */
     function claimDCABalance(uint256 _positionId, address _to) external returns (uint256 amount) {
         _to.revertIfZero();
@@ -774,18 +873,20 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @param _dcaAmountOutMin The minimum amount of DCA tokens expected from the swap.
      * @param _swapData The data required by the swapper contract to perform the swap.
      *
-     * Requirements:
+     * @custom:requirements
      * - The caller must have the KEEPER_ROLE.
      * - The epoch duration must have been reached.
      * - The yield must be sufficient to meet the minimum yield per epoch requirement.
      *
-     * Emits a {DCAExecuted} event.
+     * @custom:reverts
+     * - `EpochDurationNotReached` if the epoch duration has not been reached.
+     * - `InsufficientYield` if the yield is not sufficient to meet the minimum yield per epoch.
+     * - `AmountReceivedTooLow` if the amount of DCA tokens received is below the minimum expected amount.
+     *
+     * @custom:emits
+     * - Emits {DCAExecuted} event upon successful DCA execution.
      */
-    function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData)
-        external
-        nonReentrant
-        onlyRole(KEEPER_ROLE)
-    {
+    function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external nonReentrant onlyRole(KEEPER_ROLE) {
         _checkEpochDuration();
 
         // calculate yield in shares and redeem from the vault
@@ -829,7 +930,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      *
      * @custom:reverts
      * - `EmptyCID` if the `_cid` is an empty string.
-     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator.
+     * - `ERC721.NotOwnerNorApproved` if the caller is not the owner or an approved operator or if the position does not exist.
      *
      * @custom:emits
      * - Emits a {TokenCIDUpdated} event upon successful CID update.
@@ -899,9 +1000,13 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @dev Meant to be called only off-chain to preview the DCA execution conditions.
      * @return True if the DCA strategy can be executed, reverts otherwise.
      *
-     * Requirements:
+     * @custom:requirements
      * - The epoch duration must have been reached.
      * - The yield must be sufficient to meet the minimum yield per epoch requirement.
+     * 
+     * @custom:reverts
+     * - `EpochDurationNotReached` if the epoch duration has not been reached.
+     * - `InsufficientYield` if the yield is not sufficient to meet the minimum yield per epoch.
      */
     function canExecuteDCA() external view returns (bool) {
         _checkEpochDuration();

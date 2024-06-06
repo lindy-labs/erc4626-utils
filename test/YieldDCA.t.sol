@@ -2191,10 +2191,10 @@ contract YieldDCATest is TestCommon {
          * 1. alice deposits 1 ether in principal
          * 2. yield generated is 100% in the first epoch, ie 1 ether
          * 3. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether
-         * 4. alice does partial withdraw of 1/2 principal (0.5 ether) and receives 3 DCA tokens
+         * 4. alice does partial withdraw of 1/2 principal (0.5 ether)
          * 5. again yield is generated at 100% (ie 0.5 ether)
          * 6. execute DCA at 3:1 exchange, 1.5 DCA tokens = 0.5 ether
-         * 7. withdraws remaining 0.5 ether and receives 1.5 DCA tokens (1 ether principal and 4.5 DCA tokens in total)
+         * 7. withdraws remaining 0.5 ether and receives 4.5 DCA tokens (end balance: 1.5 ether and 4.5 DCA tokens)
          */
 
         // step 1 - alice deposits
