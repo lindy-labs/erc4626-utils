@@ -83,7 +83,6 @@ contract YieldDCATest is TestCommon {
 
     uint32 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
     uint64 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
-    uint256 public constant DEFAULT_DISCREPANCY_TOLERANCE = 0.01e18; // 1%
 
     YieldDCA yieldDca;
     MockERC20 asset;
@@ -129,6 +128,7 @@ contract YieldDCATest is TestCommon {
         assertEq(yieldDca.currentEpoch(), 1, "current epoch");
         assertEq(yieldDca.currentEpochTimestamp(), block.timestamp, "current epoch timestamp");
         assertEq(yieldDca.totalPrincipal(), 0, "total principal deposited");
+        assertEq(yieldDca.discrepancyTolerance(), 0.05e18, "default discrepancy tolerance");
 
         assertTrue(yieldDca.hasRole(yieldDca.DEFAULT_ADMIN_ROLE(), admin), "admin role");
         assertTrue(yieldDca.hasRole(yieldDca.KEEPER_ROLE(), keeper), "keeper role");
@@ -1293,13 +1293,13 @@ contract YieldDCATest is TestCommon {
     function test_executeDCA_oneDepositOneEpoch() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether in principal
+         * 1. alice opens position with 1 ether in principal
          * 2. yield generated is 50%, ie 0.5 ether
          * 3. execute DCA at 3:1 exchange rate, ie by 1.5 DCA for 0.5 ether in yield
-         * 4. alice withdraws and gets 1 ether in shares and 1.5 DCA token
+         * 4. alice closes position and gets 1 ether in shares and 1.5 DCA token
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position with 1 ether in principal
         uint256 principal = 1 ether;
         _openPositionWithPrincipal(alice, principal);
 
@@ -1329,7 +1329,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(sharesLeft), principal, 2, "balanceOf: principal");
         assertEq(dcaAmount, expectedDcaAmount, "balanceOf: dcaAmount");
 
-        // step 4 - alice withdraws and gets 1 ether in shares and 1.5 DCA tokens
+        // step 4 - alice closes position and gets 1 ether in shares and 1.5 DCA tokens
         vm.prank(alice);
         yieldDca.closePosition(1);
 
@@ -1385,7 +1385,7 @@ contract YieldDCATest is TestCommon {
             keeper
         );
 
-        // alice deposits 1 ether
+        // alice opens position with 1 ether
         uint256 principal = 1 ether;
         _openPositionWithPrincipal(alice, principal);
 
@@ -1403,23 +1403,23 @@ contract YieldDCATest is TestCommon {
         yieldDca.executeDCA(0, "");
     }
 
-    function test_executeDCA_twoDepositsInSameEpoch() public {
+    function test_executeDCA_positionIsIncreasedInSameEpoch() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether
+         * 1. alice opens position with 1 ether
          * 2. yield generated is 100% in the first epoch, ie 1 ether
-         * 3. alice deposits 1 ether again
+         * 3. alice invreases position with 1 ether again
          * 4. execute DCA at 2:1 exchange, (alice gets 2 DCA tokens)
          * 5. alice withdraws and gets 2 ether in shares and 2 DCA tokens
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
 
-        // step 3 - alice deposits again (this one doesn't generate yield)
+        // step 3 - alice increases position (this one will not generate any additional yield)
 
         _increasePosition(alice, 1 ether, positionId);
 
@@ -1429,26 +1429,26 @@ contract YieldDCATest is TestCommon {
         // step 4 - dca - buy 2 DCA tokens for 1 ether
         _executeDcaAtExchangeRate(2e18);
 
-        // step 5 - alice withdraws and gets 2 DCA tokens
+        // step 5 - alice closes position and gets 2 DCA tokens
         _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 2e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
     }
 
-    function test_executeDca_twoDepositsInDifferentEpochs() public {
+    function test_executeDca_positionIsIncreasedInDifferentEpochs() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether
+         * 1. alice opens position with 1 ether
          * 2. yield generated is 100% in the first epoch, ie 1 ether
-         * 3. execute DCA at 3:1 exchange, (alice gets 3 DCA tokens)
-         * 4. alice deposits 1 ether again (receives 3 DCA tokens)
+         * 3. execute DCA at 3:1 exchange, (entitled to 3 DCA tokens)
+         * 4. alice increases position with 1 ether again
          * 5. generate 100% yield in the second epoch, ie 2 ether
-         * 6. execute DCA at 2:1 exchange, (alice gets 4 DCA tokens)
-         * 7. alice withdraws and gets 2 ether in shares and 4 DCA tokens (7 in total)
+         * 6. execute DCA at 2:1 exchange, (entitiled to 4 DCA tokens)
+         * 7. alice closes position and gets 2 ether in shares and 7 DCA tokens
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position
         uint256 principal = 1 ether;
         uint256 positionId = _openPositionWithPrincipal(alice, principal);
 
@@ -1458,7 +1458,7 @@ contract YieldDCATest is TestCommon {
         // step 3 - dca
         _executeDcaAtExchangeRate(3e18);
 
-        // step 4 - alice deposits again
+        // step 4 - alice increases position
         _increasePosition(alice, principal, positionId);
 
         assertEq(vault.balanceOf(alice), 0, "shares balance");
@@ -1470,23 +1470,23 @@ contract YieldDCATest is TestCommon {
         // step 6 - dca
         _executeDcaAtExchangeRate(2e18);
 
-        // step 7 - alice withdraws
+        // step 7 - alice closes position
         _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 7e18, 0.00001e18, "dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), 2e18, 1, "principal");
     }
 
-    function test_executeDCA_oneDeposit200Epochs() public {
+    function test_executeDCA_oneOnePositionDuring200Epochs() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether in principal
-         * 2. yield generated is 5% over 200 dca cycles (epochs)
+         * 1. alice opens position with 1 ether in principal
+         * 2. yield generated is 1% over 200 dca cycles (epochs)
          * 3. execute DCA at 3:1 exchange in each cycle, 3 DCA tokens = 1 ether
-         * 4. alice withdraws and gets 1 ether in shares and gets 0.05 * 200 * 3 = 30 DCA tokens
+         * 4. alice closes position and gets 1 ether in shares and gets 0.01 * 200 * 3 = 6 DCA tokens
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position
         uint256 principal = 1 ether;
         _openPositionWithPrincipal(alice, principal);
 
@@ -1507,26 +1507,27 @@ contract YieldDCATest is TestCommon {
 
         assertEq(yieldDca.currentEpoch(), epochs + 1, "epoch not incremented");
 
-        // step 4 - alice withdraws and gets 30 DCA tokens
+        // step 4 - alice closes position and gets 6 DCA tokens
         _closePosition(alice, 1);
 
         uint256 expectedDcaTokenBalance = epochs * principal.mulWadDown(yieldPerEpoch).mulWadDown(exchangeRate);
-        assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaTokenBalance, 0.00001e18, "dca token balance");
+        assertEq(expectedDcaTokenBalance, 6 ether, "expected dca token balance");
+        assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaTokenBalance, 0.00001e18, "actual dca token balance");
         assertApproxEqRel(_convertSharesToAssetsFor(alice), principal, 0.00001e18, "principal");
         assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
         assertEq(dcaToken.balanceOf(address(yieldDca)), 0, "contract's dca token balance");
     }
 
-    function test_executeDCA_oneDeposit5Epochs() public {
+    function test_executeDCA_onePositionDuring5Epochs() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether in principal
+         * 1. alice opens position with 1 ether in principal
          * 2. yield generated is 5% over 5 dca cycles (epochs)
          * 3. execute DCA at 3:1 exchange in each cycle, 3 DCA tokens = 1 ether
-         * 4. alice withdraws and gets 1 ether in shares and gets 0.05 * 5 * 3 = 0.75 DCA tokens
+         * 4. alice closes position and gets 1 ether in shares and gets 0.05 * 5 * 3 = 0.75 DCA tokens
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position
         uint256 principal = 1 ether;
         _openPositionWithPrincipal(alice, principal);
 
@@ -1545,31 +1546,32 @@ contract YieldDCATest is TestCommon {
             yieldDca.executeDCA(0, "");
         }
 
-        // step 4 - alice withdraws and gets 30 DCA tokens
+        // step 4 - alice closes position and gets 0.75 DCA tokens
         _closePosition(alice, 1);
 
         uint256 expectedDcaTokenBalance = epochs * principal.mulWadDown(yieldPerEpoch).mulWadDown(exchangeRate);
-        assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaTokenBalance, 0.00001e18, "dca token balance");
+        assertEq(expectedDcaTokenBalance, 0.75 ether, "expected dca token balance");
+        assertApproxEqRel(dcaToken.balanceOf(alice), expectedDcaTokenBalance, 0.00001e18, "actual dca token balance");
         assertApproxEqRel(_convertSharesToAssetsFor(alice), principal, 0.00001e18, "principal");
         assertEq(vault.balanceOf(address(yieldDca)), 0, "contract's balance");
         // there can be some leftover dca tokens because of rounding errors and accounting inaccuracy
         assertApproxEqAbs(dcaToken.balanceOf(address(yieldDca)), 0, 50, "contract's dca token balance");
     }
 
-    function test_executeDCA_twoDeposits_separatesBalancesOverTwoEpochsCorrectly() public {
+    function test_executeDCA_twoPositionsOverTwoEpochs_balancesCalculatedCorrectly() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether
+         * 1. alice opens position with 1 ether
          * 2. yield generated is 100% in the first epoch, ie 1 ether
-         * 3. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether (alice gets 3 DCA tokens)
-         * 4. bob deposits 1 ether
-         * 5. yield generated is 100% in the second epoch, ie 2 ether (from 2 deposits)
-         * 6. execute DCA at 2:1 exchange, (bob gets 2 DCA tokens and alice gets 2 DCA tokens)
-         * 7. alice withdraws and gets 1 ether in shares and 5 DCA tokens
-         * 8. bob withdraws and gets 1 ether in shares and 2 DCA tokens
+         * 3. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether (alice is entitled to 3 DCA tokens)
+         * 4. bob opens position with 1 ether
+         * 5. yield generated is 100% in the second epoch, ie 2 ether (from 2 deposits of 2 ether in total)
+         * 6. execute DCA at 2:1 exchange, (bob is entitled to 2 DCA tokens and alice to 2 DCA tokens)
+         * 7. alice closes position and gets 1 ether in shares and 5 DCA tokens (3 from first + 2 from second epoch)
+         * 8. bob closes position and gets 1 ether in shares and 2 DCA tokens
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position with 1 ether
         uint256 alicesPrincipal = 1 ether;
         _openPositionWithPrincipal(alice, alicesPrincipal);
 
@@ -1579,8 +1581,7 @@ contract YieldDCATest is TestCommon {
         // step 3 - dca
         _executeDcaAtExchangeRate(3e18);
 
-        // step 4 - bob deposits
-
+        // step 4 - bob opens position with 1 ether
         uint256 bobsPrincipal = 1 ether;
         _openPositionWithPrincipal(bob, bobsPrincipal);
 
@@ -1590,32 +1591,32 @@ contract YieldDCATest is TestCommon {
         // step 6 - dca
         _executeDcaAtExchangeRate(2e18);
 
-        // step 7 - alice withdraws and gets 5 DCA tokens
+        // step 7 - alice closes position and gets 5 DCA tokens
         _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 5e18, 0.00001e18, "alice's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 1, "alice's principal");
 
-        // step 8 - bob withdraws and gets 2 DCA tokens
+        // step 8 - bob closes position and gets 2 DCA tokens
         _closePosition(bob, 2);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 2e18, 0.00001e18, "bob's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 1, "bob's principal");
     }
 
-    function test_executeDCA_twoDepositsInSameEpochWithDifferentYield() public {
+    function test_executeDCA_twoPositionsInSameEpochCanExperienceDifferentYields() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether
-         * 2. bob deposits 1 ether into vault only
-         * 3. yield generated is 100% in the first epoch, ie 1 ether
-         * 4. bob deposits to DCA contract
-         * 5. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether (alice gets 3 DCA tokens)
-         * 6. alice withdraws and gets 3 DCA tokens and 1 ether in principal
+         * 1. alice opens position with 1 ether
+         * 2. bob deposits 1 ether into vault only (no yield in DCA)
+         * 3. yield generated is 100% in the first epoch, ie 1 ether from alices deposit
+         * 4. bob opens position in DCA contract with 2 ether in principal (should not generate any yield)
+         * 5. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether (alice entitiled to 3 DCA tokens)
+         * 6. alice closes position and gets 3 DCA tokens and 1 ether in principal
          * 7. bob is entitled to 0 DCA tokens
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position
         uint256 alicesPrincipal = 1 ether;
         _openPositionWithPrincipal(alice, alicesPrincipal);
 
@@ -1626,42 +1627,42 @@ contract YieldDCATest is TestCommon {
         // step 3 - generate 100% yield
         _generateYield(1e18);
 
-        // step 4 - bob deposits into DCA
+        // step 4 - bob opens position in DCA
         vm.prank(bob);
         yieldDca.openPosition(bob, bobsShares);
 
         // step 4 - dca
         _executeDcaAtExchangeRate(3e18);
 
-        // step 5 - alice withdraws and gets 5 DCA tokens
+        // step 5 - alice closes position and gets 5 DCA tokens
         _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 3e18, 0.00001e18, "alice's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 1, "alice's principal");
 
-        // step 6 - bob withdraws and gets 2 DCA tokens
+        // step 6 - bob closes position and gets no DCA tokens
         _closePosition(bob, 2);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 0, 0.00001e18, "bob's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), 2 * bobsPrincipal, 1, "bob's principal");
     }
 
-    function test_executeDCA_multipleUserDepositsInTwoEpochs_balanceAndDcaAmountSeparatedCorrectly() public {
+    function test_executeDCA_multiplePositionsInDifferentEpochs_balanceAndDcaAmountsCalculatedCorrectly() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether
+         * 1. alice opens position with 1 ether
          * 2. yield generated is 100% in the first epoch, ie 1 ether
-         * 3. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether (alice gets 3 DCA tokens)
-         * 4. bob deposits 2 ether
-         * 5. carol deposits 1 ether
-         * 6. yield generated is 100% in the second epoch, ie 4 ether (from 3 deposits of 4 ether in total)
-         * 7. execute DCA at 2:1 exchange, (bob gets 4 DCA tokens and alice & carol get 2 DCA tokens each)
-         * 8. alice withdraws and gets 1 ether in shares and 5 DCA tokens
-         * 9. bob withdraws and gets 2 ether in shares and 4 DCA tokens
-         * 10. carol withdraws and gets 1 ether in shares and 2 DCA tokens
+         * 3. execute DCA at 3:1 exchange, 3 DCA tokens = 1 ether (alice is entitled to 3 DCA tokens)
+         * 4. bob opens position with 2 ether
+         * 5. carol opens position with 1 ether
+         * 6. yield generated is 100% in the second epoch, ie 4 ether (from 3 deposits of 4 ether in total princpal)
+         * 7. execute DCA at 2:1 exchange, (bob is entitled to 4 DCA tokens and alice & carol to 2 DCA tokens each)
+         * 8. alice closes position and gets 1 ether in shares and 5 DCA tokens (3 + 2)
+         * 9. bob closes position and gets 2 ether in shares and 4 DCA tokens
+         * 10. carol closes position and gets 1 ether in shares and 2 DCA tokens
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position with 1 ether
         uint256 alicesPrincipal = 1 ether;
         _openPositionWithPrincipal(alice, alicesPrincipal);
 
@@ -1671,11 +1672,11 @@ contract YieldDCATest is TestCommon {
         // step 3 - dca - buy 3 DCA tokens for 1 ether
         _executeDcaAtExchangeRate(3e18);
 
-        // step 4 - bob deposits
+        // step 4 - bob opens position with 2 ether
         uint256 bobsPrincipal = 2 ether;
         _openPositionWithPrincipal(bob, bobsPrincipal);
 
-        // step 5 - carol deposits
+        // step 5 - carol opens position with 1 ether
         uint256 carolsPrincipal = 1 ether;
         _openPositionWithPrincipal(carol, carolsPrincipal);
 
@@ -1685,53 +1686,53 @@ contract YieldDCATest is TestCommon {
         // step 7 - dca - buy 8 DCA tokens for 4 ether
         _executeDcaAtExchangeRate(2e18);
 
-        // step 8 - alice withdraws and gets 5 DCA tokens
+        // step 8 - alice closes position and gets 5 DCA tokens
         _closePosition(alice, 1);
 
         assertApproxEqRel(dcaToken.balanceOf(alice), 5e18, 0.00001e18, "alice's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 1, "alice's principal");
 
-        // step 9 - bob withdraws and gets 4 DCA tokens
+        // step 9 - bob closes position and gets 4 DCA tokens
         _closePosition(bob, 2);
 
         assertApproxEqRel(dcaToken.balanceOf(bob), 4e18, 0.00001e18, "bob's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(bob), bobsPrincipal, 1, "bob's principal");
 
-        // step 10 - carol withdraws and gets 2 DCA tokens
+        // step 10 - carol closes position and gets 2 DCA tokens
         _closePosition(carol, 3);
 
         assertApproxEqRel(dcaToken.balanceOf(carol), 2e18, 0.00001e18, "carol's dca token balance");
         assertApproxEqAbs(_convertSharesToAssetsFor(carol), carolsPrincipal, 1, "carol's principal");
     }
 
-    function test_executeDCA_oneOfUsersExperiencesNegativeYield() public {
+    function test_executeDCA_onePositionExperiencesNegativeYield() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether
+         * 1. alice opens position with 1 ether
          * 2. yield generated is 100% in the first epoch
          *      alice has 1 ether in principal and 1 ether in yield
          * 3. execute DCA at 4:1 exchange, 4 DCA tokens = 1 ether
-         *      alice gets 4 DCA tokens
+         *      alice is entitled to 4 DCA tokens
          * 4. again yield generated is 100% (1 ether)
          *      alice has 1 ether in principal and 1 ether in yield (total 2 ether)
-         * 5. bob deposits 1 ether         *
-         * 6. at this point yield becomes negative -25%
+         * 5. bob opens position with 1 ether         
+         * 6. at this point yield becomes negative -25% (shares value drops by 25%)
          *      alice has 1 ether in principal and 0.5 ether in yield (total 1.5 ether)
-         *      bob has 0.75 ether in principal         *
+         *      bob has 0.75 ether in principal (-0.25 from negative yield)   
          *
          *      total principal per accouting is 2 ether but shares are only worth 3 * 0.75 = 2.25 ether => only 0.25 ether in yield can be spent
          *      this means that bob's loss of 0.25 is covered by alice's yield of 0.5, however this is not a permanent loss,
-         *      as bob regains his principal, alice will regain her "lost" yield.
+         *      as bob regains his principal, alice will regain her "lost" yield and thus also DCA tokens (but probably at different realized price)
          *
          * 7. execute DCA at 2:1 exchange, 0.25 ether = 0.5 DCA token
-         *      alice should get 1 DCA token per accounting, but only 0.5 DCA tokens are bought
-         *      bob gets 0 DCA tokens
-         * 8. alice withdraws and gets 1 ether in principal and 4.5 DCA tokens (should get 5 DCA tokens)
-         * 9. bob withdraws and gets 0.75 ether in shares and 0 DCA tokens
+         *      alice is entitled to 1 DCA token per accounting, but only 0.5 DCA tokens are bought
+         *      bob is entitled to 0 DCA tokens
+         * 8. alice closes position and gets 1 ether in principal and 4.5 DCA tokens (should get 5 DCA tokens)
+         * 9. bob closes position and gets 0.75 ether in shares and 0 DCA tokens
          * 10. 0.25 ether worth of shares are left in the contract as yield? - because alice withrew before bob had a chance to recover from his loss
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position with 1 ether
         uint256 alicesPrincipal = 1 ether;
         _openPositionWithPrincipal(alice, alicesPrincipal);
 
@@ -1744,7 +1745,7 @@ contract YieldDCATest is TestCommon {
         // step 4 - generate 100% yield
         _generateYield(1e18);
 
-        // step 5 - bob deposits
+        // step 5 - bob opens position with 1 ether
         uint256 bobsPrincipal = 1 ether;
         _openPositionWithPrincipal(bob, bobsPrincipal);
 
@@ -1761,10 +1762,10 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), alicesPrincipal, 2, "bw: alice's principal");
         assertApproxEqRel(dcaAmount, 5e18, 0.00001e18, "bw: alice's dca token balance");
 
+        // since alice is entitled to 5 DCA tokens but only 4.5 are available closing position will fail due to too large discrepancy
         vm.expectRevert(YieldDCA.DCADiscrepancyAboveTolerance.selector);
         _closePosition(alice, 1);
 
-        // since alice is entitled to 5 DCA tokens but only 4.5 are available
         // the discrepancy tolerance needs to be set at 10% for alice to be able to close her position
         vm.prank(admin);
         yieldDca.setDiscrepancyTolerance(0.1e18);
@@ -1774,7 +1775,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(_convertSharesToAssetsFor(alice), alicesPrincipal, 2, "aw: alice's principal");
         assertApproxEqRel(dcaToken.balanceOf(alice), 4.5e18, 0.00001e18, "aw: alice's dca token balance");
 
-        // step 9 - bob's balance is 1.5 ether in principal and 0 DCA tokens
+        // step 9 - bob's balance is 0.75 ether in principal and 0 DCA tokens
         (shares, dcaAmount) = yieldDca.balancesOf(2);
         assertApproxEqRel(vault.convertToAssets(shares), 0.75e18, 0.00001e18, "bob's principal");
         assertEq(dcaAmount, 0, "bob's dca token balance");
@@ -1785,6 +1786,7 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaToken.balanceOf(bob), 0, "aw: bob's dca token balance");
 
         // step 10 - 0.25 ether is left in the contract as surplus yield
+        // which will be spend in the next epoch but it will not be accounted to any position but used for suppressing future discrepancies
         assertEq(yieldDca.totalPrincipal(), 0, "total principal deposited");
 
         uint256 yieldInShares = yieldDca.calculateYieldInShares();
@@ -1794,37 +1796,37 @@ contract YieldDCATest is TestCommon {
         assertEq(yieldDca.totalPrincipal(), 0, "total principal deposited");
     }
 
-    function test_executeDca_negativeYieldIsRecoveredWithSurplus() public {
+    function test_executeDca_negativeYieldCanBeRecoveredWithSurplus() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether
+         * 1. alice opens position with 1 ether
          * 2. yield generated is 100% (alice has 1 ether in principal and 1 ether in yield)
-         * 3. bob deposits 1 ether
-         * 4. carol deposits 1 ether
-         * 5. from this point yield becomes negative -20%,
-         *      alice has 1.6 ether
-         *      bob has 0.8 ether
-         *      carol has 0.8 ether
-         *      total principal = 3 ether, total assets = 3.2 ether, so usable yield per accounting is 0.2 ether
+         * 3. bob opens position with 1 ether
+         * 4. carol opens position with 1 ether
+         * 5. from this point yield becomes negative -20% (shares value drpos by 20%)
+         *      alice has 1.6 ether in actual value (1 in principal + 0.6 in yield)
+         *      bob has 0.8 ether in actual value (lost some principal)
+         *      carol has 0.8 ether (same as bob)
+         *      total accounted principal = 3 ether, total assets = 3.2 ether, so usable yield per accounting is 0.2 ether
          * 6. execute DCA at 2:1 exchange, 0.2 ether = 0.4 DCA token
-         *      alice gets 0.4 DCA tokens (per accounting 1.2 DCA tokens are expected)
-         *      bob gets 0 DCA tokens
-         *      carol gets 0 DCA tokens
+         *      alice can withdraw 0.4 DCA tokens (but is entitled to 1.2 DCA tokens per accounting logic because realized yield was only 0.6)
+         *      bob is entitled to 0 DCA tokens
+         *      carol is entitled to 0 DCA tokens
          * 7. generate 50% yield, enough to recover bob's and carol's loss
-         *      alice has 2.1 ether
-         *      bob has 1.2 ether
-         *      carol has 1.2 ether
-         *      total principal = 3 ether, total assets = 4.5, so usable yield is 1.5 ether
+         *      alice has 2.1 ether in actual shares value ((1 in principal + 0.4 in yield from previous epoch) * 150%)
+         *      bob has 1.2 ether in actual shares value ((1 in principal - 0.2 in yield from previous epoch) * 150%)
+         *      carol has 1.2 ether in actual shares value ((1 in principal - 0.2 in yield from previous epoch) * 150%)
+         *      total accounted principal = 3 ether, total assets = 4.5, so usable yield is 1.5 ether
          * 8. execute DCA at 2:1 exchange, 1.5 ether = 3 DCA token
-         *      alice gets 2.2 DCA tokens (per accounting 1 DCA tokens are expected)
+         *      alice is entitled to total of 2.2 DCA tokens (per accounting 1 DCA tokens in current epoch + 1.2 DCA tokens from previous epoch)
          *      bob gets 0.4 DCA tokens
          *      carol gets 0.4 DCA tokens
          *
-         *      in total: 3.4 DCA tokens are bought
+         *      in total: 3.4 DCA tokens are bought and divided like this:
          *          alice is entitled to 1.2 + 1 = 2.2 DCA tokens
          *          bob is entitled to 0 + 0.4 = 0.4 DCA tokens
          *          carol is entitled to 0 + 0.4 = 0.4 DCA tokens
-         *          => 3.4 - 3 = 0.4 DCA tokens are undistributed
+         *          => 3.4 - 3 = 0.4 DCA tokens are undistributed due to accounting logic inability to handle negative yield per position
          *
          * 9. alice withdraws and gets 1 ether in shares and 2.2 DCA tokens
          * 10. bob withdraws and gets 1 ether in shares and 0.4 DCA tokens
@@ -1833,18 +1835,18 @@ contract YieldDCATest is TestCommon {
          * 12. total DCA tokens bought is 3.4, but per accounting only 3 DCA tokens are expected -> 0.4 DCA tokens are undistributed
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position
         uint256 alicesPrincipal = 1 ether;
         _openPositionWithPrincipal(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
 
-        // step 3 - bob deposits
+        // step 3 - bob opens position
         uint256 bobsPrincipal = 1 ether;
         _openPositionWithPrincipal(bob, bobsPrincipal);
 
-        // step 4 - carol deposits
+        // step 4 - carol opens position
         uint256 carolsPrincipal = 1 ether;
         _openPositionWithPrincipal(carol, carolsPrincipal);
 
@@ -1900,13 +1902,13 @@ contract YieldDCATest is TestCommon {
         assertApproxEqRel(dcaToken.balanceOf(address(yieldDca)), 0.4e18, 0.00001e18, "contract's dca token balance");
     }
 
-    function test_executeDCA_negativeYieldIsRecoveredWithDeficit() public {
+    function test_executeDCA_negativeYieldCanBeRecoveredWithDeficit() public {
         /**
          * scenario:
-         * 1. alice deposits 1 ether
+         * 1. alice opens position with 1 ether
          * 2. yield generated is 100% (alice has 1 ether in principal and 1 ether in yield)
-         * 3. bob deposits 1 ether
-         * 4. carol deposits 1 ether
+         * 3. bob opens position 1 ether
+         * 4. carol opens position 1 ether
          * 5. from this point yield becomes negative -20%,
          *      alice has 1.6 ether
          *      bob has 0.8 ether
@@ -1922,6 +1924,7 @@ contract YieldDCATest is TestCommon {
          *      carol has 1.2 ether
          *      total principal = 3 ether, total assets = 4.5, so usable yield is 1.5 ether
          *
+         ** so far everything was the same as in the previous test case, but here price of DCA tokens is increased and thus less can be bought
          * 8. execute DCA at 1:1 exchange, 1.5 ether = 1.5 DCA token
          *      alice gets 1.1 DCA tokens (per accounting 0.5 DCA tokens are expected)
          *      bob gets 0.2 DCA tokens
@@ -1937,20 +1940,21 @@ contract YieldDCATest is TestCommon {
          * 10. bob withdraws and gets 1 ether in shares and 0.2 DCA tokens
          *
          * 11. carol withdraws and gets 1 ether in shares and 0 DCA tokens - because of the missing DCA tokens, carol and bob are racing for the last DCA token?
+         * But this is an extreme case after all so actual discrepancy is not realistic to be 100%
          */
 
-        // step 1 - alice deposits
+        // step 1 - alice opens position
         uint256 alicesPrincipal = 1 ether;
         _openPositionWithPrincipal(alice, alicesPrincipal);
 
         // step 2 - generate 100% yield
         _generateYield(1e18);
 
-        // step 3 - bob deposits
+        // step 3 - bob opens position
         uint256 bobsPrincipal = 1 ether;
         _openPositionWithPrincipal(bob, bobsPrincipal);
 
-        // step 4 - carol deposits
+        // step 4 - carol opens position
         uint256 carolsPrincipal = 1 ether;
         _openPositionWithPrincipal(carol, carolsPrincipal);
 
@@ -2016,8 +2020,8 @@ contract YieldDCATest is TestCommon {
 
     function test_executeDCA_maliciousSwapperCannotReenter() public {
         // the swapper is malicious and tries to reenter the contract
-        // to enable this admin has to be compromised and grant the malicious swapper the keeper role
-        // step 1 - alice deposits
+        // to enable this, admin has to be compromised and also grant the keeper role to the malicious swapper 
+        // step 1 - alice opens position
         uint256 principal = 1 ether;
         _openPositionWithPrincipal(alice, principal);
 
@@ -2025,16 +2029,16 @@ contract YieldDCATest is TestCommon {
         _generateYield(0.5e18);
         _shiftTime(yieldDca.epochDuration());
 
-        // step 3 - admin sets the malicious swapper as the keeper
         bytes memory reenterCall = abi.encodeCall(YieldDCA.executeDCA, (0, ""));
         MaliciousSwapper maliciousSwapper = new MaliciousSwapper(reenterCall);
 
+        // step 3 - admin sets the malicious swapper as the keeper
         vm.startPrank(admin);
         yieldDca.setSwapper(maliciousSwapper);
         yieldDca.grantRole(yieldDca.KEEPER_ROLE(), address(maliciousSwapper));
         vm.stopPrank();
 
-        // step 4 - keeper executes DCA
+        // step 4 - keeper executes DCA and swapper with keeper role tries to reenter
         vm.prank(keeper);
         // the malicious swapper tries to reenter the contract
         // it would fail anyway because the yield calcuation returns 0 and the tx would revert with NoYield error but just in case of future changes
@@ -2553,14 +2557,19 @@ contract YieldDCATest is TestCommon {
 
     function test_claimDCABalance_failsIfDcaDiscrepancyIsAboveTolerated() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
-        assertEq(yieldDca.discrepancyTolerance(), DEFAULT_DISCREPANCY_TOLERANCE, "discrepancy tolerance not set");
+        uint64 onePercent = 0.01e18;
+
+        vm.prank(admin);
+        yieldDca.setDiscrepancyTolerance(onePercent);
+
+        assertEq(yieldDca.discrepancyTolerance(), onePercent, "discrepancy tolerance not set");
 
         _generateYield(1e18);
 
         uint256 bobsPrincipal = 1 ether;
         _openPositionWithPrincipal(bob, bobsPrincipal);
 
-        _generateYield(-int256(DEFAULT_DISCREPANCY_TOLERANCE + 0.001e18));
+        _generateYield(-int256(uint256(onePercent) + 0.001e18));
         _executeDcaAtExchangeRate(2e18);
 
         vm.expectRevert(abi.encodeWithSelector(YieldDCA.DCADiscrepancyAboveTolerance.selector));
@@ -2570,14 +2579,19 @@ contract YieldDCATest is TestCommon {
 
     function test_claimDCABalance_worksIfDcaDiscrepancyBelowTolerated() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
-        assertEq(yieldDca.discrepancyTolerance(), DEFAULT_DISCREPANCY_TOLERANCE, "discrepancy tolerance not set");
+        uint64 onePercent = 0.01e18;
+
+        vm.prank(admin);
+        yieldDca.setDiscrepancyTolerance(onePercent);
+
+        assertEq(yieldDca.discrepancyTolerance(), onePercent, "discrepancy tolerance not set");
 
         _generateYield(1e18);
 
         uint256 bobsPrincipal = 1 ether;
         _openPositionWithPrincipal(bob, bobsPrincipal);
 
-        _generateYield(-int256(DEFAULT_DISCREPANCY_TOLERANCE - 0.001e18));
+        _generateYield(-int256(uint256(onePercent) - 0.001e18));
         _executeDcaAtExchangeRate(2e18);
 
         (, uint256 entitled) = yieldDca.balancesOf(positionId);

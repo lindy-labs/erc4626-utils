@@ -276,10 +276,10 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     uint64 public minYieldPerEpoch = 0; // 0.1%
     /**
-     * @notice The maximum discrepancy between the expected and actual DCA token amounts for a claim.
+     * @notice The maximum discrepancy between the expected and actual DCA token amounts for a claim. Default 5%.
      * @dev Configurable by an admin to set the acceptable discrepancy tolerance for DCA token claims.
      */
-    uint64 public discrepancyTolerance = 0.01e18; // 1%
+    uint64 public discrepancyTolerance = 0.05e18; // 5%
 
     // * SLOT 1
     /**
@@ -650,7 +650,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function increasePosition(uint256 _positionId, uint256 _shares) public {
         _shares.revertIfZero();
-        _checkApprovedOrOwner(_positionId);
+        _checkOwnerOrApproved(_positionId);
 
         uint256 principal = vault.convertToAssets(_shares);
 
@@ -719,7 +719,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function depositAndIncreasePosition(uint256 _positionId, uint256 _assets) public {
         _assets.revertIfZero();
-        _checkApprovedOrOwner(_positionId);
+        _checkOwnerOrApproved(_positionId);
 
         uint256 shares = _depositToVault(_ownerOf(_positionId), _assets);
 
@@ -786,7 +786,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function reducePosition(uint256 _positionId, uint256 _shares) external {
         _shares.revertIfZero();
-        _checkApprovedOrOwner(_positionId);
+        _checkOwnerOrApproved(_positionId);
 
         Position storage position = positions[_positionId];
         uint32 epoch = currentEpoch;
@@ -815,7 +815,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * - Emits {PositionClosed} event upon successful position closing.
      */
     function closePosition(uint256 _positionId) external {
-        _checkApprovedOrOwner(_positionId);
+        _checkOwnerOrApproved(_positionId);
 
         Position storage position = positions[_positionId];
         uint32 epoch = currentEpoch;
@@ -847,7 +847,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function claimDCABalance(uint256 _positionId, address _to) external returns (uint256 amount) {
         _to.revertIfZero();
-        _checkApprovedOrOwner(_positionId);
+        _checkOwnerOrApproved(_positionId);
 
         // calculate the DCA balance for the position
         Position storage position = positions[_positionId];
@@ -937,7 +937,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      */
     function setTokenCID(uint256 _positionId, string memory _cid) public {
         bytes(_cid).length.revertIfZero(EmptyCID.selector);
-        _checkApprovedOrOwner(_positionId);
+        _checkOwnerOrApproved(_positionId);
 
         tokenCIDs[_positionId] = _cid;
 
@@ -1304,7 +1304,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
         }
     }
 
-    function _checkApprovedOrOwner(uint256 _positionId) internal view {
+    function _checkOwnerOrApproved(uint256 _positionId) internal view {
         if (!_isApprovedOrOwner(msg.sender, _positionId)) revert ERC721.NotOwnerNorApproved();
     }
 
