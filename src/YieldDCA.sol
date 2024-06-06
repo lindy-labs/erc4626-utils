@@ -511,7 +511,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * - `TransferToZeroAddress' if the owner is the zero address.
      * - `TransferToNonERC721ReceiverImplementer` if the owner is a contract without `IERC721Receiver-onERC721Received`.
      * - 'TransferFromFailed' if the transfer of shares fails.
-     * 
+     *
      * @custom:emits
      * - Emits {PositionOpened} event upon successful position opening.
      */
@@ -644,7 +644,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * - `ZeroAmount` if `_shares` is zero.
      * - `TransferFromFailed` if the transfer of shares fails.
      * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
-     * 
+     *
      * @custom:emits
      * - Emits {PositionIncreased} event upon successful position increase.
      */
@@ -679,7 +679,6 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * - `ZeroAmount` if `_shares` is zero.
      * - `TransferFromFailed` if the transfer of shares fails.
      * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
-     * 
      *
      * @custom:emits
      * - Emits {PositionIncreased} event upon successful position increase.
@@ -809,7 +808,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * - The caller must be the owner or an approved operator of the position.
      *
      * @custom:reverts
-     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist. 
+     * - `NotOwnerNorApproved` if the caller is neither the owner nor an approved operator of the position or if the position does not exist.
      *
      * @custom:emits
      * - Emits {PositionClosed} event upon successful position closing.
@@ -886,7 +885,11 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @custom:emits
      * - Emits {DCAExecuted} event upon successful DCA execution.
      */
-    function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData) external nonReentrant onlyRole(KEEPER_ROLE) {
+    function executeDCA(uint256 _dcaAmountOutMin, bytes calldata _swapData)
+        external
+        nonReentrant
+        onlyRole(KEEPER_ROLE)
+    {
         _checkEpochDuration();
 
         // calculate yield in shares and redeem from the vault
@@ -1003,7 +1006,7 @@ contract YieldDCA is ERC721, ReentrancyGuard, AccessControl, Multicall {
      * @custom:requirements
      * - The epoch duration must have been reached.
      * - The yield must be sufficient to meet the minimum yield per epoch requirement.
-     * 
+     *
      * @custom:reverts
      * - `EpochDurationNotReached` if the epoch duration has not been reached.
      * - `InsufficientYield` if the yield is not sufficient to meet the minimum yield per epoch.

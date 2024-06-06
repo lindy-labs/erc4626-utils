@@ -1715,10 +1715,10 @@ contract YieldDCATest is TestCommon {
          *      alice is entitled to 4 DCA tokens
          * 4. again yield generated is 100% (1 ether)
          *      alice has 1 ether in principal and 1 ether in yield (total 2 ether)
-         * 5. bob opens position with 1 ether         
+         * 5. bob opens position with 1 ether
          * 6. at this point yield becomes negative -25% (shares value drops by 25%)
          *      alice has 1 ether in principal and 0.5 ether in yield (total 1.5 ether)
-         *      bob has 0.75 ether in principal (-0.25 from negative yield)   
+         *      bob has 0.75 ether in principal (-0.25 from negative yield)
          *
          *      total principal per accouting is 2 ether but shares are only worth 3 * 0.75 = 2.25 ether => only 0.25 ether in yield can be spent
          *      this means that bob's loss of 0.25 is covered by alice's yield of 0.5, however this is not a permanent loss,
@@ -1924,7 +1924,7 @@ contract YieldDCATest is TestCommon {
          *      carol has 1.2 ether
          *      total principal = 3 ether, total assets = 4.5, so usable yield is 1.5 ether
          *
-         ** so far everything was the same as in the previous test case, but here price of DCA tokens is increased and thus less can be bought
+         * so far everything was the same as in the previous test case, but here price of DCA tokens is increased and thus less can be bought
          * 8. execute DCA at 1:1 exchange, 1.5 ether = 1.5 DCA token
          *      alice gets 1.1 DCA tokens (per accounting 0.5 DCA tokens are expected)
          *      bob gets 0.2 DCA tokens
@@ -2020,7 +2020,7 @@ contract YieldDCATest is TestCommon {
 
     function test_executeDCA_maliciousSwapperCannotReenter() public {
         // the swapper is malicious and tries to reenter the contract
-        // to enable this, admin has to be compromised and also grant the keeper role to the malicious swapper 
+        // to enable this, admin has to be compromised and also grant the keeper role to the malicious swapper
         // step 1 - alice opens position
         uint256 principal = 1 ether;
         _openPositionWithPrincipal(alice, principal);
