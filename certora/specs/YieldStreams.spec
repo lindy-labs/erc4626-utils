@@ -936,11 +936,11 @@ rule integrity_of_revokeClaimer(address receiver, address _claimer) {
 }
 
 /**
- * @Rule YieldCalculation_When_TotalShares_Is_Greater_Than_TotalPrincipal
+ * @Rule Verify `yield` calculation when `totalshares` is greater than `totalprincipal`
  * @Category Low
  * @Descritption The yield should be calculated correctly when the total shares is greater than the total principal.
  */
-rule YieldCalculation_When_TotalShares_Is_Greater_Than_TotalPrincipal(address receiver) {
+rule verify_yieldcalculation_when_totalshares_is_greater_than_totalprincipal(address receiver) {
     env e;
     uint256 principal = receiverTotalPrincipal(receiver);
     uint256 currentValue = vault.convertToAssets(receiverTotalShares(receiver));
@@ -952,12 +952,12 @@ rule YieldCalculation_When_TotalShares_Is_Greater_Than_TotalPrincipal(address re
 }
 
 /**
- * @Rule Composition of approve and revokeClaimer
+ * @Rule Composition of `approve` and `revokeClaimer`
  * @Category High
  * @Description Revoke claimer should revoke approval created by approveClaimer.
  */
 
-rule Composition_of_approve_and_revokeClaimer(address receiver, address _claimer) {
+rule composition_of_approve_and_revokeClaimer(address receiver, address _claimer) {
     env e;
     require receiver == e.msg.sender;
     require _claimer != 0;
@@ -968,11 +968,11 @@ rule Composition_of_approve_and_revokeClaimer(address receiver, address _claimer
 }
 
 /**
- * @Rule Composition_of_Open_and_TopUp
+ * @Rule Composition of `open` and `topUp`
  * @Category High
  * @Description Composition of Open and TopUp
  */
-rule Composition_of_Open_and_TopUp(address _owner, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance, uint256 _additionalShares) {
+rule composition_of_open_and_topUp(address _owner, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance, uint256 _additionalShares) {
     env e;
     // Preconditions
     require _receiver != 0 && e.msg.sender != 0 && _owner != 0;
@@ -1005,11 +1005,11 @@ rule Composition_of_Open_and_TopUp(address _owner, address _receiver, uint256 _s
 }
 
 /**
- * @Rule Composition_of_Open_and_Close
+ * @Rule Composition of `open` and `close`
  * @Category High
  * @Description Opening and closing a stream should be atomic
  */
-rule Composition_of_Open_and_Close(address _owner, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance) {
+rule composition_of_open_and_close(address _owner, address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance) {
     env e; 
     // Preconditions
     require _receiver != 0 && e.msg.sender != 0 && _owner != 0;
@@ -1035,11 +1035,11 @@ rule Composition_of_Open_and_Close(address _owner, address _receiver, uint256 _s
 }
 
 /**
- * @Rule PreviewOpenAndPreviewDepositAndOpenRelationship
+ * @Rule relationshiip between `previewOpen` and `previewDepositAndOpen`
  * @Category High-level
  * @Description Establishes the relationship between PreviewOpen and PreviewDepositAndOpen
  */
-rule PreviewOpenAndPreviewDepositAndOpenRelationship(env e, address receiver, uint256 shares, uint256 maxLossOnOpenTolerance) {
+rule relationshiip_between_previewOpen_and_previewDepositAndOpen(env e, address receiver, uint256 shares, uint256 maxLossOnOpenTolerance) {
     require shares > 0;
     uint256 principal = previewOpen(receiver, shares, maxLossOnOpenTolerance);
     uint256 depositAndOpen = previewDepositAndOpen(receiver, principal, maxLossOnOpenTolerance);
@@ -1047,11 +1047,11 @@ rule PreviewOpenAndPreviewDepositAndOpenRelationship(env e, address receiver, ui
 }
 
 /**
- * @Rule CompositionOfTopUpAndClose
+ * @Rule Composition of `topUp` and `close`
  * @Category High-level
  * @Description Topping up a yield stream and then immediately closing it should leave the contract state unchanged
  */
-rule CompositionOfTopUpAndClose(uint256 streamId, uint256 shares) {
+rule composition_of_topUp_and_close(uint256 streamId, uint256 shares) {
     env e;
     // Get the initial state
     address receiver = streamIdToReceiver(streamId);
@@ -1072,11 +1072,11 @@ rule CompositionOfTopUpAndClose(uint256 streamId, uint256 shares) {
 }
 
 /**
- * @Rule CompositionOfDepositAndTopUpAndClose
+ * @Rule Composition of `deposit`, `topUp` and `close`
  * @Category High-level
  * @Description Depositing additional principal and topping up a yield stream, and then immediately closing it should leave the contract state unchanged
  */
-rule CompositionOfDepositAndTopUpAndClose(uint256 streamId, uint256 principal) {
+rule composition_of_deposit_and_topUp_and_close(uint256 streamId, uint256 principal) {
     env e;
     // Get the initial state
     address receiver = streamIdToReceiver(streamId);
@@ -1097,11 +1097,11 @@ rule CompositionOfDepositAndTopUpAndClose(uint256 streamId, uint256 principal) {
 }
 
 /**
- * @Rule CompositionOfOpenMultipleAndClose
+ * @Rule Composition of `openMultiple` and `close`
  * @Category High-level
  * @Description Opens multiple streams and closes them
 */
-rule CompositionOfOpenMultipleAndClose(address owner, uint256 shares, address[] receivers, uint256[] allocations, uint256 maxLossOnOpenTolerance) {
+rule composition_of_openMultiple_and_close(address owner, uint256 shares, address[] receivers, uint256[] allocations, uint256 maxLossOnOpenTolerance) {
     env e;
     require (shares > 0);
     require (receivers.length == allocations.length);
@@ -1118,11 +1118,11 @@ rule CompositionOfOpenMultipleAndClose(address owner, uint256 shares, address[] 
 }
 
 /**
- * @Rule CompositionOfOpenAndTopUpAndClose
+ * @Rule Composition of `open`, `topUp` and `close`
  * @Category High-level
  * @Description Open, top up, and close a stream.
 */
-rule CompositionOfOpenAndTopUpAndClose(address owner, address receiver, uint256 shares, uint256 topUpShares, uint256 maxLossOnOpenTolerance) {
+rule composition_of_open_and_topUp_and_close(address owner, address receiver, uint256 shares, uint256 topUpShares, uint256 maxLossOnOpenTolerance) {
     env e;
     require owner != 0 && receiver != 0;
     uint256 initialReceiverTotalShares = receiverTotalShares(receiver);
@@ -1136,11 +1136,11 @@ rule CompositionOfOpenAndTopUpAndClose(address owner, address receiver, uint256 
 }
 
 /**
- @Rule CompositionOfOpenAndClaimYieldInShares
+ @Rule Composition of `open` and `claimYieldInShares`
  @Category High-level
  @Description Open a stream and claim yield in shares in a single transaction.
 */
-rule CompositionOfOpenAndClaimYieldInShares(address owner, address receiver, uint256 shares, uint256 maxLossOnOpenTolerance, uint256 yieldShares) {
+rule composition_of_open_and_claimYieldInShares(address owner, address receiver, uint256 shares, uint256 maxLossOnOpenTolerance, uint256 yieldShares) {
     env e;
     require owner != 0 && receiver != 0;
     uint256 initialReceiverTotalShares = receiverTotalShares(receiver);
@@ -1160,11 +1160,11 @@ rule CompositionOfOpenAndClaimYieldInShares(address owner, address receiver, uin
 }
 
 /**
- @Rule CompositionOfOpenAndClaimYield
+ @Rule Composition of `open` and `claimYield`
  @Category High-level
  @Description Open a stream and claim yields in a single transaction.
 */
-rule CompositionOfOpenAndClaimYield(address owner, address receiver, uint256 shares, uint256 maxLossOnOpenTolerance, uint256 yieldShares) {
+rule composition_of_open_and_claimYield(address owner, address receiver, uint256 shares, uint256 maxLossOnOpenTolerance, uint256 yieldShares) {
     env e;
     require owner != 0 && receiver != 0;
     uint256 initialReceiverTotalShares = receiverTotalShares(receiver);
@@ -1183,11 +1183,11 @@ rule CompositionOfOpenAndClaimYield(address owner, address receiver, uint256 sha
 }
 
 /**
- @Rule CompositionOfDepositAndOpenAndClaimYield
+ @Rule Composition of `deposit`, `open` and `claimYield`
  @Category High-level
  @Description Composition of deposit, open, and claim yield
 */
-rule CompositionOfDepositAndOpenAndClaimYield(
+rule composition_of_deposit_and_open_and_claimYield(
     address owner,
     address receiver,
     uint256 principal,
@@ -1213,11 +1213,11 @@ rule CompositionOfDepositAndOpenAndClaimYield(
 }
 
 /**
- @Rule CompositionOfOpenMultipleAndTopUpAndClaimYieldInShares
+ @Rule Composition of `openMultiple`, `topUp` and `claimYieldInShares`
  @Category High-level
  @Description Composition of Open Multiple and Top Up and Claim Yield in Shares
 */
-rule CompositionOfOpenMultipleAndTopUpAndClaimYieldInShares(
+rule composition_of_openMultiple_and_topUp_and_claimYieldInShares(
     address owner,
     uint256 shares,
     address[] receivers,
@@ -1252,11 +1252,11 @@ rule CompositionOfOpenMultipleAndTopUpAndClaimYieldInShares(
 }
 
 /**
- @Rule CompositionOfOpenMultipleAndTopUpAndClaimYield
+ @Rule Composition of `openMultiple`, `topUp` and `claimYield`
  @Category High-level
  @Description Composes OpenMultiple, TopUp, and Claim Yields
 */
-rule CompositionOfOpenMultipleAndTopUpAndClaimYield(
+rule composition_of_openMultiple_and_topUp_and_claimYield(
     address owner,
     uint256 shares,
     address[] receivers,
@@ -1291,11 +1291,11 @@ rule CompositionOfOpenMultipleAndTopUpAndClaimYield(
 }
 
 /**
- * @Rule PreviewClaimYieldAndPreviewClaimYieldInSharesConsistency
+ * @Rule Consistency between `previewClaimYield` and `previewClaimYieldInSharesConsistency`
  * @Category High-level
  * @Description Ensures that the previewClaimYield and previewClaimYieldInShares functions are consistent for each receiver.
  */
-rule PreviewClaimYieldAndPreviewClaimYieldInSharesConsistency(address receiver) {
+rule consistency_between_previewClaimYield_and_previewClaimYieldInShares(address receiver) {
     require receiver != 0;
     uint256 previewYield = previewClaimYield(receiver);
     uint256 previewYieldInShares = previewClaimYieldInShares(receiver);
@@ -1306,11 +1306,11 @@ rule PreviewClaimYieldAndPreviewClaimYieldInSharesConsistency(address receiver) 
 }
 
 /**
- * @Rule PreviewOpenAndPreviewDepositAndOpenConsistency
+ * @Rule Consistency between `previewOpen`, `previewDeposit` and `open`
  * @Category High-level
  * @Description Ensures that the previewOpen and previewDepositAndOpen functions are consistent for a given receiver, shares, and maxLossOnOpenTolerance.
  */
-rule PreviewOpenAndPreviewDepositAndOpenConsistency(address receiver, uint256 shares, uint256 maxLossOnOpenTolerance) {
+rule consistency_between_previewOpen_and_previewDeposit_and_open(address receiver, uint256 shares, uint256 maxLossOnOpenTolerance) {
     require receiver != 0;
     uint256 previewOpenPrincipal = previewOpen(receiver, shares, maxLossOnOpenTolerance);
     uint256 previewDepositAndOpenShares = previewDepositAndOpen(receiver, previewOpenPrincipal, maxLossOnOpenTolerance);
@@ -1319,11 +1319,11 @@ rule PreviewOpenAndPreviewDepositAndOpenConsistency(address receiver, uint256 sh
 }
 
 /**
- * @Rule PreviewOpenPreviewCloseAndPreviewClaimYieldInSharesConsistency
+ * @Rule Consistency between `previewOpen`, `previewClose` and `previewClaimYieldInShares`
  * @Category High-level
  * @Description Ensures that the previewOpen, previewClose, and previewClaimYieldInShares functions are consistent for a given receiver, shares, and maxLossOnOpenTolerance.
  */
-rule PreviewOpenPreviewCloseAndPreviewClaimYieldInSharesConsistency(address owner, address receiver, uint256 shares, uint256 maxLossOnOpenTolerance) {
+rule consistency_betweeb_previewOpen_and_previewClose_and_previewClaimYieldInShares(address owner, address receiver, uint256 shares, uint256 maxLossOnOpenTolerance) {
     env e;
     // Preconditions
     require receiver != 0 && e.msg.sender != 0 && owner != 0;
