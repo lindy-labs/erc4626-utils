@@ -15,7 +15,8 @@ import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import "src/common/CommonErrors.sol";
-import {YieldDCA} from "src/YieldDCA.sol";
+import {YieldDCABase} from "src/YieldDCABase.sol";
+import {YieldDCAControlled} from "src/YieldDCAControlled.sol";
 import {ISwapper} from "src/interfaces/ISwapper.sol";
 import {SwapperMock, MaliciousSwapper} from "./mock/SwapperMock.sol";
 import {NFTHolderMock} from "./mock/NFTHolderMock.sol";
@@ -84,7 +85,7 @@ contract YieldDCATest is TestCommon {
     uint32 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
     uint64 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
 
-    YieldDCA yieldDca;
+    YieldDCAControlled yieldDca;
     MockERC20 asset;
     MockERC4626 vault;
     MockERC20 dcaToken;
@@ -98,7 +99,7 @@ contract YieldDCATest is TestCommon {
         swapper = new SwapperMock();
 
         dcaToken.mint(address(swapper), type(uint128).max);
-        yieldDca = new YieldDCA(
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -138,8 +139,8 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfDcaTokenZeroAddress() public {
-        vm.expectRevert(YieldDCA.DCATokenAddressZero.selector);
-        yieldDca = new YieldDCA(
+        vm.expectRevert(YieldDCABase.DCATokenAddressZero.selector);
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(0)),
             IERC4626(address(vault)),
             swapper,
@@ -151,8 +152,8 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfVaultZeroAddress() public {
-        vm.expectRevert(YieldDCA.VaultAddressZero.selector);
-        yieldDca = new YieldDCA(
+        vm.expectRevert(YieldDCABase.VaultAddressZero.selector);
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(0)),
             swapper,
@@ -164,8 +165,8 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfSwapperZeroAddress() public {
-        vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
-        yieldDca = new YieldDCA(
+        vm.expectRevert(YieldDCAControlled.SwapperAddressZero.selector);
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             ISwapper(address(0)),
@@ -179,8 +180,8 @@ contract YieldDCATest is TestCommon {
     function test_constructor_revertsIfMinYieldPercentOutOfBounds() public {
         uint64 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
 
-        vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
-        yieldDca = new YieldDCA(
+        vm.expectRevert(YieldDCABase.MinYieldPerEpochOutOfBounds.selector);
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -192,8 +193,8 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfDCATokenSameAsVaultAsset() public {
-        vm.expectRevert(YieldDCA.DCATokenSameAsVaultAsset.selector);
-        yieldDca = new YieldDCA(
+        vm.expectRevert(YieldDCABase.DCATokenSameAsVaultAsset.selector);
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(asset)),
             IERC4626(address(vault)),
             swapper,
@@ -205,8 +206,8 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfKeeperIsZeroAddress() public {
-        vm.expectRevert(YieldDCA.KeeperAddressZero.selector);
-        yieldDca = new YieldDCA(
+        vm.expectRevert(YieldDCABase.KeeperAddressZero.selector);
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -218,8 +219,8 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfAdminIsZeroAddress() public {
-        vm.expectRevert(YieldDCA.AdminAddressZero.selector);
-        yieldDca = new YieldDCA(
+        vm.expectRevert(YieldDCABase.AdminAddressZero.selector);
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -289,7 +290,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setSwapper_failsIfNewSwapperIsZeroAddress() public {
-        vm.expectRevert(YieldDCA.SwapperAddressZero.selector);
+        vm.expectRevert(YieldDCAControlled.SwapperAddressZero.selector);
         vm.prank(admin);
         yieldDca.setSwapper(ISwapper(address(0)));
     }
@@ -361,7 +362,7 @@ contract YieldDCATest is TestCommon {
         uint32 invalidDuration = yieldDca.EPOCH_DURATION_LOWER_BOUND() - 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.EpochDurationOutOfBounds.selector);
+        vm.expectRevert(YieldDCABase.EpochDurationOutOfBounds.selector);
         yieldDca.setEpochDuration(invalidDuration);
     }
 
@@ -369,7 +370,7 @@ contract YieldDCATest is TestCommon {
         uint32 invalidDuration = yieldDca.EPOCH_DURATION_UPPER_BOUND() + 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.EpochDurationOutOfBounds.selector);
+        vm.expectRevert(YieldDCABase.EpochDurationOutOfBounds.selector);
         yieldDca.setEpochDuration(invalidDuration);
     }
 
@@ -403,7 +404,7 @@ contract YieldDCATest is TestCommon {
         uint64 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.MinYieldPerEpochOutOfBounds.selector);
+        vm.expectRevert(YieldDCABase.MinYieldPerEpochOutOfBounds.selector);
         yieldDca.setMinYieldPerEpoch(aboveMax);
     }
 
@@ -448,7 +449,7 @@ contract YieldDCATest is TestCommon {
         uint64 aboveMax = yieldDca.DISCREPANCY_TOLERANCE_UPPER_BOUND() + 1;
 
         vm.prank(admin);
-        vm.expectRevert(YieldDCA.DiscrepancyToleranceOutOfBounds.selector);
+        vm.expectRevert(YieldDCABase.DiscrepancyToleranceOutOfBounds.selector);
         yieldDca.setDiscrepancyTolerance(aboveMax);
     }
 
@@ -1168,7 +1169,7 @@ contract YieldDCATest is TestCommon {
         // shift time by less than min epoch duration
         _shiftTime(yieldDca.epochDuration() - 1);
 
-        vm.expectRevert(YieldDCA.EpochDurationNotReached.selector);
+        vm.expectRevert(YieldDCABase.EpochDurationNotReached.selector);
         yieldDca.canExecuteDCA();
     }
 
@@ -1177,7 +1178,7 @@ contract YieldDCATest is TestCommon {
 
         _shiftTime(yieldDca.epochDuration());
 
-        vm.expectRevert(YieldDCA.NoYield.selector);
+        vm.expectRevert(YieldDCABase.NoYield.selector);
         yieldDca.canExecuteDCA();
     }
 
@@ -1188,7 +1189,7 @@ contract YieldDCATest is TestCommon {
 
         _generateYield(int256(uint256(yieldDca.minYieldPerEpoch() - 2)));
 
-        vm.expectRevert(YieldDCA.InsufficientYield.selector);
+        vm.expectRevert(YieldDCABase.InsufficientYield.selector);
         yieldDca.canExecuteDCA();
     }
 
@@ -1227,7 +1228,7 @@ contract YieldDCATest is TestCommon {
 
         _shiftTime(yieldDca.epochDuration() - 1);
 
-        vm.expectRevert(YieldDCA.EpochDurationNotReached.selector);
+        vm.expectRevert(YieldDCABase.EpochDurationNotReached.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -1238,7 +1239,7 @@ contract YieldDCATest is TestCommon {
 
         _shiftTime(yieldDca.epochDuration());
 
-        vm.expectRevert(YieldDCA.NoYield.selector);
+        vm.expectRevert(YieldDCABase.NoYield.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -1254,7 +1255,7 @@ contract YieldDCATest is TestCommon {
         _generateYield(-0.1e18);
         assertApproxEqAbs(vault.totalAssets(), totalAssets.mulWadDown(0.9e18), 1);
 
-        vm.expectRevert(YieldDCA.NoYield.selector);
+        vm.expectRevert(YieldDCABase.NoYield.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -1269,7 +1270,7 @@ contract YieldDCATest is TestCommon {
 
         _generateYield(int256(uint256(yieldDca.minYieldPerEpoch() - 2)));
 
-        vm.expectRevert(YieldDCA.InsufficientYield.selector);
+        vm.expectRevert(YieldDCABase.InsufficientYield.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(0, "");
@@ -1284,7 +1285,7 @@ contract YieldDCATest is TestCommon {
         uint256 expectedToReceive = 2 ether;
         swapper.setExchangeRate(2e18);
 
-        vm.expectRevert(YieldDCA.AmountReceivedTooLow.selector);
+        vm.expectRevert(YieldDCABase.AmountReceivedTooLow.selector);
 
         vm.prank(keeper);
         yieldDca.executeDCA(expectedToReceive + 1, "");
@@ -1375,7 +1376,7 @@ contract YieldDCATest is TestCommon {
         vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
         deal(address(dcaToken), address(swapper), type(uint136).max);
 
-        yieldDca = new YieldDCA(
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -1763,7 +1764,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqRel(dcaAmount, 5e18, 0.00001e18, "bw: alice's dca token balance");
 
         // since alice is entitled to 5 DCA tokens but only 4.5 are available closing position will fail due to too large discrepancy
-        vm.expectRevert(YieldDCA.DCADiscrepancyAboveTolerance.selector);
+        vm.expectRevert(YieldDCABase.DCADiscrepancyAboveTolerance.selector);
         _closePosition(alice, 1);
 
         // the discrepancy tolerance needs to be set at 10% for alice to be able to close her position
@@ -1999,7 +2000,7 @@ contract YieldDCATest is TestCommon {
         assertApproxEqAbs(vault.convertToAssets(shares), carolsPrincipal, 3, "carol's principal");
         assertEq(dcaAmount, 0.2e18, "carol's dca token balance");
 
-        vm.expectRevert(YieldDCA.DCADiscrepancyAboveTolerance.selector);
+        vm.expectRevert(YieldDCABase.DCADiscrepancyAboveTolerance.selector);
         _closePosition(carol, 3);
 
         // since carol is entitled to 0.2 DCA tokens and 0.2 DCA tokens are missing
@@ -2029,7 +2030,7 @@ contract YieldDCATest is TestCommon {
         _generateYield(0.5e18);
         _shiftTime(yieldDca.epochDuration());
 
-        bytes memory reenterCall = abi.encodeCall(YieldDCA.executeDCA, (0, ""));
+        bytes memory reenterCall = abi.encodeCall(YieldDCAControlled.executeDCA, (0, ""));
         MaliciousSwapper maliciousSwapper = new MaliciousSwapper(reenterCall);
 
         // step 3 - admin sets the malicious swapper as the keeper
@@ -2081,7 +2082,7 @@ contract YieldDCATest is TestCommon {
         uint256 positionId = _openPositionWithPrincipal(alice, principal);
         uint256 shares = vault.convertToShares(principal);
 
-        vm.expectRevert(YieldDCA.InsufficientSharesToWithdraw.selector);
+        vm.expectRevert(YieldDCABase.InsufficientSharesToWithdraw.selector);
         vm.prank(alice);
         yieldDca.reducePosition(positionId, shares + 1);
     }
@@ -2430,7 +2431,7 @@ contract YieldDCATest is TestCommon {
     function test_claimDCABalance_failsIfNothingToClaim() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
+        vm.expectRevert(abi.encodeWithSelector(YieldDCABase.NothingToClaim.selector));
         vm.prank(alice);
         yieldDca.claimDCABalance(positionId, alice);
     }
@@ -2457,7 +2458,7 @@ contract YieldDCATest is TestCommon {
         assertEq(dcaAmountAfterClaim, 0, "alice's position dca balance");
 
         // claim again should fail
-        vm.expectRevert(abi.encodeWithSelector(YieldDCA.NothingToClaim.selector));
+        vm.expectRevert(abi.encodeWithSelector(YieldDCABase.NothingToClaim.selector));
         vm.prank(alice);
         yieldDca.claimDCABalance(positionId, alice);
     }
@@ -2572,7 +2573,7 @@ contract YieldDCATest is TestCommon {
         _generateYield(-int256(uint256(onePercent) + 0.001e18));
         _executeDcaAtExchangeRate(2e18);
 
-        vm.expectRevert(abi.encodeWithSelector(YieldDCA.DCADiscrepancyAboveTolerance.selector));
+        vm.expectRevert(abi.encodeWithSelector(YieldDCABase.DCADiscrepancyAboveTolerance.selector));
         vm.prank(alice);
         yieldDca.claimDCABalance(positionId, alice);
     }
@@ -2690,7 +2691,7 @@ contract YieldDCATest is TestCommon {
         uint256 positionId = yieldDca.nextPositionId();
 
         bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeCall(YieldDCA.openPosition, (alice, shares));
+        data[0] = abi.encodeCall(YieldDCABase.openPosition, (alice, shares));
         data[1] = abi.encodeCall(ERC721.approve, (bob, positionId));
 
         vm.prank(alice);
@@ -2743,7 +2744,7 @@ contract YieldDCATest is TestCommon {
         // NOTE: if one epoch is 5 days, 30k epochs is roughly 410 years
         // setup new vault and yieldDCA to start from a clean state
         vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
-        yieldDca = new YieldDCA(
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, 0, admin, keeper
         );
 
@@ -2789,7 +2790,7 @@ contract YieldDCATest is TestCommon {
     function testGas_calculateBalances_singleIterationGasAverage() public {
         // setup new vault and yieldDCA to start from a clean state
         vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
-        yieldDca = new YieldDCA(
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, 0, admin, keeper
         );
 
@@ -2839,7 +2840,7 @@ contract YieldDCATest is TestCommon {
     function test_setTokenCID_failsIfCIDIsEmptyString() public {
         uint256 positionId = _openPositionWithPrincipal(alice, 1e18);
 
-        vm.expectRevert(YieldDCA.EmptyCID.selector);
+        vm.expectRevert(YieldDCABase.EmptyCID.selector);
         vm.prank(alice);
         yieldDca.setTokenCID(positionId, "");
     }
@@ -2976,8 +2977,8 @@ contract YieldDCATest is TestCommon {
         uint256 positionId = yieldDca.nextPositionId();
 
         bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeCall(YieldDCA.openPosition, (alice, shares));
-        data[1] = abi.encodeCall(YieldDCA.setTokenCID, (positionId, "123"));
+        data[0] = abi.encodeCall(YieldDCABase.openPosition, (alice, shares));
+        data[1] = abi.encodeCall(YieldDCABase.setTokenCID, (positionId, "123"));
 
         vm.prank(alice);
         yieldDca.multicall(data);

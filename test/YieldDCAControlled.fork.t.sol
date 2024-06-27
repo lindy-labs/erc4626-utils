@@ -7,11 +7,11 @@ import {IERC20Metadata} from "openzeppelin-contracts/interfaces/IERC20Metadata.s
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 import {IERC721Errors} from "openzeppelin-contracts/interfaces/draft-IERC6093.sol";
 
-import {YieldDCA} from "src/YieldDCA.sol";
+import {YieldDCAControlled} from "src/YieldDCAControlled.sol";
 import {UniSwapper} from "src/UniSwapper.sol";
 import {TestCommon} from "./common/TestCommon.sol";
 
-contract YieldDCAForkTest is TestCommon {
+contract YieldDCAControlledForkTest is TestCommon {
     using FixedPointMathLib for uint256;
 
     uint32 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
@@ -19,7 +19,7 @@ contract YieldDCAForkTest is TestCommon {
 
     bytes constant POOL_FEE = abi.encode(500); // 0.05% USDC/ETH uniswap pool fee
 
-    YieldDCA yieldDca;
+    YieldDCAControlled yieldDca;
     IERC20Metadata asset;
     IERC4626 vault;
     IERC20Metadata dcaToken;
@@ -36,7 +36,7 @@ contract YieldDCAForkTest is TestCommon {
         dcaToken = IERC20Metadata(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2); // WETH (mainnet)
         swapper = new UniSwapper();
 
-        yieldDca = new YieldDCA(
+        yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
