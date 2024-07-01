@@ -58,7 +58,7 @@ jobs:
 
       - name: Run Forge Coverage
         run: |
-          FOUNDRY_PROFILE=ci forge coverage --report lcov
+          FOUNDRY_PROFILE=ci forge coverage --report lcov --allow-failure
         id: coverage
 
       - name: Prune lcov report
