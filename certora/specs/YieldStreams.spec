@@ -97,6 +97,7 @@ methods {
     function previewClaimYield(address _receiver) external returns (uint256) envfree;
     function previewClaimYieldInShares(address _receiver) external returns (uint256) envfree;
     function previewOpen(address _receiver, uint256 _shares, uint256 _maxLossOnOpenTolerance) external returns (uint256) envfree;
+    function previewClose(uint256 _streamId) external returns (uint256, uint256) envfree;
     function debtFor(address _receiver) external returns (uint256) envfree;
     function getPrincipal(uint256 _streamId) external returns (uint256) envfree;
     function currentContract.balanceOf(address) external returns (uint256) envfree;
@@ -152,7 +153,7 @@ rule integrity_of_open(address _owner, address _receiver, uint256 _shares, uint2
     assert to_mathint(receiverTotalShares(_receiver)) == receiverTotalSharesBefore + _shares;
     assert to_mathint(nextStreamId()) == nextStreamIdBefore + 1;
     assert to_mathint(receiverTotalPrincipal(_receiver)) == receiverTotalPrincipalBefore + principal;
-    Assert receiverPrincipal(_receiver, streamId) == principal;
+    assert receiverPrincipal(_receiver, streamId) == principal;
     assert to_mathint(vault.balanceOf(e.msg.sender)) == initialStreamerShareBalance - _shares;
     assert ownerOf(streamId) == _owner;
     assert vault.balanceOf(_owner) == initialOwnerShareBalance;
@@ -686,22 +687,21 @@ rule integrity_of_close(uint256 _streamId, address streamer, address receiver) {
 rule integrity_of_claimYield(address _receiver, address _sendTo) {
     env e;
     // Preconditions
-    // The `_sendTo` address should not be the zero address
-    require _sendTo != 0 && e.msg.sender == _receiver;
-    require isApprovedClaimer(e.msg.sender, _receiver);
-
+    require _sendTo != 0;
+    require isApprovedClaimer(e.msg.sender, _receiver) || e.msg.sender == _receiver;
+    uint256 yieldInShares = previewClaimYieldInShares(_receiver);
+    require yieldInShares > 0;
+    
     uint256 receiverTotalSharesBefore = receiverTotalShares(_receiver);
     uint256 expectedAssets = vault.previewRedeem(yieldInShares);
-
+    
     // Call the `claimYield` function
     uint256 assets = claimYield(e, _receiver, _sendTo);
-
+    
     // Postconditions
-    assert(assets == expectedAssets);
-    // The `claimYield` function should update the receiverTotalShares mapping correctly
-    asset to_mathint(receiverTotalShares(_receiver)) == receiverTotalSharesBefore - yieldInShares;
+    assert assets == expectedAssets;
+    assert to_mathint(receiverTotalShares(_receiver)) == receiverTotalSharesBefore - yieldInShares;
 }
-
 /**
  * @Rule Verify property for the `claimYield` function to Self
  * @Category High
