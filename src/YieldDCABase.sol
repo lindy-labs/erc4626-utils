@@ -14,6 +14,7 @@ import {AccessControl} from "openzeppelin-contracts/access/AccessControl.sol";
 import {Multicall} from "openzeppelin-contracts/utils/Multicall.sol";
 
 import {CommonErrors} from "./common/CommonErrors.sol";
+import {ISwapper} from "./interfaces/ISwapper.sol";
 
 /**
  * @title YieldDCABase
@@ -90,8 +91,16 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
     event DiscrepancyToleranceUpdated(address indexed admin, uint64 oldTolerance, uint64 newTolerance);
 
     /**
+     * @notice Emitted when the swapper contract is updated by an admin.
+     * @param admin The address of the admin who updated the swapper.
+     * @param oldSwapper The address of the previous swapper contract.
+     * @param newSwapper The address of the new swapper contract.
+     */
+    event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
+
+    /**
      * @notice Emitted when the DCA strategy is executed.
-     * @param keeper The address of the keeper who executed the DCA strategy.
+     * @param caller The address of the caller that executed the DCA strategy.
      * @param epoch The epoch number in which the DCA strategy was executed.
      * @param yieldSpent The amount of yield spent in the DCA execution.
      * @param dcaBought The amount of DCA tokens bought.
@@ -99,7 +108,7 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
      * @param sharePrice The price of the vault shares.
      */
     event DCAExecuted(
-        address indexed keeper,
+        address indexed caller,
         uint32 epoch,
         uint256 yieldSpent,
         uint256 dcaBought,
@@ -210,9 +219,9 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
 
     error DCATokenAddressZero();
     error VaultAddressZero();
-    error DCATokenSameAsVaultAsset();
-    error KeeperAddressZero();
+    error SwapperAddressZero();
     error AdminAddressZero();
+    error DCATokenSameAsVaultAsset();
     error EpochDurationOutOfBounds();
     error MinYieldPerEpochOutOfBounds();
     error DiscrepancyToleranceOutOfBounds();
@@ -265,13 +274,20 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
      */
     uint64 public discrepancyTolerance = 0.05e18; // 5%
 
-    // * SLOT 1 ...
+    // * SLOT 1
     /**
      * @notice The ID of the next opened position.
      * @dev Increments with each new position to ensure unique IDs for each DCA position.
      */
     uint96 public nextPositionId = 1;
 
+    /**
+     * @notice The address of the swapper contract used to exchange yield for DCA tokens.
+     * @dev The swapper contract facilitates the exchange of assets during DCA execution.
+     */
+    ISwapper public swapper;
+
+    // * SLOT 2 ...
     /**
      * @notice The total principal amount of all positions.
      * @dev Tracks the total amount of principal deposited by all positions in the contract.
@@ -309,42 +325,40 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
     /**
      * @notice Initializes the YieldDCA contract.
      * @dev Sets up the DCA strategy contract with the specified parameters, including the ERC20 token for DCA, the ERC4626 vault, and the initial configuration parameters.
-     * Assigns the DEFAULT_ADMIN_ROLE to the provided admin address and the KEEPER_ROLE to the provided keeper address.
+     * Assigns the DEFAULT_ADMIN_ROLE to the provided admin address.
      * Approves the vault to spend the underlying assets.
      * @param _dcaToken The address of the ERC20 token used for DCA.
      * @param _vault The address of the underlying ERC4626 vault contract.
+     * @param _swapper The address of the swapper contract used to exchange yield for DCA tokens.
      * @param _epochDuration The minimum duration between epochs in seconds.
      * @param _minYieldPerEpochPercent The minimum yield required per epoch as a WAD-scaled percentage of the total principal.
      * @param _admin The address with the admin role.
-     * @param _keeper The address with the keeper role.
      *
      * @custom:requirements
      * - `_dcaToken` must not be the zero address.
      * - `_vault` must not be the zero address.
      * - `_dcaToken` must not be the same as the vault's underlying asset.
      * - `_admin` must not be the zero address.
-     * - `_keeper` must not be the zero address.
      *
      * @custom:reverts
      * - `DCATokenAddressZero` if `_dcaToken` is the zero address.
+     * - `SwapperAddressZero` if `_swapper` is the zero address.
      * - `VaultAddressZero` if `_vault` is the zero address.
      * - `DCATokenSameAsVaultAsset` if `_dcaToken` is the same as the vault's underlying asset.
      * - `AdminAddressZero` if `_admin` is the zero address.
-     * - `KeeperAddressZero` if `_keeper` is the zero address.
      */
     constructor(
         IERC20 _dcaToken,
         IERC4626 _vault,
+        ISwapper _swapper,
         uint32 _epochDuration,
         uint64 _minYieldPerEpochPercent,
-        address _admin,
-        address _keeper
+        address _admin
     ) {
         // validate input parameters
         address(_dcaToken).revertIfZero(DCATokenAddressZero.selector);
         address(_vault).revertIfZero(VaultAddressZero.selector);
         _admin.revertIfZero(AdminAddressZero.selector);
-        _keeper.revertIfZero(KeeperAddressZero.selector);
 
         if (address(_dcaToken) == _vault.asset()) revert DCATokenSameAsVaultAsset();
 
@@ -355,6 +369,7 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
 
         _setEpochDuration(_epochDuration);
         _setMinYieldPerEpoch(_minYieldPerEpochPercent);
+        _setSwapper(_swapper);
 
         name_ =
             string(abi.encodePacked("Yield DCA - ", _vault.name(), " / ", IERC20Metadata(address(_dcaToken)).name()));
@@ -441,6 +456,28 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
         emit DiscrepancyToleranceUpdated(msg.sender, discrepancyTolerance, _newTolerance);
 
         discrepancyTolerance = _newTolerance;
+    }
+
+    /**
+     * @notice Updates the address of the swapper contract used to exchange yield for DCA tokens.
+     * @dev Restricted to admin role. The new swapper address must be a valid contract address.
+     * @param _newSwapper The address of the new swapper contract.
+     *
+     * @custom:requirements
+     * - `_newSwapper` must not be the zero address.
+     * - caller must have the admin role.
+     *
+     * @custom:reverts
+     * - `SwapperAddressZero` if `_newSwapper` is the zero address.
+     * - `AccessControlUnauthorizedAccount` if the caller does not have the `DEFAULT_ADMIN_ROLE`.
+     *
+     * @custom:emits
+     * - Emits {SwapperUpdated} event upon successful swapper update.
+     */
+    function setSwapper(ISwapper _newSwapper) external onlyAdmin {
+        address oldSwapper = _setSwapper(_newSwapper);
+
+        emit SwapperUpdated(msg.sender, oldSwapper, address(_newSwapper));
     }
 
     // *** user functions ***
@@ -1000,6 +1037,17 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
         minYieldPerEpoch = _newMinYieldPercent;
     }
 
+    function _setSwapper(ISwapper _newSwapper) internal returns (address oldSwapper) {
+        address(_newSwapper).revertIfZero(SwapperAddressZero.selector);
+        oldSwapper = address(swapper);
+
+        // revoke previous swapper's approval and approve new swapper
+        if (oldSwapper != address(0)) address(asset).safeApprove(oldSwapper, 0);
+        address(asset).safeApprove(address(_newSwapper), type(uint256).max);
+
+        swapper = _newSwapper;
+    }
+
     // *** accounting functions ***
 
     function _openPosition(uint256 _shares, address _owner) internal returns (uint256 positionId) {
@@ -1137,6 +1185,24 @@ abstract contract YieldDCABase is ERC721, AccessControl, Multicall {
     }
 
     /// *** helper functions ***
+
+    function _executeSwap(uint256 _amountIn, uint256 _amountOutMin, bytes memory _swapData)
+        internal
+        virtual
+        returns (uint256)
+    {
+        uint256 balanceBefore = dcaBalance();
+
+        swapper.execute(address(asset), address(dcaToken), _amountIn, _amountOutMin, _swapData);
+
+        uint256 balanceAfter = dcaBalance();
+
+        if (balanceAfter < balanceBefore + _amountOutMin) revert AmountReceivedTooLow();
+
+        unchecked {
+            return balanceAfter - balanceBefore;
+        }
+    }
 
     function _depositToVault(address _from, uint256 _principal) internal returns (uint256 shares) {
         address(asset).safeTransferFrom(_from, address(this), _principal);

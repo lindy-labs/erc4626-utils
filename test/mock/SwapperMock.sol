@@ -14,16 +14,20 @@ contract SwapperMock is ISwapper {
 
     uint256 public exchangeRate = DEFAULT_EXCHANGE_RATE;
 
+    bytes public lastSwapData;
+
     function setExchangeRate(uint256 _exchangeRate) external {
         exchangeRate = _exchangeRate;
     }
 
-    function execute(address _tokenIn, address _tokenOut, uint256 _amountIn, uint256, bytes memory)
+    function execute(address _tokenIn, address _tokenOut, uint256 _amountIn, uint256, bytes memory _swapData)
         public
         virtual
         returns (uint256 amountOut)
     {
         // console2.log("Swapper: execute");
+        lastSwapData = _swapData;
+
         amountOut = _amountIn.mulWadDown(exchangeRate);
 
         // console2.log("amountIn", _amountIn);

@@ -45,24 +45,36 @@ contract YieldDCAControlled is YieldDCABase, ReentrancyGuard {
     using CommonErrors for address;
     using SafeTransferLib for address;
 
-    /**
-     * @notice Emitted when the swapper contract is updated by an admin.
-     * @param admin The address of the admin who updated the swapper.
-     * @param oldSwapper The address of the previous swapper contract.
-     * @param newSwapper The address of the new swapper contract.
-     */
-    event SwapperUpdated(address indexed admin, address oldSwapper, address newSwapper);
-
-    error SwapperAddressZero();
+    error KeeperAddressZero();
 
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
     /**
-     * @notice The address of the swapper contract used to exchange yield for DCA tokens.
-     * @dev The swapper contract facilitates the exchange of assets during DCA execution.
+     * @notice Initializes the YieldDCA contract.
+     * @dev Sets up the DCA strategy contract with the specified parameters, including the ERC20 token for DCA, the ERC4626 vault, and the initial configuration parameters.
+     * Assigns the DEFAULT_ADMIN_ROLE to the provided admin address and the KEEPER_ROLE to the provided keeper address.
+     * Approves the vault to spend the underlying assets.
+     * @param _dcaToken The address of the ERC20 token used for DCA.
+     * @param _vault The address of the underlying ERC4626 vault contract.
+     * @param _epochDuration The minimum duration between epochs in seconds.
+     * @param _minYieldPerEpochPercent The minimum yield required per epoch as a WAD-scaled percentage of the total principal.
+     * @param _admin The address with the admin role.
+     * @param _keeper The address with the keeper role.
+     *
+     * @custom:requirements
+     * - `_dcaToken` must not be the zero address.
+     * - `_vault` must not be the zero address.
+     * - `_dcaToken` must not be the same as the vault's underlying asset.
+     * - `_admin` must not be the zero address.
+     * - `_keeper` must not be the zero address.
+     *
+     * @custom:reverts
+     * - `DCATokenAddressZero` if `_dcaToken` is the zero address.
+     * - `VaultAddressZero` if `_vault` is the zero address.
+     * - `DCATokenSameAsVaultAsset` if `_dcaToken` is the same as the vault's underlying asset.
+     * - `AdminAddressZero` if `_admin` is the zero address.
+     * - `KeeperAddressZero` if `_keeper` is the zero address.
      */
-    ISwapper public swapper;
-
     constructor(
         IERC20 _dcaToken,
         IERC4626 _vault,
@@ -71,43 +83,10 @@ contract YieldDCAControlled is YieldDCABase, ReentrancyGuard {
         uint64 _minYieldPerEpochPercent,
         address _admin,
         address _keeper
-    ) YieldDCABase(_dcaToken, _vault, _epochDuration, _minYieldPerEpochPercent, _admin, _keeper) {
-        _setSwapper(_swapper);
+    ) YieldDCABase(_dcaToken, _vault, _swapper, _epochDuration, _minYieldPerEpochPercent, _admin) {
+        _keeper.revertIfZero(KeeperAddressZero.selector);
 
         _grantRole(KEEPER_ROLE, _keeper);
-    }
-
-    /**
-     * @notice Updates the address of the swapper contract used to exchange yield for DCA tokens.
-     * @dev Restricted to admin role. The new swapper address must be a valid contract address.
-     * @param _newSwapper The address of the new swapper contract.
-     *
-     * @custom:requirements
-     * - `_newSwapper` must not be the zero address.
-     * - caller must have the admin role.
-     *
-     * @custom:reverts
-     * - `SwapperAddressZero` if `_newSwapper` is the zero address.
-     * - `AccessControlUnauthorizedAccount` if the caller does not have the `DEFAULT_ADMIN_ROLE`.
-     *
-     * @custom:emits
-     * - Emits {SwapperUpdated} event upon successful swapper update.
-     */
-    function setSwapper(ISwapper _newSwapper) external onlyAdmin {
-        address oldSwapper = _setSwapper(_newSwapper);
-
-        emit SwapperUpdated(msg.sender, oldSwapper, address(_newSwapper));
-    }
-
-    function _setSwapper(ISwapper _newSwapper) internal returns (address oldSwapper) {
-        address(_newSwapper).revertIfZero(SwapperAddressZero.selector);
-        oldSwapper = address(swapper);
-
-        // revoke previous swapper's approval and approve new swapper
-        if (oldSwapper != address(0)) address(asset).safeApprove(oldSwapper, 0);
-        address(asset).safeApprove(address(_newSwapper), type(uint256).max);
-
-        swapper = _newSwapper;
     }
 
     /**
@@ -137,7 +116,7 @@ contract YieldDCAControlled is YieldDCABase, ReentrancyGuard {
         (uint256 yield, uint256 yieldInShares) = _redeemYield();
 
         // swap yield for DCA tokens
-        uint256 amountOut = _buyDcaTokens(yield, _dcaAmountOutMin, _swapData);
+        uint256 amountOut = _executeSwap(yield, _dcaAmountOutMin, _swapData);
 
         _updateEpoch(amountOut, yield, yieldInShares);
     }

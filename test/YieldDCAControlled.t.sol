@@ -22,7 +22,7 @@ import {SwapperMock, MaliciousSwapper} from "./mock/SwapperMock.sol";
 import {NFTHolderMock} from "./mock/NFTHolderMock.sol";
 import {TestCommon} from "./common/TestCommon.sol";
 
-contract YieldDCATest is TestCommon {
+contract YieldDCAControlledTest is TestCommon {
     using FixedPointMathLib for uint256;
 
     event PositionOpened(
@@ -165,7 +165,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfSwapperZeroAddress() public {
-        vm.expectRevert(YieldDCAControlled.SwapperAddressZero.selector);
+        vm.expectRevert(YieldDCABase.SwapperAddressZero.selector);
         yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
@@ -206,7 +206,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_constructor_revertsIfKeeperIsZeroAddress() public {
-        vm.expectRevert(YieldDCABase.KeeperAddressZero.selector);
+        vm.expectRevert(YieldDCAControlled.KeeperAddressZero.selector);
         yieldDca = new YieldDCAControlled(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
@@ -290,7 +290,7 @@ contract YieldDCATest is TestCommon {
     }
 
     function test_setSwapper_failsIfNewSwapperIsZeroAddress() public {
-        vm.expectRevert(YieldDCAControlled.SwapperAddressZero.selector);
+        vm.expectRevert(YieldDCABase.SwapperAddressZero.selector);
         vm.prank(admin);
         yieldDca.setSwapper(ISwapper(address(0)));
     }
@@ -2045,6 +2045,23 @@ contract YieldDCATest is TestCommon {
         // it would fail anyway because the yield calcuation returns 0 and the tx would revert with NoYield error but just in case of future changes
         vm.expectRevert(bytes4(keccak256("Reentrancy()")));
         yieldDca.executeDCA(0, "");
+    }
+
+    function test_executeDCA_correctlyPassesSwapData() public {
+        _openPositionWithPrincipal(alice, 1 ether);
+
+        _shiftTime(yieldDca.epochDuration());
+        _generateYield(1e18);
+
+        uint256 exchangeRate = 9e18;
+        swapper.setExchangeRate(exchangeRate);
+
+        bytes memory data = bytes("test swap data");
+
+        vm.prank(keeper);
+        yieldDca.executeDCA(0, data);
+
+        assertEq(swapper.lastSwapData(), data, "incorrect swap data");
     }
 
     /*

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.19;
 
-import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
 
 import {CommonErrors} from "./common/CommonErrors.sol";
 import {YieldDCABase} from "./YieldDCABase.sol";
+import {ISwapper} from "./interfaces/ISwapper.sol";
+import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 
 /**
  * @title YieldDCASimple
@@ -37,17 +39,87 @@ import {YieldDCABase} from "./YieldDCABase.sol";
  * Users and their approved operators can open and manage positions using both direct interactions and ERC20 permit-based approvals. Positions are represented as ERC721 tokens, enabling easy tracking and management of each user's investments.
  */
 abstract contract YieldDCASimple is YieldDCABase {
+contract YieldDCASimple is YieldDCABase {
     using CommonErrors for address;
-    using SafeTransferLib for address;
+    using FixedPointMathLib for uint256;
 
+    uint256 public constant MIN_TOLERATED_SLIPPAGE = 0.001e18; // 0.1%
+    uint256 public constant MAX_TOLERATED_SLIPPAGE = 0.2e18; // 20%
+
+    event PriceFeedUpdated(address indexed caller, IPriceFeed oldPriceFeed, IPriceFeed newPriceFeed);
+    event SwapDataUpdated(address indexed caller, bytes oldSwapData, bytes newSwapData);
+    event ToleratedSlippageUpdated(address indexed caller, uint256 oldSlippage, uint256 newSlippage);
+
+    error PriceFeedAddressZero();
+    error InvalidSlippageTolerance();
+
+    IPriceFeed public priceFeed;
+    bytes public swapData;
+    uint256 public toleratedSlippage = 0.05e18; // 5%
+
+    /**
+     * @notice Initializes the YieldDCASimple contract.
+     * @dev Sets up the DCA strategy contract with the specified parameters, including the ERC20 token for DCA, the ERC4626 vault, and the initial configuration parameters.
+     * Assigns the DEFAULT_ADMIN_ROLE to the provided admin address.
+     * Approves the vault to spend the underlying assets.
+     * @param _dcaToken The address of the ERC20 token used for DCA.
+     * @param _vault The address of the underlying ERC4626 vault contract.
+     * @param _epochDuration The minimum duration between epochs in seconds.
+     * @param _minYieldPerEpochPercent The minimum yield required per epoch as a WAD-scaled percentage of the total principal.
+     * @param _admin The address with the admin role.
+     *
+     * @custom:requirements
+     * - `_dcaToken` must not be the zero address.
+     * - `_vault` must not be the zero address.
+     * - `_dcaToken` must not be the same as the vault's underlying asset.
+     * - `_admin` must not be the zero address.
+     *
+     * @custom:reverts
+     * - `DCATokenAddressZero` if `_dcaToken` is the zero address.
+     * - `VaultAddressZero` if `_vault` is the zero address.
+     * - `DCATokenSameAsVaultAsset` if `_dcaToken` is the same as the vault's underlying asset.
+     * - `AdminAddressZero` if `_admin` is the zero address.
+     */
     constructor(
         IERC20 _dcaToken,
         IERC4626 _vault,
+        ISwapper _swapper,
+        IPriceFeed _priceFeed,
+        bytes memory _swapData,
         uint32 _epochDuration,
         uint64 _minYieldPerEpochPercent,
-        address _admin,
-        address _keeper
-    ) YieldDCABase(_dcaToken, _vault, _epochDuration, _minYieldPerEpochPercent, _admin, _keeper) {}
+        address _admin
+    ) YieldDCABase(_dcaToken, _vault, _swapper, _epochDuration, _minYieldPerEpochPercent, _admin) {
+        _setPriceFeed(_priceFeed);
+        _setSwapData(_swapData);
+    }
+
+    function setPriceFeed(IPriceFeed _priceFeed) external onlyAdmin {
+        IPriceFeed oldPriceFeed = priceFeed;
+
+        _setPriceFeed(_priceFeed);
+
+        emit PriceFeedUpdated(msg.sender, oldPriceFeed, _priceFeed);
+    }
+
+    function setSwapData(bytes memory _swapData) external onlyAdmin {
+        bytes memory oldSwapData = swapData;
+
+        _setSwapData(_swapData);
+
+        emit SwapDataUpdated(msg.sender, oldSwapData, _swapData);
+    }
+
+    function setToleratedSlippage(uint256 _toleratedSlippage) external onlyAdmin {
+        if (_toleratedSlippage < MIN_TOLERATED_SLIPPAGE || _toleratedSlippage > MAX_TOLERATED_SLIPPAGE) {
+            revert InvalidSlippageTolerance();
+        }
+
+        uint256 oldSlippage = toleratedSlippage;
+        toleratedSlippage = _toleratedSlippage;
+
+        emit ToleratedSlippageUpdated(msg.sender, oldSlippage, _toleratedSlippage);
+    }
 
     /**
      * @notice Executes the DCA strategy for the current epoch by converting yield into DCA tokens.
@@ -69,37 +141,10 @@ abstract contract YieldDCASimple is YieldDCABase {
         (uint256 yield, uint256 yieldInShares) = _redeemYield();
 
         // swap yield for DCA tokens
-        uint256 amountOut = _buyDcaTokens(yield);
+        uint256 amountOut = _executeSwap(yield, _calculateDcaAmountOutMin(yield), swapData);
 
         _updateEpoch(amountOut, yield, yieldInShares);
     }
-
-    /**
-     * @notice Swaps the yield for DCA tokens using integrated swap logic.
-     * @dev This function performs the actual swapping of the yield for DCA tokens.
-     * @param _amountIn The amount of yield to be swapped.
-     * @return The amount of DCA tokens received.
-     */
-    function _buyDcaTokens(uint256 _amountIn) internal returns (uint256) {
-        uint256 balanceBefore = dcaBalance();
-
-        _executeSwap(_amountIn);
-
-        uint256 balanceAfter = dcaBalance();
-
-        if (balanceAfter < balanceBefore + _calculateDcaAmountOutMin(_amountIn)) revert AmountReceivedTooLow();
-
-        unchecked {
-            return balanceAfter - balanceBefore;
-        }
-    }
-
-    /**
-     * @notice Executes the swap logic for converting yield to DCA tokens.
-     * @dev This function must be implemented by the inheriting contract to define the specific swap logic.
-     * @param _amountIn The amount of yield to be swapped.
-     */
-    function _executeSwap(uint256 _amountIn) internal virtual;
 
     /**
      * @notice Calculates the minimum amount of DCA tokens expected from the swap.
@@ -107,5 +152,21 @@ abstract contract YieldDCASimple is YieldDCABase {
      * @param _amountIn The amount of yield to be swapped.
      * @return The minimum amount of DCA tokens expected.
      */
-    function _calculateDcaAmountOutMin(uint256 _amountIn) internal virtual returns (uint256);
+    function _calculateDcaAmountOutMin(uint256 _amountIn) internal virtual returns (uint256) {
+        uint256 price = priceFeed.getLatestPrice(address(asset), address(dcaToken));
+
+        unchecked {
+            return price.mulWad(_amountIn).mulWad(1e18 - toleratedSlippage);
+        }
+    }
+
+    function _setPriceFeed(IPriceFeed _priceFeed) internal {
+        address(_priceFeed).revertIfZero(PriceFeedAddressZero.selector);
+
+        priceFeed = _priceFeed;
+    }
+
+    function _setSwapData(bytes memory _swapData) internal {
+        swapData = _swapData;
+    }
 }
