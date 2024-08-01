@@ -38,7 +38,6 @@ import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
  * ## Usage
  * Users and their approved operators can open and manage positions using both direct interactions and ERC20 permit-based approvals. Positions are represented as ERC721 tokens, enabling easy tracking and management of each user's investments.
  */
-abstract contract YieldDCASimple is YieldDCABase {
 contract YieldDCASimple is YieldDCABase {
     using CommonErrors for address;
     using FixedPointMathLib for uint256;
