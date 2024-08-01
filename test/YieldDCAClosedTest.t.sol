@@ -16,13 +16,13 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import "src/common/CommonErrors.sol";
 import {YieldDCABase} from "src/YieldDCABase.sol";
-import {YieldDCAControlled} from "src/YieldDCAControlled.sol";
+import {YieldDCAClosed} from "src/YieldDCAClosed.sol";
 import {ISwapper} from "src/interfaces/ISwapper.sol";
 import {SwapperMock, MaliciousSwapper} from "./mock/SwapperMock.sol";
 import {NFTHolderMock} from "./mock/NFTHolderMock.sol";
 import {TestCommon} from "./common/TestCommon.sol";
 
-contract YieldDCAControlledTest is TestCommon {
+contract YieldDCAClosedTest is TestCommon {
     using FixedPointMathLib for uint256;
 
     event PositionOpened(
@@ -85,7 +85,7 @@ contract YieldDCAControlledTest is TestCommon {
     uint32 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
     uint64 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
 
-    YieldDCAControlled yieldDca;
+    YieldDCAClosed yieldDca;
     MockERC20 asset;
     MockERC4626 vault;
     MockERC20 dcaToken;
@@ -99,7 +99,7 @@ contract YieldDCAControlledTest is TestCommon {
         swapper = new SwapperMock();
 
         dcaToken.mint(address(swapper), type(uint128).max);
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -140,7 +140,7 @@ contract YieldDCAControlledTest is TestCommon {
 
     function test_constructor_revertsIfDcaTokenZeroAddress() public {
         vm.expectRevert(YieldDCABase.DCATokenAddressZero.selector);
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(0)),
             IERC4626(address(vault)),
             swapper,
@@ -153,7 +153,7 @@ contract YieldDCAControlledTest is TestCommon {
 
     function test_constructor_revertsIfVaultZeroAddress() public {
         vm.expectRevert(YieldDCABase.VaultAddressZero.selector);
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(0)),
             swapper,
@@ -166,7 +166,7 @@ contract YieldDCAControlledTest is TestCommon {
 
     function test_constructor_revertsIfSwapperZeroAddress() public {
         vm.expectRevert(YieldDCABase.SwapperAddressZero.selector);
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             ISwapper(address(0)),
@@ -181,7 +181,7 @@ contract YieldDCAControlledTest is TestCommon {
         uint64 aboveMax = yieldDca.MIN_YIELD_PER_EPOCH_UPPER_BOUND() + 1;
 
         vm.expectRevert(YieldDCABase.MinYieldPerEpochOutOfBounds.selector);
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -194,7 +194,7 @@ contract YieldDCAControlledTest is TestCommon {
 
     function test_constructor_revertsIfDCATokenSameAsVaultAsset() public {
         vm.expectRevert(YieldDCABase.DCATokenSameAsVaultAsset.selector);
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(asset)),
             IERC4626(address(vault)),
             swapper,
@@ -206,8 +206,8 @@ contract YieldDCAControlledTest is TestCommon {
     }
 
     function test_constructor_revertsIfKeeperIsZeroAddress() public {
-        vm.expectRevert(YieldDCAControlled.KeeperAddressZero.selector);
-        yieldDca = new YieldDCAControlled(
+        vm.expectRevert(YieldDCAClosed.KeeperAddressZero.selector);
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -220,7 +220,7 @@ contract YieldDCAControlledTest is TestCommon {
 
     function test_constructor_revertsIfAdminIsZeroAddress() public {
         vm.expectRevert(YieldDCABase.AdminAddressZero.selector);
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -1376,7 +1376,7 @@ contract YieldDCAControlledTest is TestCommon {
         vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
         deal(address(dcaToken), address(swapper), type(uint136).max);
 
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -2030,7 +2030,7 @@ contract YieldDCAControlledTest is TestCommon {
         _generateYield(0.5e18);
         _shiftTime(yieldDca.epochDuration());
 
-        bytes memory reenterCall = abi.encodeCall(YieldDCAControlled.executeDCA, (0, ""));
+        bytes memory reenterCall = abi.encodeCall(YieldDCAClosed.executeDCA, (0, ""));
         MaliciousSwapper maliciousSwapper = new MaliciousSwapper(reenterCall);
 
         // step 3 - admin sets the malicious swapper as the keeper
@@ -2761,7 +2761,7 @@ contract YieldDCAControlledTest is TestCommon {
         // NOTE: if one epoch is 5 days, 13k epochs is roughly 180 years
         // setup new vault and yieldDCA to start from a clean state
         vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, 0, admin, keeper
         );
 
@@ -2807,7 +2807,7 @@ contract YieldDCAControlledTest is TestCommon {
     function testGas_calculateBalances_singleIterationGasAverage() public {
         // setup new vault and yieldDCA to start from a clean state
         vault = new MockERC4626(asset, "Mock ERC4626", "mERC4626");
-        yieldDca = new YieldDCAControlled(
+        yieldDca = new YieldDCAClosed(
             IERC20Metadata(address(dcaToken)), IERC4626(address(vault)), swapper, DEFAULT_DCA_INTERVAL, 0, admin, keeper
         );
 

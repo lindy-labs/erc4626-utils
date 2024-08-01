@@ -16,7 +16,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import "src/common/CommonErrors.sol";
 import {YieldDCABase} from "src/YieldDCABase.sol";
-import {YieldDCASimple} from "src/YieldDCASimple.sol";
+import {YieldDCAOpen} from "src/YieldDCAOpen.sol";
 import {ISwapper} from "src/interfaces/ISwapper.sol";
 import {IPriceFeed} from "src/interfaces/IPriceFeed.sol";
 import {SwapperMock, MaliciousSwapper} from "./mock/SwapperMock.sol";
@@ -33,7 +33,7 @@ contract YieldDCASimpleTest is TestCommon {
     uint32 public constant DEFAULT_DCA_INTERVAL = 2 weeks;
     uint64 public constant DEFAULT_MIN_YIELD_PERCENT = 0.001e18; // 0.1%
 
-    YieldDCASimple yieldDca;
+    YieldDCAOpen yieldDca;
     MockERC20 asset;
     MockERC4626 vault;
     MockERC20 dcaToken;
@@ -50,7 +50,7 @@ contract YieldDCASimpleTest is TestCommon {
         priceFeed = new PriceFeedMock();
 
         dcaToken.mint(address(swapper), type(uint128).max);
-        yieldDca = new YieldDCASimple(
+        yieldDca = new YieldDCAOpen(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -95,8 +95,8 @@ contract YieldDCASimpleTest is TestCommon {
     function test_constructor_revertsForPriceFeedAddressZero() public {
         priceFeed = PriceFeedMock(address(0));
 
-        vm.expectRevert(YieldDCASimple.PriceFeedAddressZero.selector);
-        yieldDca = new YieldDCASimple(
+        vm.expectRevert(YieldDCAOpen.PriceFeedAddressZero.selector);
+        yieldDca = new YieldDCAOpen(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -111,7 +111,7 @@ contract YieldDCASimpleTest is TestCommon {
     function test_constructor_revertsForEmptySwapData() public {
         swapData = bytes("");
 
-        yieldDca = new YieldDCASimple(
+        yieldDca = new YieldDCAOpen(
             IERC20Metadata(address(dcaToken)),
             IERC4626(address(vault)),
             swapper,
@@ -143,7 +143,7 @@ contract YieldDCASimpleTest is TestCommon {
     }
 
     function test_setPriceFeed_revertsForAddressZero() public {
-        vm.expectRevert(YieldDCASimple.PriceFeedAddressZero.selector);
+        vm.expectRevert(YieldDCAOpen.PriceFeedAddressZero.selector);
 
         vm.prank(admin);
         yieldDca.setPriceFeed(PriceFeedMock(address(0)));
@@ -235,7 +235,7 @@ contract YieldDCASimpleTest is TestCommon {
     function test_setToleratedSlippage_revertsIfBelowMin() public {
         uint256 invalidSlippage = yieldDca.MIN_TOLERATED_SLIPPAGE() - 1;
 
-        vm.expectRevert(YieldDCASimple.InvalidSlippageTolerance.selector);
+        vm.expectRevert(YieldDCAOpen.InvalidSlippageTolerance.selector);
 
         vm.prank(admin);
         yieldDca.setToleratedSlippage(invalidSlippage);
@@ -244,7 +244,7 @@ contract YieldDCASimpleTest is TestCommon {
     function test_setToleratedSlippage_revertsIfAboveMax() public {
         uint256 invalidSlippage = yieldDca.MAX_TOLERATED_SLIPPAGE() + 1;
 
-        vm.expectRevert(YieldDCASimple.InvalidSlippageTolerance.selector);
+        vm.expectRevert(YieldDCAOpen.InvalidSlippageTolerance.selector);
 
         vm.prank(admin);
         yieldDca.setToleratedSlippage(invalidSlippage);
@@ -454,6 +454,31 @@ contract YieldDCASimpleTest is TestCommon {
         yieldDca.executeDCA();
 
         assertEq(swapper.lastSwapData(), data, "incorrect swap data");
+    }
+
+    function test_executeDCA_maliciousSwapperCannotReenter() public {
+        // the swapper is malicious and tries to reenter the contract
+        // to enable this, admin has to be compromised and also grant the keeper role to the malicious swapper
+        // step 1 - alice opens position
+        uint256 principal = 1 ether;
+        _openPositionWithPrincipal(alice, principal);
+
+        // step 2 - generate 50% yield
+        _generateYield(0.5e18);
+        _shiftTime(yieldDca.epochDuration());
+
+        bytes memory reenterCall = abi.encodeWithSelector(YieldDCAOpen.executeDCA.selector);
+        MaliciousSwapper maliciousSwapper = new MaliciousSwapper(reenterCall);
+
+        // step 3 - admin sets the malicious swapper as the keeper
+        vm.prank(admin);
+        yieldDca.setSwapper(maliciousSwapper);
+
+        // step 4 - execute DCA and swapper with keeper role tries to reenter
+        // the malicious swapper tries to reenter the contract
+        // it would fail anyway because the yield calcuation returns 0 and the tx would revert with NoYield error but just in case of future changes
+        vm.expectRevert(bytes4(keccak256("Reentrancy()")));
+        yieldDca.executeDCA();
     }
 
     /*
