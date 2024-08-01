@@ -16,13 +16,7 @@ library CommonErrors {
     function revertIfZero(uint256 _amount, bytes4 _errorSelector) internal pure {
         if (_amount != 0) return;
 
-        // Encode the error selector with no additional arguments
-        bytes memory errorData = abi.encodeWithSelector(_errorSelector);
-        // Use assembly to revert with the encoded error data
-        assembly {
-            let errorSize := mload(errorData)
-            revert(add(errorData, 32), errorSize)
-        }
+        _revertWithSelector(_errorSelector);
     }
 
     function revertIfZero(address _address) internal pure {
@@ -32,8 +26,13 @@ library CommonErrors {
     function revertIfZero(address _address, bytes4 _errorSelector) internal pure {
         if (_address != address(0)) return;
 
+        _revertWithSelector(_errorSelector);
+    }
+
+    function _revertWithSelector(bytes4 _selector) private pure {
         // Encode the error selector with no additional arguments
-        bytes memory errorData = abi.encodeWithSelector(_errorSelector);
+        bytes memory errorData = abi.encodeWithSelector(_selector);
+
         // Use assembly to revert with the encoded error data
         assembly {
             let errorSize := mload(errorData)

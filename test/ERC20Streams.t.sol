@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import "forge-std/Test.sol";
 
 import {IERC4626} from "openzeppelin-contracts/interfaces/IERC4626.sol";
+import {IERC20} from "openzeppelin-contracts/interfaces/IERC20.sol";
 import {MockERC4626} from "solmate/test/utils/mocks/MockERC4626.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
@@ -11,6 +12,7 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import "src/common/CommonErrors.sol";
 import "./common/TestCommon.sol";
 import {ERC20Streams} from "src/ERC20Streams.sol";
+import {TestCommon} from "./common/TestCommon.sol";
 
 contract ERC20StreamsTest is TestCommon {
     using FixedPointMathLib for uint256;
